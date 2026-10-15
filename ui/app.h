@@ -1,0 +1,98 @@
+#ifndef PD_APP_H
+#define PD_APP_H
+#include "pixel.h"
+#include "files.h"
+enum { PD_TOOLS=1,PD_PAN=2,PD_SAMPLE=4,PD_ZOOM=8,PD_ERASE=16,PD_SAVE=32,PD_MENU=64,PD_SHOULDER_L=128,PD_SHOULDER_R=256 };
+typedef struct {
+    PdDocument doc;
+    int width,height,zoom,ox,oy,page,confirm;
+    int lastx,lasty,panx,pany,subx,suby;
+    bool pan_frame;
+    bool last_erase,touching,blocked,stroke,pan,redraw,exit_requested;
+    /* Half-open world damage and screen presentation bounds. */
+    int dx0,dy0,dx1,dy1,px0,py0,px1,py1;
+    bool partial,present_top;
+    unsigned input_us,render_us,present_us,gap_us,samples;
+    uint32_t color,background,recent[12];
+    unsigned recent_count,numeric_mode;
+    char numeric[10];
+    bool numeric_replace;
+    unsigned text_cursor,text_mode;
+    bool text_repeat;
+    uint32_t text_repeat_at;
+    unsigned hue,saturation,value,color_drag;
+    unsigned color_tab,painted_hue;
+    int painted_sx,painted_sy;
+    bool picker_update,picker_field;
+    uint32_t swatches[256];
+    unsigned swatch_count,swatch_selected;
+    int swatch_hold,swatch_target;
+    uint32_t swatch_hold_ms,swatch_nav_ms;
+    bool swatch_drag,palette_dirty;
+    int palette_scroll[2],swatch_start_y,swatch_start_scroll;
+    bool swatch_scrolling,palette_edit;
+    unsigned palette_edit_index;
+    uint32_t palette_edit_before;
+    char directory[256],notice[64];
+    char file_source[PD_PATH];
+    char folder[PD_PATH],project[PD_PATH],pending[PD_PATH],filename[64];
+    uint32_t file_preview[64*64];
+    bool preview_ready,preview_attempted,recent_files_unsaved;
+    char preview_name[64],preview_error[64];
+    char recent_projects[8][PD_PATH];
+    unsigned recent_project_count;
+    int recent_project_selected;
+    PdListing listing;
+    uint32_t gallery_thumbs[6][32*32];
+    unsigned gallery_page,gallery_count;
+    bool gallery_ready[6];
+    unsigned file_mode,file_page,name_action,file_filter;
+    int file_scroll,file_start_scroll,file_start_y,file_hold;
+    bool file_scrolling;
+    unsigned preview_palette_count;
+    unsigned new_background,new_layers,new_width,new_height,size_axis;
+    bool new_current_palette;
+    uint32_t recovery_at,idle_at,recovery_palette;
+    uint64_t recovery_revision;
+    bool recovery_clock,recovery_available,recovery_pending,recovery_enabled;
+    int selected;
+    bool project_native,zoom_overlay,toolbox;
+    unsigned help_tab;
+    unsigned bindings,draft_bindings; /* four paired controls, two bits per action */
+    PdClipboard clipboard;
+    uint32_t selection[PD_MAX_PIXELS/32],selection_base[PD_MAX_PIXELS/32],selection_draft[PD_MAX_PIXELS/32];
+    int16_t lasso[512][2];
+    unsigned lasso_count,selection_shape,selection_mode,selection_layer;
+    uint64_t selection_revision;
+    bool selection_valid,selection_drag,selection_move,lasso_overflow;
+    int selection_x,selection_y,selection_dx,selection_dy,selection_offset_x,selection_offset_y;
+    unsigned guides;
+    uint32_t guide_damage[PD_MAX_PIXELS/32];
+    PdPerfectStroke perfect_stroke;
+    bool pixel_perfect;
+    unsigned brush_size[2],brush_round[2],brush_edit;
+    unsigned brush_pattern,brush_preset;
+    unsigned char brush_presets[4][4]; /* size, round, pixel perfect, dither */
+    bool pixel_grid,brush_drag,brush_dirty,presets_dirty;
+    bool fill_global,fill_visible;
+    unsigned fill_tolerance;
+    bool shape_drag,shape_filled;
+    int shape_x,shape_y,shape_lastx,shape_lasty;
+    unsigned tool; /* 0 pencil, 1 eraser, 2 sampler, 3 fill, 4 selection, 5 line, 6 rectangle, 7 ellipse */
+    unsigned handed,zoom_side,draft_handed,draft_zoom_side;
+    uint32_t now_ms,layer_hold_ms;
+    int layer_hold,layer_drag_y,layer_scroll,layer_start_scroll,layer_start_y;
+    unsigned layer_previous;
+    uint32_t layer_scroll_at;
+    bool layer_scrolling;
+    bool layer_popup,layer_delete,layer_drag,opacity_drag;
+    const char *platform;
+} PdApp;
+void app_init(PdApp *a,int w,int h,const char *directory,const char *platform);
+void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held);
+unsigned app_bindings(const PdApp *a,unsigned actions);
+void app_text_result(PdApp *a,const char *text,bool accepted);
+void app_pan_pixels(PdApp *a,int dx,int dy);
+void app_pan(PdApp *a,int dx,int dy);
+void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int topw,int toph);
+#endif

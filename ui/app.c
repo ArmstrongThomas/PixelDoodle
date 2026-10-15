@@ -1,0 +1,1129 @@
+#include "version.h"
+#include "app.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "zlib.h"
+#ifdef _WIN32
+#include <io.h>
+#define SETTINGS_SYNC(f) _commit(_fileno(f))
+#else
+#include <unistd.h>
+#define SETTINGS_SYNC(f) fsync(fileno(f))
+#endif
+#include "menu_font.h"
+static const uint32_t palette[]={0xff182126,0xffffffff,0xffe04444,0xfff5a623,0xfff0d850,0xff218c63,0xff1850b0,0xff864bc1};
+/* Shared dark surfaces, white labels and bright accents; never remap art pixels. */
+#define UI_BG 0x182126u
+#define UI_PANEL 0x35444bu
+#define UI_EDGE 0x73868fu
+#define UI_TEXT 0xf5f8fau
+#define UI_MUTED 0xb9cbd2u
+#define UI_ACCENT 0x79e0d3u
+#define UI_SELECTED 0x0d7a75u
+static const char *control_names[]={"B / DOWN","A / LEFT","X / UP","Y / RIGHT"};
+static const char *action_names[]={"TOOLS","PAN","SAMPLE","ZOOM"};
+static bool bindings_valid(unsigned b){unsigned seen=0;for(unsigned i=0;i<4;i++)seen|=1u<<((b>>(i*2))&3);return seen==15;}
+unsigned app_bindings(const PdApp *a,unsigned actions){unsigned out=actions&~15u;for(unsigned i=0;i<4;i++)if(actions&(1u<<i))out|=1u<<((a->bindings>>(i*2))&3);return out;}
+static const char *binding_name(PdApp *a,unsigned action){for(unsigned i=0;i<4;i++)if(((a->bindings>>(i*2))&3)==action)return control_names[i];return "?";}
+static uint32_t hsv(unsigned h,unsigned s,unsigned v){
+    unsigned c=(v*s+127)/255,m=v-c,f=h%60;
+    unsigned x=(c*((h/60)&1?60-f:f)+30)/60,r=0,g=0,b=0;
+    switch(h/60){case 0:r=c;g=x;break;case 1:r=x;g=c;break;case 2:g=c;b=x;break;case 3:g=x;b=c;break;case 4:r=x;b=c;break;default:r=c;b=x;break;}
+    return 0xff000000u|((r+m)<<16)|((g+m)<<8)|(b+m);
+}
+static void recent_add(PdApp *a,bool promote){unsigned at=0;while(at<a->recent_count&&a->recent[at]!=a->color)at++;if(at<a->recent_count&&!promote)return;if(at==a->recent_count&&a->recent_count<12)a->recent_count++;if(at>11)at=11;memmove(a->recent+1,a->recent,at*sizeof(uint32_t));a->recent[0]=a->color;}
+static void project_palette(PdApp *a){a->doc.palette_count=a->swatch_count;memcpy(a->doc.palette,a->swatches,a->swatch_count*sizeof(uint32_t));}
+static void numeric_open(PdApp *a,unsigned mode){a->numeric_mode=mode;a->numeric_replace=true;a->page=11;a->picker_update=false;a->redraw=true;if(!mode)snprintf(a->numeric,sizeof(a->numeric),"%06X%02X",(unsigned)(a->color&0xffffff),(unsigned)(a->color>>24));else {unsigned shifts[]={0,16,8,0,24};snprintf(a->numeric,sizeof(a->numeric),"%u",(unsigned)((a->color>>shifts[mode])&255));}}
+static void color_hsv(PdApp *a){
+    int r=(a->color>>16)&255,g=(a->color>>8)&255,b=a->color&255;
+    int max=r>g?r:g;if(b>max)max=b;int min=r<g?r:g;if(b<min)min=b;int d=max-min;
+    a->value=(unsigned)max;a->saturation=max?(unsigned)((d*255+max/2)/max):0;
+    if(d){int h=max==r?60*(g-b)/d:max==g?120+60*(b-r)/d:240+60*(r-g)/d;if(h<0)h+=360;a->hue=(unsigned)h;}
+}
+static int strip_side(PdApp *a){return (a->height-88)/4-4;}
+static int strip_left(PdApp *a){return a->width-8-strip_side(a);}
+static int recent_pitch(PdApp *a){return (strip_left(a)-8-(a->height-48))/4;}
+static unsigned recent_visible(PdApp *a){int rows=(a->height-72-100)/recent_pitch(a);unsigned n=(unsigned)(rows>0?rows:0)*4;return n<a->recent_count?n:a->recent_count;}
+static int palette_pitch(PdApp *a){return a->color_tab?(a->width-16)/5:(a->height-88)/4;}
+static void palette_clamp(PdApp *a){int cols=a->color_tab?5:1,rows=((int)a->swatch_count+cols-1)/cols,max=rows*palette_pitch(a)-(a->height-88);if(max<0)max=0;int *p=&a->palette_scroll[a->color_tab];if(*p<0)*p=0;if(*p>max)*p=max;}
+static int palette_hit(PdApp *a,int x,int y){int fh=a->height-88;if(y<32||y>=32+fh)return -1;int col=0;
+    if(a->color_tab){if(x<8||x>=a->width-8)return -1;col=(x-8)/palette_pitch(a);if(col>4)return -1;}
+    else if(x<strip_left(a)||x>=a->width-8)return -1;
+    int row=(y-32+a->palette_scroll[a->color_tab])/palette_pitch(a),i=row*(a->color_tab?5:1)+col;return i<(int)a->swatch_count?i:-1;
+}
+static void color_open(PdApp *a){a->color_drag=0;a->color_tab=0;a->palette_edit=false;a->picker_field=false;color_hsv(a);palette_clamp(a);}
+static void color_input(PdApp *a,int x,int y,bool pressed){
+    int fw=a->height-88,fh=fw;uint32_t old=a->color;unsigned old_hue=a->hue,old_s=a->saturation,old_v=a->value,old_tab=a->color_tab;bool clean=!a->redraw;
+    if(pressed){
+        if(y>=a->height-48&&y<a->height-26){
+            if(a->palette_edit){if(x<a->width/2){a->swatches[a->palette_edit_index]=a->color;a->palette_dirty=true;}else {a->color=a->palette_edit_before;color_hsv(a);}a->swatch_selected=a->palette_edit_index;a->palette_edit=false;a->color_tab=1;}
+            else if(x<92)a->color_tab^=1;else a->page=12;
+            a->color_drag=0;palette_clamp(a);a->redraw=true;
+        }else if(a->color_tab&&y>=a->height-24){
+            int b=x*3/a->width;
+            if(b==0&&a->swatch_count<256){a->swatch_selected=a->swatch_count;a->swatches[a->swatch_count++]=a->color;a->palette_scroll[1]=(int)(a->swatch_selected/5)*palette_pitch(a);palette_clamp(a);a->palette_dirty=true;}
+            if(b==1){a->palette_edit=true;a->palette_edit_index=a->swatch_selected;a->palette_edit_before=a->color;a->color=a->swatches[a->swatch_selected];color_hsv(a);a->color_tab=0;a->picker_field=false;}
+            if(b==2&&a->swatch_count>1){memmove(a->swatches+a->swatch_selected,a->swatches+a->swatch_selected+1,(a->swatch_count-a->swatch_selected-1)*sizeof(uint32_t));a->swatch_count--;if(a->swatch_selected>=a->swatch_count)a->swatch_selected=a->swatch_count-1;palette_clamp(a);a->palette_dirty=true;}
+            a->redraw=true;
+        }else if(!a->color_tab&&x>=fw+40&&x<strip_left(a)-8){
+            if(y>=30&&y<54){if(a->palette_edit)numeric_open(a,0);else {uint32_t c=a->color;a->color=a->background;a->background=c;color_hsv(a);}}
+            else if(y>=54&&y<68)numeric_open(a,0);
+            else if(y>=68&&y<84){unsigned channel=(unsigned)((x-fw-40)*3/(strip_left(a)-8-fw-40));numeric_open(a,1+channel);}
+            else if(y>=a->height-72&&y<a->height-54)numeric_open(a,0);
+            else if(y>=100&&y<a->height-72){int pitch=recent_pitch(a);unsigned i=(unsigned)((y-100)/pitch*4+(x-fw-40)/pitch);if(i<recent_visible(a)){a->color=a->recent[i];color_hsv(a);}}
+        }else if(!a->color_tab&&x<48&&y>=a->height-24){numeric_open(a,4);
+        }else if(y>=32&&y<32+fh&&(a->color_tab||x>=strip_left(a))){
+            int index=palette_hit(a,x,y);if(index>=0){a->swatch_hold=index;a->swatch_target=index;a->swatch_hold_ms=a->now_ms;a->swatch_nav_ms=a->now_ms;a->swatch_start_y=y;a->swatch_start_scroll=a->palette_scroll[a->color_tab];a->swatch_scrolling=false;}
+        }else if(!a->color_tab&&x>=8&&x<8+fw&&y>=32&&y<32+fh)a->color_drag=1;
+        else if(!a->color_tab&&x>=fw+16&&x<fw+32&&y>=32&&y<32+fh)a->color_drag=2;
+        else if(!a->color_tab&&x>=48&&x<a->width-8&&y>=a->height-20&&y<a->height-4)a->color_drag=3;
+    }
+    if(!pressed&&a->swatch_hold>=0){
+        int delta=y-a->swatch_start_y;uint32_t elapsed=a->now_ms-a->swatch_hold_ms;
+        if(!a->swatch_drag&&(elapsed<150||a->palette_edit)&&(delta>5||delta< -5))a->swatch_scrolling=true;
+        if(a->swatch_scrolling){int old_scroll=a->palette_scroll[a->color_tab];a->palette_scroll[a->color_tab]=a->swatch_start_scroll-delta;palette_clamp(a);if(old_scroll!=a->palette_scroll[a->color_tab])a->redraw=true;}
+        else if(elapsed>=150&&!a->palette_edit){
+            a->swatch_drag=true;
+            if((uint32_t)(a->now_ms-a->swatch_nav_ms)>=100){if(y<40)a->palette_scroll[a->color_tab]-=palette_pitch(a)/2;else if(y>=24+fh)a->palette_scroll[a->color_tab]+=palette_pitch(a)/2;palette_clamp(a);a->swatch_nav_ms=a->now_ms;}
+            int yy=y;if(yy<32)yy=32;if(yy>=32+fh)yy=31+fh;int index=palette_hit(a,x,yy);if(index>=0)a->swatch_target=index;a->redraw=true;
+        }
+    }
+    if(a->color_drag==1){int sx=x-8,vy=y-32;if(sx<0)sx=0;if(sx>=fw)sx=fw-1;if(vy<0)vy=0;if(vy>=fh)vy=fh-1;a->saturation=(unsigned)(sx*255/(fw-1));a->value=(unsigned)(255-vy*255/(fh-1));}
+    if(a->color_drag==2){int hy=y-32;if(hy<0)hy=0;if(hy>=fh)hy=fh-1;a->hue=(unsigned)(hy*359/(fh-1));}
+    if(a->color_drag==1||a->color_drag==2)a->color=(a->color&0xff000000u)|(hsv(a->hue,a->saturation,a->value)&0xffffffu);
+    if(a->color_drag==3){int ax=x-48,aw=a->width-57;if(ax<0)ax=0;if(ax>aw)ax=aw;a->color=(a->color&0xffffffu)|((unsigned)(ax*255/aw)<<24);}
+    if(clean&&a->redraw&&a->page==2)a->picker_update=true;
+    if(a->page!=2||old!=a->color||old_hue!=a->hue||old_s!=a->saturation||old_v!=a->value||old_tab!=a->color_tab){a->picker_update=clean&&a->page==2;a->redraw=true;}
+}
+static void message(PdApp *a,const char *s){a->picker_update=false;snprintf(a->notice,sizeof(a->notice),"%s",s);a->redraw=true;}
+static uint32_t pal_get(const unsigned char *p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
+static void pal_put(unsigned char *p,uint32_t n){for(unsigned i=0;i<4;i++)p[i]=(unsigned char)(n>>(8*i));}
+static unsigned palette_read(PdApp *a,unsigned slot,unsigned char b[1040]){
+    char path[512];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/palette%u.bin",a->directory,slot);FILE *f=fopen(path,"rb");if(!f)return 0;
+    bool ok=fread(b,1,1040,f)==1040&&fgetc(f)==EOF&&!ferror(f);if(fclose(f))ok=false;
+    if(!ok||memcmp(b,"PPL1",4)||pal_get(b+8)<1||pal_get(b+8)>256||pal_get(b+1036)!=(uint32_t)crc32(0,b,1036))return 0;return pal_get(b+4);
+}
+static void palette_load(PdApp *a){unsigned char b[1040],c[1040];unsigned s0=palette_read(a,0,b),s1=palette_read(a,1,c);if(!s0&&!s1)return;unsigned char *p=s1>s0?c:b;a->swatch_count=pal_get(p+8);for(unsigned i=0;i<a->swatch_count;i++)a->swatches[i]=pal_get(p+12+i*4);}
+static bool palette_save(PdApp *a){
+    unsigned char b[1040]={0},c[1040];unsigned s0=palette_read(a,0,b),s1=palette_read(a,1,c),seq=s0>s1?s0:s1;if(!a->directory[0]||seq==UINT32_MAX)return false;
+    memset(b,0,sizeof(b));memcpy(b,"PPL1",4);pal_put(b+4,++seq);pal_put(b+8,a->swatch_count);for(unsigned i=0;i<a->swatch_count;i++)pal_put(b+12+i*4,a->swatches[i]);pal_put(b+1036,(uint32_t)crc32(0,b,1036));
+    unsigned slot=s0<=s1?0:1;char path[512];snprintf(path,sizeof(path),"%s/palette%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");if(!f)return false;
+    bool ok=fwrite(b,1,1040,f)==1040&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;return ok&&palette_read(a,slot,c)==seq&&!memcmp(b,c,1040);
+}
+#define RECENT_BYTES (16+8*PD_PATH)
+static bool recent_path_valid(const char *p){if(!p[0]||p[0]=='/'||strchr(p,'\\')||strchr(p,':'))return false;while(*p){const char *end=strchr(p,'/');size_t n=end?(size_t)(end-p):strlen(p);if(!n||(n==1&&p[0]=='.')||(n==2&&p[0]=='.'&&p[1]=='.'))return false;if(!end)break;p=end+1;if(!*p)return false;}return true;}
+static unsigned recent_read(PdApp *a,unsigned slot,unsigned char *b){char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/recent%u.bin",a->directory,slot);FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,RECENT_BYTES,f)==RECENT_BYTES&&fgetc(f)==EOF&&!ferror(f);fclose(f);if(!ok||memcmp(b,"PRJ1",4)||pal_get(b+8)>8||pal_get(b+RECENT_BYTES-4)!=(uint32_t)crc32(0,b,RECENT_BYTES-4))return 0;for(unsigned i=0;i<pal_get(b+8);i++){char *p=(char*)b+12+i*PD_PATH;if(!memchr(p,0,PD_PATH)||!recent_path_valid(p))return 0;}return pal_get(b+4);}
+static void recent_projects_load(PdApp *a){unsigned char *b=malloc(RECENT_BYTES*2);if(!b)return;unsigned s0=recent_read(a,0,b),s1=recent_read(a,1,b+RECENT_BYTES);if(s0||s1){unsigned char *p=s1>s0?b+RECENT_BYTES:b;a->recent_project_count=pal_get(p+8);memcpy(a->recent_projects,p+12,sizeof(a->recent_projects));}free(b);}
+static void recent_projects_save(PdApp *a){unsigned char *b=malloc(RECENT_BYTES*2);a->recent_files_unsaved=true;if(!b)return;unsigned char *other=b+RECENT_BYTES;unsigned s0=recent_read(a,0,b),s1=recent_read(a,1,other),seq=s0>s1?s0:s1;if(!a->directory[0]||seq==UINT32_MAX){free(b);return;}memset(b,0,RECENT_BYTES);memcpy(b,"PRJ1",4);pal_put(b+4,++seq);pal_put(b+8,a->recent_project_count);memcpy(b+12,a->recent_projects,sizeof(a->recent_projects));pal_put(b+RECENT_BYTES-4,(uint32_t)crc32(0,b,RECENT_BYTES-4));unsigned slot=s0<=s1?0:1;char path[PD_PATH];snprintf(path,sizeof(path),"%s/recent%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");bool ok=false;if(f){ok=fwrite(b,1,RECENT_BYTES,f)==RECENT_BYTES&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}if(ok)ok=recent_read(a,slot,other)==seq&&!memcmp(b,other,RECENT_BYTES);free(b);a->recent_files_unsaved=!ok;}
+static unsigned brush_read(PdApp *a,unsigned slot,unsigned char b[20]){char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/tools%u.bin",a->directory,slot);FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,20,f)==20&&fgetc(f)==EOF&&!ferror(f);fclose(f);if(!ok||(memcmp(b,"PDB1",4)&&memcmp(b,"PDB2",4)&&memcmp(b,"PDB3",4)&&memcmp(b,"PDB4",4))||b[13]>15||(!memcmp(b,"PDB3",4)&&b[14]>3)||(!memcmp(b,"PDB4",4)&&b[14]>7)||b[8]<1||b[8]>16||b[9]<1||b[9]>16||b[10]>1||b[11]>1||b[12]>1||pal_get(b+16)!=(uint32_t)crc32(0,b,16))return 0;return pal_get(b+4);}
+static void brush_load(PdApp *a){unsigned char b[20],c[20];unsigned s0=brush_read(a,0,b),s1=brush_read(a,1,c);if(s0||s1){unsigned char *p=s1>s0?c:b;a->brush_size[0]=p[8];a->brush_size[1]=p[9];a->brush_round[0]=p[10];a->brush_round[1]=p[11];a->pixel_grid=p[12]!=0;a->guides=memcmp(p,"PDB1",4)?p[13]:0;if(!memcmp(p,"PDB3",4)||!memcmp(p,"PDB4",4)){a->pixel_perfect=!memcmp(p,"PDB4",4)&&(p[14]&4)!=0;a->fill_global=(p[14]&1)!=0;a->fill_visible=(p[14]&2)!=0;a->fill_tolerance=p[15];}}}
+static void brush_save(PdApp *a){unsigned char b[20]={0},c[20];unsigned s0=brush_read(a,0,b),s1=brush_read(a,1,c),seq=s0>s1?s0:s1;if(!a->directory[0]||seq==UINT32_MAX)return;memset(b,0,20);memcpy(b,"PDB4",4);pal_put(b+4,seq+1);b[8]=(unsigned char)a->brush_size[0];b[9]=(unsigned char)a->brush_size[1];b[10]=(unsigned char)a->brush_round[0];b[11]=(unsigned char)a->brush_round[1];b[12]=a->pixel_grid;b[13]=(unsigned char)a->guides;b[14]=(unsigned char)((a->fill_global?1:0)|(a->fill_visible?2:0)|(a->pixel_perfect?4:0));b[15]=(unsigned char)a->fill_tolerance;pal_put(b+16,(uint32_t)crc32(0,b,16));unsigned slot=s0<=s1?0:1;char path[PD_PATH];snprintf(path,sizeof(path),"%s/tools%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");bool ok=false;if(f){ok=fwrite(b,1,20,f)==20&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}if(!ok||brush_read(a,slot,c)!=seq+1||memcmp(b,c,20))message(a,"Tool preferences not saved");}
+/* Separate dual slots preserve the established PDB4 settings format. */
+static unsigned presets_read(PdApp *a,unsigned slot,unsigned char b[32]){
+    char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/brush-presets%u.bin",a->directory,slot);
+    FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,32,f)==32&&fgetc(f)==EOF&&!ferror(f);fclose(f);
+    if(!ok||memcmp(b,"PBP1",4)||b[8]>3||b[9]||b[10]||b[11]||pal_get(b+28)!=(uint32_t)crc32(0,b,28))return 0;
+    for(unsigned i=12;i<28;i+=4)if(b[i]<1||b[i]>16||b[i+1]>1||b[i+2]>1||b[i+3]>3)return 0;
+    return pal_get(b+4);
+}
+static void presets_load(PdApp *a){
+    static const unsigned char defaults[4][4]={{1,0,1,0},{4,1,0,0},{8,0,0,2},{8,1,0,1}};
+    memcpy(a->brush_presets,defaults,sizeof(defaults));unsigned char b[32],c[32];unsigned s0=presets_read(a,0,b),s1=presets_read(a,1,c);
+    if(s0||s1){unsigned char *p=s1>s0?c:b;a->brush_pattern=p[8];memcpy(a->brush_presets,p+12,16);}
+}
+static void presets_save(PdApp *a){
+    unsigned char b[32]={0},c[32];unsigned s0=presets_read(a,0,b),s1=presets_read(a,1,c),seq=s0>s1?s0:s1;
+    if(!a->directory[0]||seq==UINT32_MAX){message(a,"Brush presets are session-only");return;}
+    memset(b,0,32);memcpy(b,"PBP1",4);pal_put(b+4,seq+1);b[8]=(unsigned char)a->brush_pattern;memcpy(b+12,a->brush_presets,16);pal_put(b+28,(uint32_t)crc32(0,b,28));
+    unsigned slot=s0<=s1?0:1;char path[PD_PATH];snprintf(path,sizeof(path),"%s/brush-presets%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");bool ok=false;
+    if(f){ok=fwrite(b,1,32,f)==32&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}
+    if(!ok||presets_read(a,slot,c)!=seq+1||memcmp(b,c,32))message(a,"Brush presets not saved");
+}
+static const char *relative_project(PdApp *a,const char *path){size_t n=strlen(a->directory);return n&&!strncmp(path,a->directory,n)&&path[n]=='/'&&recent_path_valid(path+n+1)?path+n+1:NULL;}
+static void recent_project_add(PdApp *a,const char *path){const char *relative=relative_project(a,path);if(!relative)return;unsigned i=0;while(i<a->recent_project_count&&strcmp(a->recent_projects[i],relative))i++;if(i==a->recent_project_count&&a->recent_project_count<8)a->recent_project_count++;if(i>7)i=7;memmove(a->recent_projects+1,a->recent_projects,i*PD_PATH);snprintf(a->recent_projects[0],PD_PATH,"%s",relative);recent_projects_save(a);}
+static void recent_project_change(PdApp *a,const char *old,const char *replacement){const char *relative=relative_project(a,old),*next=replacement?relative_project(a,replacement):NULL;if(!relative)return;for(unsigned i=0;i<a->recent_project_count;i++)if(!strcmp(a->recent_projects[i],relative)){if(next)snprintf(a->recent_projects[i],PD_PATH,"%s",next);else {memmove(a->recent_projects+i,a->recent_projects+i+1,(a->recent_project_count-i-1)*PD_PATH);a->recent_project_count--;memset(a->recent_projects[a->recent_project_count],0,PD_PATH);}recent_projects_save(a);break;}}
+static unsigned file_type(const char *name){const char *ext=strrchr(name,'.');char e[12]={0};if(!ext||strlen(ext)>=sizeof(e))return 0;for(unsigned i=0;ext[i];i++)e[i]=(char)(ext[i]>='A'&&ext[i]<='Z'?ext[i]+32:ext[i]);if(!strcmp(e,".pdd"))return 1;if(!strcmp(e,".ase")||!strcmp(e,".aseprite"))return 2;if(!strcmp(e,".gpl"))return 3;if(!strcmp(e,".hex"))return 4;if(!strcmp(e,".png"))return 5;return 0;}
+static void preview_file(PdApp *a,const char *path){
+    const char *base=strrchr(path,'/');snprintf(a->preview_name,sizeof(a->preview_name),"%s",base?base+1:path);a->preview_attempted=true;a->preview_palette_count=0;
+    unsigned type=file_type(path);if(type==3||type==4||(type==5&&(a->file_mode>=4||a->file_filter==3))){uint32_t colors[256];unsigned count=0;a->preview_ready=pd_palette_read(path,colors,&count,a->preview_error);if(a->preview_ready){a->preview_palette_count=count;unsigned cols=count<=16?4:count<=64?8:16;memset(a->file_preview,0,sizeof(a->file_preview));for(unsigned y=0;y<64;y++)for(unsigned x=0;x<64;x++){unsigned i=(y/(64/cols))*cols+x/(64/cols);if(i<count)a->file_preview[y*64+x]=colors[i];}}}
+    else a->preview_ready=pd_preview_file_profile(path,a->file_preview,a->doc.profile,a->preview_error);a->redraw=true;
+}
+static const char *filter_names[]={"PROJECTS","PDD","ASEPRITE","PALETTES","GPL","HEX","PNG","ALL"};
+static bool file_matches(PdApp *a,PdEntry *e){unsigned t=file_type(e->name);return e->directory||a->file_filter==7||(a->file_filter==0&&(t==1||t==2||t==5))||(a->file_filter==1&&t==1)||(a->file_filter==2&&t==2)||(a->file_filter==3&&t>=3)||(a->file_filter>=4&&a->file_filter<=6&&t==a->file_filter-1);}
+static unsigned file_rows(PdApp *a){unsigned n=0;for(unsigned i=0;i<a->listing.count;i++)if(file_matches(a,&a->listing.entries[i]))n++;return n;}
+static int file_index(PdApp *a,unsigned row){for(unsigned i=0;i<a->listing.count;i++)if(file_matches(a,&a->listing.entries[i])){if(!row)return (int)i;row--;}return -1;}
+static void file_clamp(PdApp *a){int max=(int)file_rows(a)*24-(a->height-116);if(max<0)max=0;if(a->file_scroll<0)a->file_scroll=0;if(a->file_scroll>max)a->file_scroll=max;}
+
+static int canvas_top(const PdApp *a){return a->tool==4?50:24;}
+static void clamp(PdApp *a){int vw=a->width/a->zoom,vh=(a->height-canvas_top(a))/a->zoom;
+    int mx=(int)a->doc.width-vw,my=(int)a->doc.height-vh;if(mx<0)mx=0;if(my<0)my=0;
+    int minx=(a->guides&4)?-vw:0,miny=(a->guides&8)?-vh:0;if(a->guides&4)mx=(int)a->doc.width+vw;if(a->guides&8)my=(int)a->doc.height+vh;
+    if(a->ox<minx){a->ox=minx;a->subx=0;}if(a->oy<miny){a->oy=miny;a->suby=0;}if(a->ox>=mx){a->ox=mx;a->subx=0;}if(a->oy>=my){a->oy=my;a->suby=0;}
+}
+static void zoom(PdApp *a,int dir){int vw=a->width/a->zoom,vh=(a->height-canvas_top(a))/a->zoom;if(vw>(int)a->doc.width)vw=(int)a->doc.width;if(vh>(int)a->doc.height)vh=(int)a->doc.height;int cx=a->ox+vw/2,cy=a->oy+vh/2;
+    if(dir>0&&a->zoom<32)a->zoom*=2;if(dir<0&&a->zoom>1)a->zoom/=2;
+    a->subx=a->suby=0;a->ox=cx-a->width/(2*a->zoom);a->oy=cy-(a->height-canvas_top(a))/(2*a->zoom);clamp(a);a->redraw=true;
+}
+static bool world(PdApp *a,int x,int y,int *wx,int *wy){
+    int left=(int)a->doc.width*a->zoom<a->width?(a->width-(int)a->doc.width*a->zoom)/2:0;
+    int top=canvas_top(a)+((int)a->doc.height*a->zoom<a->height-canvas_top(a)?(a->height-canvas_top(a)-(int)a->doc.height*a->zoom)/2:0);
+    int dx=x-left+a->subx,dy=y-top+a->suby;*wx=a->ox+(dx>=0?dx/a->zoom:-((-dx+a->zoom-1)/a->zoom));*wy=a->oy+(dy>=0?dy/a->zoom:-((-dy+a->zoom-1)/a->zoom));
+    return ((a->guides&4)||(*wx>=0&&*wx<(int)a->doc.width))&&((a->guides&8)||(*wy>=0&&*wy<(int)a->doc.height));
+}
+static void finish(PdApp *a){if(a->stroke){pd_commit(&a->doc);a->stroke=false;a->selection_revision=a->doc.revision;a->partial=false;a->redraw=true;}a->lastx=-4097;}
+void app_pan(PdApp *a,int dx,int dy){
+    if(!dx&&!dy)return;
+    if(a->page||a->confirm||a->toolbox||a->zoom_overlay||a->touching)return;
+    int x=a->ox,y=a->oy;a->ox+=dx;a->oy+=dy;clamp(a);
+    if(x!=a->ox||y!=a->oy){a->pan_frame=!a->redraw;a->partial=false;a->redraw=true;}
+}
+static void pan_pixels(PdApp *a,int dx,int dy){
+    int oldx=a->ox*a->zoom+a->subx,oldy=a->oy*a->zoom+a->suby,px=oldx+dx,py=oldy+dy;
+    a->ox=px>=0?px/a->zoom:-((-px+a->zoom-1)/a->zoom);a->oy=py>=0?py/a->zoom:-((-py+a->zoom-1)/a->zoom);a->subx=px-a->ox*a->zoom;a->suby=py-a->oy*a->zoom;clamp(a);
+    if(oldx!=a->ox*a->zoom+a->subx||oldy!=a->oy*a->zoom+a->suby){a->pan_frame=!a->redraw;a->partial=false;a->redraw=true;}
+}
+void app_pan_pixels(PdApp *a,int dx,int dy){if(a->page||a->confirm||a->toolbox||a->zoom_overlay||a->touching||(!dx&&!dy))return;pan_pixels(a,dx,dy);}
+static int zoom_left(PdApp *a){return a->zoom_side==2||(a->zoom_side==0&&a->handed)?a->width-56:8;}
+/* Two independent versioned records; a failed write leaves the other slot intact. */
+static unsigned settings_read(PdApp *a,unsigned slot,unsigned char r[16]){
+    char path[512];if(!a->directory[0])return 0;
+    snprintf(path,sizeof(path),"%s/settings%u.bin",a->directory,slot);
+    FILE *f=fopen(path,"rb");if(!f)return 0;
+    bool ok=fread(r,1,16,f)==16&&fgetc(f)==EOF&&!ferror(f);if(fclose(f))ok=false;
+    if(!ok||r[8]>1||r[9]>2||r[11])return 0;
+    if(!memcmp(r,"PDS1",4)){if(r[10])return 0;}else if(memcmp(r,"PDS2",4)||!bindings_valid(r[10]))return 0;
+    uint32_t crc=(uint32_t)crc32(0,r,12),stored=0,seq=0;
+    for(unsigned i=0;i<4;i++){stored|=(uint32_t)r[12+i]<<(8*i);seq|=(uint32_t)r[4+i]<<(8*i);}
+    return crc==stored?seq:0;
+}
+static bool settings_save(PdApp *a){
+    unsigned char r[16]={0},other[16];unsigned s0=settings_read(a,0,r),s1=settings_read(a,1,other),seq=(s0>s1?s0:s1);
+    if(!a->directory[0]||seq==0xffffffffu)return false;
+    seq++;memset(r,0,16);memcpy(r,"PDS2",4);r[10]=(unsigned char)a->draft_bindings;r[8]=(unsigned char)a->draft_handed;r[9]=(unsigned char)a->draft_zoom_side;
+    for(unsigned i=0;i<4;i++)r[4+i]=(unsigned char)(seq>>(8*i));
+    uint32_t crc=(uint32_t)crc32(0,r,12);for(unsigned i=0;i<4;i++)r[12+i]=(unsigned char)(crc>>(8*i));
+    unsigned slot=s0<=s1?0:1;char path[512];snprintf(path,sizeof(path),"%s/settings%u.bin",a->directory,slot);
+    FILE *f=fopen(path,"wb");if(!f)return false;
+    bool ok=fwrite(r,1,16,f)==16&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;
+    return ok&&settings_read(a,slot,other)==seq&&!memcmp(r,other,16);
+}
+static void browse_refresh(PdApp *a){a->preview_attempted=false;a->preview_ready=false;
+    a->selected=-1;a->file_page=0;a->file_scroll=0;a->file_hold=-1;
+    if(!pd_list(a->folder,&a->listing,a->notice))a->listing.count=0;
+    else message(a,a->listing.truncated?"Some entries omitted (128 max)":"Choose a folder or file");
+    a->redraw=true;
+}
+static void browse(PdApp *a,unsigned mode){
+    finish(a);a->file_mode=mode;a->file_filter=mode>=4?3:mode==3?6:0;a->page=4;a->confirm=0;
+    if(!a->folder[0])snprintf(a->folder,sizeof(a->folder),"%s",a->directory);
+    browse_refresh(a);
+}
+static void write_pending(PdApp *a,bool replace){
+    bool ok=a->file_mode>=5?pd_palette_write(a->pending,a->swatches,a->swatch_count,a->file_mode-5,replace,a->notice):pd_write_file(&a->doc,a->pending,a->file_mode-1,replace,a->notice);
+    if(ok){
+        if(a->file_mode==1){snprintf(a->project,sizeof(a->project),"%s",a->pending);a->project_native=true;recent_project_add(a,a->project);}
+        message(a,a->file_mode==1?"Project saved and verified":"Export saved and verified");if(a->file_mode==2){for(unsigned i=0;i<PD_LAYERS;i++)if((a->doc.enabled&(1u<<i))&&(a->doc.layer[i].flags&PD_LAYER_ALPHA_LOCK)){message(a,"Export saved; alpha lock is native-only");break;}}a->page=a->file_mode>=5?2:0;if(a->file_mode>=5)a->color_tab=1;
+    }else a->redraw=true;
+}
+static void save(PdApp *a){
+    finish(a);
+    if(!a->project_native||!a->project[0]){browse(a,1);return;}
+    a->file_mode=1;snprintf(a->pending,sizeof(a->pending),"%s",a->project);write_pending(a,true);
+}
+static void open_pending(PdApp *a){
+    if(a->file_mode==4){if(pd_palette_read(a->pending,a->swatches,&a->swatch_count,a->notice)){a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;project_palette(a);a->page=2;a->color_tab=1;message(a,"Project palette imported");}else a->redraw=true;return;}
+    if(pd_open_file(&a->doc,a->pending,a->notice)){a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));
+        const char *ext=strrchr(a->pending,'.');a->project_native=ext&&!strcmp(ext,".pdd");
+        snprintf(a->project,sizeof(a->project),"%s",a->pending);recent_project_add(a,a->project);snprintf(a->folder,sizeof(a->folder),"%s",a->project);char *parent=strrchr(a->folder,'/');if(parent)*parent=0;
+        if(!a->project_native)a->doc.revision=++a->doc.serial;
+        a->recovery_revision=0;a->recovery_at=a->now_ms;
+        if(a->doc.palette_count){a->swatch_count=a->doc.palette_count;memcpy(a->swatches,a->doc.palette,a->swatch_count*4);}else {a->swatch_count=8;memcpy(a->swatches,palette,sizeof(palette));palette_load(a);project_palette(a);a->doc.saved_palette_count=a->doc.palette_count;memcpy(a->doc.saved_palette,a->doc.palette,sizeof(a->doc.palette));}a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;
+        a->ox=a->oy=a->subx=a->suby=0;a->page=0;message(a,"Project opened");
+    }else a->redraw=true;
+}
+/* Recovery is a separate native snapshot; it never marks the named project saved. */
+static bool recovery_path(PdApp *a,char path[PD_PATH],const char *name){char folder[PD_PATH];return pd_join(folder,a->directory,".recovery")&&pd_join(path,folder,name);}
+static void recovery_scan(PdApp *a){char path[PD_PATH];a->recovery_available=(recovery_path(a,path,"session.pdd")&&pd_exists(path))||(recovery_path(a,path,"session.pdd.bak")&&pd_exists(path))||(recovery_path(a,path,"session.pdd.tmp")&&pd_exists(path));}
+static void recovery_tick(PdApp *a,bool touch,unsigned down){
+    if(!a->recovery_clock){a->recovery_clock=true;a->recovery_at=a->idle_at=a->now_ms;}
+    if(touch||down)a->idle_at=a->now_ms;
+    if(!a->recovery_enabled||a->recovery_pending||touch||a->touching||a->stroke||a->doc.editing||a->page||a->confirm||a->toolbox||a->zoom_overlay||!a->directory[0]||!pd_dirty(&a->doc))return;
+    if((uint32_t)(a->now_ms-a->idle_at)<2000||(uint32_t)(a->now_ms-a->recovery_at)<120000)return;
+    a->recovery_at=a->now_ms;uint32_t crc=(uint32_t)crc32(0,(const Bytef*)a->doc.palette,a->doc.palette_count*4)^a->doc.palette_count;
+    if(a->recovery_revision==a->doc.revision&&a->recovery_palette==crc)return;
+    char folder[PD_PATH],path[PD_PATH],error[64];if(!pd_join(folder,a->directory,".recovery")||(!pd_exists(folder)&&!pd_mkdir(folder))||!recovery_path(a,path,"session.pdd")){message(a,"Recovery unavailable - save manually");return;}
+    if(pd_write_recovery(&a->doc,path,error)){a->recovery_revision=a->doc.revision;a->recovery_palette=crc;a->recovery_available=true;message(a,"Recovery snapshot saved - project still unsaved");}else message(a,error);
+}
+static void recovery_restore(PdApp *a){
+    char path[PD_PATH],error[64];const char *names[]={"session.pdd","session.pdd.tmp","session.pdd.bak"};bool ok=false;
+    for(unsigned i=0;i<3&&!ok;i++)if(recovery_path(a,path,names[i]))ok=pd_open_file(&a->doc,path,error);
+    if(!ok){message(a,"No valid recovery - current art retained");return;}
+    a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));a->project[0]=0;a->project_native=false;a->doc.revision=++a->doc.serial;a->recovery_pending=false;a->recovery_revision=0;a->recovery_at=a->now_ms;
+    if(a->doc.palette_count){a->swatch_count=a->doc.palette_count;memcpy(a->swatches,a->doc.palette,a->swatch_count*4);}else project_palette(a);
+    a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;a->ox=a->oy=a->subx=a->suby=0;a->page=0;message(a,"Recovery restored - Save As to keep it");
+}
+static void recovery_discard(PdApp *a){char path[PD_PATH];const char *names[]={"session.pdd","session.pdd.bak","session.pdd.tmp"};bool ok=true;for(unsigned i=0;i<3;i++)if(recovery_path(a,path,names[i])&&pd_exists(path)&&remove(path))ok=false;recovery_scan(a);a->recovery_pending=a->recovery_available;a->recovery_revision=0;a->recovery_at=a->now_ms;message(a,ok?"Recovery cleared; drawing retained":"Could not clear recovery files");}
+static void new_project(PdApp *a){
+    if(a->new_layers>pd_capacity(a->new_width,a->new_height,a->doc.profile)){message(a,"Too many layers for this canvas size");return;}if(!pd_create(&a->doc,a->new_width,a->new_height,a->doc.profile)){message(a,"Not enough memory - current art retained");return;}a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));a->project[0]=0;a->project_native=false;
+    if(!a->new_current_palette){a->swatch_count=8;memcpy(a->swatches,palette,sizeof(palette));palette_load(a);}project_palette(a);
+    if(a->new_background){uint32_t c=a->new_background==1?0xffffffff:a->background;for(unsigned y=0;y<a->doc.height;y++)for(unsigned x=0;x<a->doc.width;x++)pd_pixels(&a->doc.layer[0])[y*a->doc.stride+x]=c;snprintf(a->doc.names[0],64,"Background");}
+    a->doc.enabled=(uint8_t)((1u<<a->new_layers)-1);a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;a->doc.revision=++a->doc.serial;a->zoom=1;while(a->zoom<32&&(int)a->doc.width*a->zoom*2<=a->width&&(int)a->doc.height*a->zoom*2<=a->height-canvas_top(a))a->zoom*=2;a->ox=a->oy=a->subx=a->suby=0;a->page=0;a->recovery_revision=0;a->recovery_at=a->now_ms;message(a,"New project - not saved");
+}
+static void text_begin(PdApp *a){a->page=5;a->text_cursor=(unsigned)strlen(a->filename);a->text_mode=0;a->text_repeat=false;}
+static void text_delete(PdApp *a){unsigned end=a->text_cursor;if(end){unsigned start=end-1;while(start&&((unsigned char)a->filename[start]&0xc0)==0x80)start--;memmove(a->filename+start,a->filename+end,strlen(a->filename+end)+1);a->text_cursor=start;}a->redraw=true;}
+static int text_row_height(PdApp *a){return (a->height-112)/4;}
+static const char *text_keys(unsigned mode,unsigned row){
+    static const char *upper[]={"QWERTYUIOP","ASDFGHJKL","ZXCVBNM"};
+    static const char *lower[]={"qwertyuiop","asdfghjkl","zxcvbnm"};
+    static const char *symbols[]={"1234567890","_-().,!@+","[]{}=#$%&"};
+    return mode==2?symbols[row]:mode==1?lower[row]:upper[row];
+}
+static unsigned text_start(PdApp *a){unsigned start=a->text_cursor>30?a->text_cursor-30:0;while(start&&((unsigned char)a->filename[start]&0xc0)==0x80)start--;return start;}
+static void text_insert(PdApp *a,char c){size_t n=strlen(a->filename);if(n<(a->name_action==2?63u:55u)){memmove(a->filename+a->text_cursor+1,a->filename+a->text_cursor,n-a->text_cursor+1);a->filename[a->text_cursor++]=c;}}
+
+static void name_done(PdApp *a){
+    size_t n=strlen(a->filename);if(!n){message(a,"Enter a name first");return;}
+    if(a->name_action==2){pd_rename_layer(&a->doc,a->filename);a->page=1;message(a,"Layer name updated");return;}
+    if(n>55||a->filename[0]=='.'||a->filename[n-1]=='.'||a->filename[n-1]==' '||strpbrk(a->filename,"/\\:*?\"<>|")){message(a,"Use up to 55 bytes; no path characters");return;}
+    if(a->name_action>=3){const char *base=strrchr(a->file_source,'/');base=base?base+1:a->file_source;const char *ext=strrchr(base,'.');char name[80];snprintf(name,sizeof(name),"%s%s",a->filename,ext?ext:"");if(!pd_join(a->pending,a->folder,name)){message(a,"Path too long");return;}
+        if(pd_file_manage(a->file_source,a->pending,a->name_action==3?0:1,a->notice)){if(a->name_action==3)recent_project_change(a,a->file_source,a->pending);if(a->name_action==3&&!strcmp(a->project,a->file_source))snprintf(a->project,sizeof(a->project),"%s",a->pending);a->page=4;browse_refresh(a);message(a,a->name_action==3?"File renamed":"File duplicated and verified");}else a->redraw=true;return;
+    }
+    char name[80];snprintf(name,sizeof(name),"%s%s",a->filename,a->name_action?"":a->file_mode==1?".pdd":a->file_mode==2?".aseprite":a->file_mode==5?".gpl":a->file_mode==6?".hex":".png");
+    if(!pd_join(a->pending,a->folder,name)){message(a,"Path too long");return;}
+    if(a->name_action){if(pd_mkdir(a->pending)){a->page=4;browse_refresh(a);}else message(a,"Cannot create folder");}
+    else if(pd_exists(a->pending)){a->confirm=5;message(a,"Replace existing file? Backup kept");}
+    else write_pending(a,false);
+}
+void app_text_result(PdApp *a,const char *text,bool accepted){
+    a->text_repeat=false;a->blocked=true;a->touching=false;
+    if(!accepted)a->page=a->name_action==2?1:4;
+    else if(strlen(text)>=sizeof(a->filename))message(a,"Name exceeds 63 bytes");
+    else {snprintf(a->filename,sizeof(a->filename),"%s",text);a->text_cursor=(unsigned)strlen(text);name_done(a);}
+    a->redraw=true;
+}
+static void browser_input(PdApp *a,int x,int y){
+    a->blocked=true;
+    if(a->page==5){
+        
+        int rh=text_row_height(a);
+        if(y>=44&&y<66){unsigned at=text_start(a)+(unsigned)(x>8?(x-8)/6:0),n=(unsigned)strlen(a->filename);if(at>n)at=n;while(at&&((unsigned char)a->filename[at]&0xc0)==0x80)at--;a->text_cursor=at;}
+        else if(y>=72&&y<72+rh*3){unsigned row=(unsigned)(y-72)/rh;const char *keys=text_keys(a->text_mode,row);int kw=(a->width-8)/10,left=(a->width-(int)strlen(keys)*kw)/2;if(x>=left){unsigned k=(unsigned)(x-left)/kw;if(k<strlen(keys))text_insert(a,keys[k]);}}
+        else if(y>=72+rh*3&&y<72+rh*4){int key=x*7/a->width;if(key==0)a->text_mode=a->text_mode==1?0:1;else if(key==1)a->text_mode=a->text_mode==2?0:2;else if(key<5)text_insert(a,' ');else if(key==5&&a->text_cursor){do{a->text_cursor--;}while(a->text_cursor&&((unsigned char)a->filename[a->text_cursor]&0xc0)==0x80);}else if(key==6&&a->text_cursor<strlen(a->filename)){do{a->text_cursor++;}while(((unsigned char)a->filename[a->text_cursor]&0xc0)==0x80);}}
+        else if(y>=a->height-28){int button=x*3/a->width;if(button==0){text_delete(a);a->text_repeat=true;a->text_repeat_at=a->now_ms+400;}else if(button==1)a->page=a->name_action==2?1:4;else name_done(a);}
+        a->redraw=true;return;
+    }
+    if(a->file_mode<=1&&x>=a->width-96&&x<a->width-40&&y>=26&&y<42){a->page=17;a->recent_project_selected=-1;a->preview_attempted=false;}
+    else if(x>=a->width-38&&y>=26&&y<42){if(a->selected>=0&&!a->listing.entries[a->selected].directory&&pd_join(a->file_source,a->folder,a->listing.entries[a->selected].name))a->page=16;else message(a,"Select a file first");}
+    else if(y>=54&&y<76){if(x<48){if(strlen(a->folder)>strlen(a->directory)){char *slash=strrchr(a->folder,'/');if(slash)*slash=0;browse_refresh(a);}}else {a->file_filter=(a->file_filter+1)%8;a->file_scroll=0;a->selected=-1;a->preview_attempted=false;}}
+    else if(y>=80&&y<a->height-36){a->file_hold=file_index(a,(unsigned)(y-80+a->file_scroll)/24);a->file_start_y=y;a->file_start_scroll=a->file_scroll;a->file_scrolling=false;a->blocked=false;
+    }else if(y>=a->height-32){int b=x*3/a->width;
+        if(b==0){a->name_action=1;a->filename[0]=0;text_begin(a);}
+        if(b==1)a->page=a->file_mode>=4?12:3;
+        if(b==2){
+            if(a->file_mode&&a->file_mode!=4){a->name_action=0;a->filename[0]=0;
+                if(a->file_mode>=2&&a->project[0]){
+                    const char *base=strrchr(a->project,'/');base=base?base+1:a->project;
+                    const char *ext=strrchr(base,'.');size_t n=ext&&ext!=base?(size_t)(ext-base):strlen(base);
+                    if(n<sizeof(a->filename)){memcpy(a->filename,base,n);a->filename[n]=0;}
+                }
+                text_begin(a);}
+            else if(a->selected>=0){PdEntry *e=&a->listing.entries[a->selected];if(pd_join(a->pending,a->folder,e->name)){a->confirm=4;message(a,a->file_mode==4?"Replace current project palette?":"Open replaces current drawing");}}
+            else message(a,"Select a project first");
+        }
+    }a->redraw=true;
+}
+void app_init(PdApp *a,int w,int h,const char *dir,const char *platform){
+    memset(a,0,sizeof(*a));pd_init(&a->doc);a->width=w;a->height=h;a->zoom=1;a->lastx=-4097;
+    a->file_hold=-1;a->layer_hold=-1;a->swatch_hold=-1;a->swatch_count=8;memcpy(a->swatches,palette,sizeof(palette));
+    a->color=palette[0];a->background=0xffffffff;a->platform=platform;snprintf(a->directory,sizeof(a->directory),"%s",dir);
+    palette_load(a);recent_projects_load(a);a->bindings=228;a->brush_size[0]=a->brush_size[1]=1;a->new_layers=1;a->new_width=a->new_height=128;a->recovery_enabled=true;brush_load(a);presets_load(a);
+    unsigned char r0[16],r1[16];unsigned s0=settings_read(a,0,r0),s1=settings_read(a,1,r1);
+    if(s0||s1){unsigned char *r=s1>s0?r1:r0;a->handed=r[8];a->zoom_side=r[9];a->bindings=!memcmp(r,"PDS2",4)?r[10]:228;}
+    int loaded=dir[0]?pd_load(&a->doc,dir):-1;
+    project_palette(a);a->doc.saved_palette_count=a->doc.palette_count;memcpy(a->doc.saved_palette,a->doc.palette,sizeof(a->doc.palette));
+    message(a,loaded==1?"Saved project loaded":loaded==0?"New project - START saves":"Storage unavailable or save invalid");
+    recovery_scan(a);if(a->recovery_available){a->recovery_pending=true;a->page=19;message(a,"Recovery available - restore or keep for later");}
+}
+/* Offline cache stage. Only bounded PNG derivatives, never account/approval claims. */
+static bool gallery_png(const char *name){const char *ext=strrchr(name,'.');return ext&&strlen(ext)==4&&(ext[1]=='p'||ext[1]=='P')&&(ext[2]=='n'||ext[2]=='N')&&(ext[3]=='g'||ext[3]=='G')&&!ext[4];}
+static void gallery_select(PdApp *a,unsigned index){
+    a->selected=(int)index;a->preview_attempted=true;a->preview_palette_count=0;a->preview_ready=false;
+    if(index>=a->listing.count)return;snprintf(a->preview_name,sizeof(a->preview_name),"%s",a->listing.entries[index].name);
+    char path[PD_PATH];if(pd_join(path,a->folder,a->preview_name))a->preview_ready=pd_preview_file_profile(path,a->file_preview,1,a->preview_error);
+    a->redraw=true;
+}
+static void gallery_page_load(PdApp *a){
+    a->selected=-1;a->preview_attempted=false;a->preview_ready=false;memset(a->gallery_ready,0,sizeof(a->gallery_ready));
+    unsigned start=a->gallery_page*6;a->gallery_count=a->listing.count>start?a->listing.count-start:0;if(a->gallery_count>6)a->gallery_count=6;
+    for(unsigned i=0;i<a->gallery_count;i++){gallery_select(a,start+i);a->gallery_ready[i]=a->preview_ready;if(a->preview_ready)for(unsigned y=0;y<32;y++)for(unsigned x=0;x<32;x++)a->gallery_thumbs[i][y*32+x]=a->file_preview[y*128+x*2];}
+    if(a->gallery_count)gallery_select(a,start);a->redraw=true;
+}
+static void gallery_open(PdApp *a){
+    a->page=28;a->gallery_page=0;a->file_mode=0;memset(&a->listing,0,sizeof(a->listing));a->folder[0]=0;
+    if(!pd_join(a->folder,a->directory,"community")||!pd_list(a->folder,&a->listing,a->notice)){memset(&a->listing,0,sizeof(a->listing));message(a,"Add PNGs to PixelDoodle/community");}
+    unsigned count=0;for(unsigned i=0;i<a->listing.count;i++)if(!a->listing.entries[i].directory&&gallery_png(a->listing.entries[i].name))a->listing.entries[count++]=a->listing.entries[i];a->listing.count=count;
+    gallery_page_load(a);
+}
+static void action(PdApp *a,int index){
+    if(a->page==1){
+        if(index<4){unsigned row=0;for(unsigned i=0;i<4;i++)if(a->doc.enabled&(1u<<i)){if(row++==(unsigned)index){a->doc.active=i;message(a,"Selected layer preview");break;}}}
+        else if(index==4){pd_begin(&a->doc);a->doc.layer[a->doc.active].visible^=1;pd_commit(&a->doc);}
+        else if(index==5){pd_begin(&a->doc);unsigned v=a->doc.layer[a->doc.active].opacity;a->doc.layer[a->doc.active].opacity=(uint8_t)(v==255?192:v==192?128:v==128?64:255);pd_commit(&a->doc);}
+    }else if(a->page==3){
+        if(index==0)save(a);
+        if(index==1)browse(a,1);
+        if(index==2)browse(a,0);
+        if(index==3)a->page=6;
+        if(index==4){a->page=18;a->new_background=0;a->new_layers=1;a->new_current_palette=false;}
+        if(index==7)a->page=19;
+        if(index==8)gallery_open(a);
+        if(index==5){a->confirm=3;message(a,"Exit - save first if needed");}
+        if(index==6){a->page=8;a->draft_handed=a->handed;a->draft_zoom_side=a->zoom_side;a->draft_bindings=a->bindings;}
+    }
+    a->redraw=true;
+}
+static int layer_at(PdApp *a,int row){int at=0;for(int k=PD_LAYERS-1;k>=0;k--){unsigned i=a->doc.order[k];if(a->doc.enabled&(1u<<i)){if(at++==row)return (int)i;}}return -1;}
+static unsigned layer_count(PdApp *a){unsigned n=0;for(unsigned i=0;i<PD_LAYERS;i++)if(a->doc.enabled&(1u<<i))n++;return n;}
+static void layer_clamp(PdApp *a){int max=(int)layer_count(a)*28-(a->height-74);if(max<0)max=0;if(a->layer_scroll<0)a->layer_scroll=0;if(a->layer_scroll>max)a->layer_scroll=max;}
+static void layer_input(PdApp *a,int x,int y,bool pressed){
+    layer_clamp(a);
+    if(a->layer_delete){if(pressed&&y>=120&&y<148){if(x<a->width/2)message(a,pd_delete_layer(&a->doc)?"Layer deleted - Undo to restore":"Unlock first / keep at least one layer");a->layer_delete=false;a->layer_popup=false;a->blocked=true;a->redraw=true;}return;}
+    if(a->layer_popup){
+        if(pressed){
+            if(y>=46&&y<70&&x>=16&&x<a->width-24){a->opacity_drag=pd_begin(&a->doc);}
+            else if(y>=76&&y<98){pd_begin(&a->doc);a->doc.layer[a->doc.active].blend=(uint8_t)((a->doc.layer[a->doc.active].blend+1)%4);pd_commit(&a->doc);}
+            else if(y>=102&&y<126){if(x<a->width/2){a->name_action=2;snprintf(a->filename,sizeof(a->filename),"%s",a->doc.names[a->doc.active]);text_begin(a);}else message(a,pd_duplicate_layer(&a->doc)?"Layer duplicated":"No free layer slots");a->layer_popup=false;}
+            else if(y>=156&&y<180){pd_begin(&a->doc);a->doc.layer[a->doc.active].flags^=(uint8_t)(x<a->width/2?PD_LAYER_LOCK:PD_LAYER_ALPHA_LOCK);pd_commit(&a->doc);}
+            else if(y>=130&&y<154){if(x<a->width/2){message(a,pd_merge_down(&a->doc)?"Merged down - Undo to restore":"Merge needs unlocked, visible Normal layers");a->layer_popup=false;}else a->layer_delete=true;}
+            else {a->layer_popup=false;}
+            if(!a->opacity_drag)a->blocked=true;a->redraw=true;
+        }
+        if(a->opacity_drag){int px=x-16,range=a->width-41;if(px<0)px=0;if(px>range)px=range;uint8_t value=(uint8_t)(px*255/range);if(value!=a->doc.layer[a->doc.active].opacity){a->doc.layer[a->doc.active].opacity=value;a->redraw=true;}}
+        return;
+    }
+    if(pressed){
+        if(y>=a->height-28){message(a,pd_add_layer(&a->doc)?"New layer selected":"No free layer slots");a->layer_scroll=0;a->blocked=true;return;}
+        int row=(y-42+a->layer_scroll)/28,slot=y>=42&&y<a->height-32?layer_at(a,row):-1;
+        if(slot>=0&&x<a->width-12){a->layer_previous=a->doc.active;a->doc.active=(unsigned)slot;
+            if(x<24){a->layer_popup=true;a->blocked=true;}
+            else if(x<48){pd_begin(&a->doc);a->doc.layer[slot].visible^=1;pd_commit(&a->doc);a->blocked=true;}
+            else {a->layer_hold=slot;a->layer_hold_ms=a->now_ms;a->layer_scroll_at=a->now_ms;a->layer_drag_y=y;a->layer_start_y=y;a->layer_start_scroll=a->layer_scroll;a->layer_scrolling=false;}
+            a->redraw=true;
+        }
+    }else if(a->layer_hold>=0){
+        uint32_t elapsed=a->now_ms-a->layer_hold_ms;int delta=y-a->layer_start_y;
+        if(!a->layer_drag&&elapsed<150&&abs(delta)>5)a->layer_scrolling=true;
+        if(a->layer_scrolling){a->doc.active=a->layer_previous;a->layer_scroll=a->layer_start_scroll-delta;layer_clamp(a);a->redraw=true;}
+        else if(elapsed>=150){a->layer_drag=true;a->layer_drag_y=y;if((uint32_t)(a->now_ms-a->layer_scroll_at)>=100){if(y<52)a->layer_scroll-=14;else if(y>=a->height-42)a->layer_scroll+=14;layer_clamp(a);a->layer_scroll_at=a->now_ms;}a->redraw=true;}
+    }
+}
+static bool selected(PdApp *a,const uint32_t *mask,int x,int y){return x>=0&&y>=0&&x<(int)a->doc.width&&y<(int)a->doc.height&&(mask[(y*a->doc.stride+x)/32]&(1u<<((y*a->doc.stride+x)%32)));}
+static void selection_stamp(PdApp *a){a->selection_layer=a->doc.active;a->selection_revision=a->doc.revision;}
+static void selection_combine(PdApp *a){
+    a->selection_valid=false;for(unsigned i=0;i<pd_plane(&a->doc)/32;i++){a->selection[i]=a->selection_mode==1?a->selection_base[i]|a->selection_draft[i]:a->selection_mode==2?a->selection_base[i]&~a->selection_draft[i]:a->selection_draft[i];if(a->selection[i])a->selection_valid=true;}selection_stamp(a);
+}
+static void selection_release(PdApp *a,bool cancel){
+    if(!a->selection_drag)return;
+    if(cancel){if(a->selection_move)pd_cancel(&a->doc);memcpy(a->selection,a->selection_base,sizeof(a->selection));}
+    else if(a->selection_move){pd_commit(&a->doc);memset(a->selection,0,sizeof(a->selection));for(int y=0;y<(int)a->doc.height;y++)for(int x=0;x<(int)a->doc.width;x++)if(selected(a,a->selection_base,x,y)){int i=(y+a->selection_dy)*a->doc.stride+x+a->selection_dx;a->selection[i/32]|=1u<<(i%32);}}
+    else if(a->selection_shape){if(a->lasso_overflow){memcpy(a->selection,a->selection_base,sizeof(a->selection));message(a,"Lasso too long - selection unchanged");}else{memset(a->selection_draft,0,(pd_plane(&a->doc)/8));if(a->lasso_count<3)pd_mask_rectangle_stride(a->selection_draft,a->doc.stride,a->doc.rows,a->selection_x,a->selection_y,a->selection_x,a->selection_y);else pd_mask_polygon_stride(a->selection_draft,a->lasso,a->lasso_count,a->doc.width,a->doc.height,a->doc.stride);selection_combine(a);}}
+    int x,y,w,h;a->selection_valid=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&x,&y,&w,&h);a->selection_drag=a->selection_move=false;selection_stamp(a);a->redraw=true;
+}
+static void selection_input(PdApp *a,int x,int y,bool pressed){
+    int wx,wy;if(!world(a,x,y,&wx,&wy)&&!a->selection_drag)return;
+    if(pressed){a->selection_offset_x=(a->guides&4)?wx-((wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width):0;a->selection_offset_y=(a->guides&8)?wy-((wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height):0;}
+    wx-=a->selection_offset_x;wy-=a->selection_offset_y;if(wx<0)wx=0;if(wy<0)wy=0;if(wx>=(int)a->doc.width)wx=(int)a->doc.width-1;if(wy>=(int)a->doc.height)wy=(int)a->doc.height-1;
+    if(pressed){memcpy(a->selection_base,a->selection,sizeof(a->selection));a->selection_x=wx;a->selection_y=wy;a->selection_dx=a->selection_dy=0;a->lasso_count=0;a->lasso_overflow=false;a->selection_move=!a->selection_mode&&a->selection_valid&&selected(a,a->selection,wx,wy);
+        pd_composite(&a->doc);if(a->selection_move){if(!a->doc.layer[a->doc.active].visible||(a->doc.layer[a->doc.active].flags&(PD_LAYER_LOCK|PD_LAYER_ALPHA_LOCK))||!pd_begin(&a->doc)){a->selection_move=false;a->blocked=true;message(a,"Move requires a visible unlocked layer");return;}}a->selection_drag=true;
+    }
+    if(!a->selection_drag)return;
+    if(a->selection_move){int bx,by,bw,bh;pd_mask_bounds_stride(a->selection_base,a->doc.width,a->doc.height,a->doc.stride,&bx,&by,&bw,&bh);int dx=wx-a->selection_x,dy=wy-a->selection_y;if(dx< -bx)dx=-bx;if(dy< -by)dy=-by;if(dx>(int)a->doc.width-bx-bw)dx=(int)a->doc.width-bx-bw;if(dy>(int)a->doc.height-by-bh)dy=(int)a->doc.height-by-bh;
+        if(dx!=a->selection_dx||dy!=a->selection_dy){pd_move_selection(&a->doc,a->selection_base,dx,dy,false);int minx=bx,miny=by,maxx=bx+bw,maxy=by+bh;int offsetsx[2]={a->selection_dx,dx},offsetsy[2]={a->selection_dy,dy};for(int i=0;i<2;i++){if(bx+offsetsx[i]<minx)minx=bx+offsetsx[i];if(by+offsetsy[i]<miny)miny=by+offsetsy[i];if(bx+bw+offsetsx[i]>maxx)maxx=bx+bw+offsetsx[i];if(by+bh+offsetsy[i]>maxy)maxy=by+bh+offsetsy[i];}pd_composite_rect(&a->doc,minx,miny,maxx,maxy);a->selection_dx=dx;a->selection_dy=dy;a->redraw=true;}
+    }else if(a->selection_shape){if(!a->lasso_count||a->lasso[a->lasso_count-1][0]!=wx||a->lasso[a->lasso_count-1][1]!=wy){if(a->lasso_count<512){a->lasso[a->lasso_count][0]=(int16_t)wx;a->lasso[a->lasso_count++][1]=(int16_t)wy;}else a->lasso_overflow=true;a->redraw=true;}}
+    else{memset(a->selection_draft,0,(pd_plane(&a->doc)/8));pd_mask_rectangle_stride(a->selection_draft,a->doc.stride,a->doc.rows,a->selection_x,a->selection_y,wx,wy);selection_combine(a);a->redraw=true;}
+}
+static void selection_action(PdApp *a,int action){
+    int x=0,y=0,w=0,h=0;bool has=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&x,&y,&w,&h);
+    if((action==0||action==1)&&(w>128||h>128)){message(a,"Copy/cut limit: 128 x 128 selection");return;}if(action==0||action==1){if(!has){message(a,"Select pixels first");return;}if(action==1&&(!a->doc.layer[a->doc.active].visible||(a->doc.layer[a->doc.active].flags&(PD_LAYER_LOCK|PD_LAYER_ALPHA_LOCK)))){message(a,"Cut requires a visible unlocked layer");return;}pd_copy_selection(&a->doc,a->selection,&a->clipboard);if(action==1&&pd_begin(&a->doc)){pd_move_selection(&a->doc,a->selection,0,0,true);pd_commit(&a->doc);}message(a,action?"Cut - clipboard ready":"Copied active-layer pixels");}
+    if(action==2){if(!a->clipboard.width){message(a,"Clipboard is empty");return;}if(a->clipboard.width>a->doc.width||a->clipboard.height>a->doc.height){message(a,"Clipboard is larger than this canvas");return;}if(!has){x=a->ox;y=a->oy;}if(x<0)x=0;if(y<0)y=0;if(x+(int)a->clipboard.width>(int)a->doc.width)x=(int)a->doc.width-(int)a->clipboard.width;if(y+(int)a->clipboard.height>(int)a->doc.height)y=(int)a->doc.height-(int)a->clipboard.height;
+        if(!pd_paste_selection(&a->doc,&a->clipboard,x,y)){message(a,"Paste made no change - check layer locks");return;}memset(a->selection,0,sizeof(a->selection));for(unsigned yy=0;yy<a->clipboard.height;yy++)for(unsigned xx=0;xx<a->clipboard.width;xx++)if((a->clipboard.mask[(yy*128+xx)/32]&(1u<<((yy*128+xx)%32)))&&(a->clipboard.pixels[yy*128+xx]>>24)){unsigned i=(unsigned)(y+(int)yy)*a->doc.stride+(unsigned)x+xx;a->selection[i/32]|=1u<<(i%32);}a->selection_valid=true;message(a,"Pasted - drag inside selection to move");}
+    if(action==3){memset(a->selection,0,sizeof(a->selection));pd_mask_rectangle_stride(a->selection,a->doc.stride,a->doc.rows,0,0,(int)a->doc.width-1,(int)a->doc.height-1);a->selection_valid=true;}
+    if(action==4){memset(a->selection,0,sizeof(a->selection));a->selection_valid=false;}
+    if(action==5&&has){if(pd_begin(&a->doc)){if(pd_move_selection(&a->doc,a->selection,0,0,true))pd_commit(&a->doc);else{pd_cancel(&a->doc);message(a,"Delete requires a visible unlocked layer");return;}}}
+    selection_stamp(a);a->page=0;a->redraw=true;
+}
+static void shape_release(PdApp *a,bool cancel){
+    if(!a->shape_drag)return;if(cancel)pd_cancel(&a->doc);else pd_commit(&a->doc);a->shape_drag=false;selection_stamp(a);a->partial=false;a->redraw=true;
+}
+static void shape_input(PdApp *a,int x,int y,bool pressed){
+    int wx,wy;bool in=world(a,x,y,&wx,&wy);if(!in&&!a->shape_drag)return;
+    if(!(a->guides&4)){if(wx<0)wx=0;if(wx>=(int)a->doc.width)wx=(int)a->doc.width-1;}if(!(a->guides&8)){if(wy<0)wy=0;if(wy>=(int)a->doc.height)wy=(int)a->doc.height-1;}
+    if(pressed){if(!a->doc.layer[a->doc.active].visible||(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)||!pd_begin(&a->doc)){a->blocked=true;message(a,"Shape requires a visible unlocked layer");return;}a->shape_drag=true;a->shape_x=wx;a->shape_y=wy;a->shape_lastx=a->shape_lasty=-4097;memset(a->selection_draft,0,(pd_plane(&a->doc)/8));}
+    if(!a->shape_drag)return;int mx=(int)a->doc.width-1,my=(int)a->doc.height-1;if(wx-a->shape_x>mx)wx=a->shape_x+mx;if(wx-a->shape_x< -mx)wx=a->shape_x-mx;if(wy-a->shape_y>my)wy=a->shape_y+my;if(wy-a->shape_y< -my)wy=a->shape_y-my;
+    if(wx==a->shape_lastx&&wy==a->shape_lasty)return;
+    /* Keep old and new damage so shrinking a preview restores its old pixels. */
+    memcpy(pd_pixels(&a->doc.layer[a->doc.active]),pd_before(&a->doc),pd_bytes(&a->doc));memcpy(a->guide_damage,a->selection_draft,(pd_plane(&a->doc)/8));memset(a->selection_draft,0,(pd_plane(&a->doc)/8));
+    pd_shape(&a->doc,a->shape_x,a->shape_y,wx,wy,a->tool-5,a->shape_filled,a->color,a->brush_size[0],a->brush_round[0]!=0,a->guides,a->selection_draft,a->selection_valid?a->selection:NULL);
+    for(unsigned i=0;i<pd_plane(&a->doc)/32;i++)a->guide_damage[i]|=a->selection_draft[i];
+    a->shape_lastx=wx;a->shape_lasty=wy;a->partial=!a->redraw;a->redraw=true;
+}
+void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
+    a->pan_frame=false;
+    if(a->shape_drag&&(!touch||down||(held&(PD_PAN|PD_SAMPLE|PD_ZOOM|PD_ERASE))||(touch&&y<24)))shape_release(a,touch||down);
+
+    if(a->selection_drag&&(!touch||down||(held&(PD_PAN|PD_ERASE|PD_SAMPLE))||(touch&&y<(a->tool==4?50:24))))selection_release(a,touch||down);
+    if(a->selection_valid&&(a->selection_layer!=a->doc.active||a->selection_revision!=a->doc.revision)){memset(a->selection,0,sizeof(a->selection));a->selection_valid=false;a->redraw=true;}
+
+    recovery_tick(a,touch,down);
+    if(!touch&&a->swatch_hold>=0){
+        if(a->swatch_drag&&a->page==2){unsigned from=(unsigned)a->swatch_hold,to=(unsigned)a->swatch_target;uint32_t c=a->swatches[from];
+            if(from<to)memmove(a->swatches+from,a->swatches+from+1,(to-from)*4);else if(from>to)memmove(a->swatches+to+1,a->swatches+to,(from-to)*4);
+            a->swatches[to]=c;a->swatch_selected=to;a->palette_dirty=from!=to;a->redraw=true;
+        }else if(!a->swatch_scrolling&&a->page==2){a->picker_update=!a->redraw;a->swatch_selected=(unsigned)a->swatch_hold;a->color=a->swatches[a->swatch_selected];color_hsv(a);if(!a->palette_edit)recent_add(a,true);a->redraw=true;}a->swatch_hold=-1;a->swatch_drag=false;a->swatch_scrolling=false;
+    }
+    if((!touch||down)&&a->palette_dirty){a->palette_dirty=false;project_palette(a);a->picker_update=false;a->redraw=true;}
+    if(a->palette_edit&&(down||(touch&&!a->touching&&y<24))){a->color=a->palette_edit_before;a->palette_edit=false;color_hsv(a);}
+    if(down){a->swatch_hold=-1;a->swatch_drag=false;}
+    if(a->opacity_drag&&(!touch||down)){pd_commit(&a->doc);a->opacity_drag=false;a->redraw=true;}
+    if(!touch&&a->layer_hold>=0){
+        if(a->layer_drag&&a->page==1){int yy=a->layer_drag_y;if(yy<42)yy=42;if(yy>=a->height-32)yy=a->height-33;int row=(yy-42+a->layer_scroll)/28;if(row<0)row=0;if(row>=PD_LAYERS)row=PD_LAYERS-1;int target=layer_at(a,row);while(target<0&&row>0)target=layer_at(a,--row);
+            if(target>=0){unsigned pos=0;while(a->doc.order[pos]!=(unsigned)target)pos++;pd_move_layer(&a->doc,pos);}}
+        a->layer_hold=-1;a->layer_drag=false;a->redraw=true;
+    }
+    if(down){a->layer_hold=-1;a->layer_drag=false;a->layer_popup=false;a->layer_delete=false;}
+    if(down||(touch&&y<24))a->picker_update=false;
+    /* Pending non-stroke work or multiple input batches require a full refresh. */
+    if(a->redraw)a->partial=false;
+    if(!touch&&a->touching&&!a->palette_edit&&(a->page==2||a->stroke))recent_add(a,a->color_drag!=0);
+    bool pressed=touch&&!a->touching;
+    if(!touch){finish(a);a->blocked=false;a->pan=false;a->color_drag=0;}
+    /* Edge-triggered history chords are canvas-only, with the pen fully lifted. */
+    if(!touch&&!a->touching&&!a->page&&!a->confirm&&!a->toolbox&&!a->doc.editing&&(held&PD_ZOOM)&&!(down&(PD_MENU|PD_SAVE|PD_TOOLS))){
+        unsigned shoulders=held&(PD_SHOULDER_L|PD_SHOULDER_R),pressed_shoulder=down&(PD_SHOULDER_L|PD_SHOULDER_R);
+        if(pressed_shoulder&&shoulders!= (PD_SHOULDER_L|PD_SHOULDER_R)){
+            bool redo=pressed_shoulder==PD_SHOULDER_R;
+            bool changed=redo?pd_redo(&a->doc):pd_undo(&a->doc);
+            if(changed){a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));}
+            message(a,changed?(redo?"Redo":"Undo"):(redo?"No redo":"No more undo"));a->partial=false;a->redraw=true;
+        }
+    }
+    bool overlay=(held&PD_ZOOM)!=0&&!a->page&&!a->confirm;
+    if(overlay!=a->zoom_overlay){
+        finish(a);a->zoom_overlay=overlay;a->redraw=true;a->partial=false;
+        if(touch&&!pressed)a->blocked=true;
+    }
+    if(down&(PD_MENU|PD_TOOLS|PD_SAVE)){
+        finish(a);a->blocked=touch;
+        if(down&PD_SAVE)save(a);
+        else if(down&PD_MENU){a->page=a->page==3?0:3;a->confirm=0;}
+        else if(down&PD_TOOLS){if(a->page){a->toolbox=a->page==21||a->page==23||a->page==24||a->page==26||a->page==27;a->page=0;}else a->toolbox=!a->toolbox;a->confirm=0;}
+        if(down&(PD_MENU|PD_SAVE))a->toolbox=false;
+        a->zoom_overlay=false;
+        a->redraw=true;
+    }
+    if(!touch){a->text_repeat=false;a->brush_drag=false;if(a->brush_dirty){brush_save(a);a->brush_dirty=false;}if(a->presets_dirty){presets_save(a);a->presets_dirty=false;}}
+    if(a->page==5&&touch&&a->text_repeat){if(x<a->width/3&&y>=a->height-28){if((int32_t)(a->now_ms-a->text_repeat_at)>=0){text_delete(a);a->text_repeat_at=a->now_ms+60;}}else a->text_repeat=false;}
+    if(a->file_hold>=0){
+        if(a->page!=4||down||a->confirm)a->file_hold=-1;
+        else if(touch){int delta=y-a->file_start_y;if(abs(delta)>5)a->file_scrolling=true;if(a->file_scrolling){a->file_scroll=a->file_start_scroll-delta;file_clamp(a);a->redraw=true;}a->touching=true;return;}
+        else {int i=a->file_hold;a->file_hold=-1;if(!a->file_scrolling){PdEntry *e=&a->listing.entries[i];char path[PD_PATH];if(pd_join(path,a->folder,e->name)){if(e->directory){snprintf(a->folder,sizeof(a->folder),"%s",path);browse_refresh(a);}else {a->selected=i;preview_file(a,path);}}}a->touching=false;return;}
+    }
+    if(touch&&a->blocked){a->touching=touch;return;}
+    if(a->zoom_overlay){
+        if(pressed){
+            int zx=zoom_left(a);if(x>=zx&&x<zx+48){
+                if(y>=40&&y<96)zoom(a,1);
+                else if(y>=112&&y<168)zoom(a,-1);
+            }
+            a->blocked=true;
+        }
+        a->touching=touch;return;
+    }
+    if(a->confirm){
+        if(pressed&&y>=a->height-32){
+            if(x<a->width/2){
+                if(a->confirm==1)message(a,pd_load(&a->doc,a->directory)==1?"Project reloaded":"Reload failed - drawing retained");
+                if(a->confirm==4)open_pending(a);
+                if(a->confirm==5)write_pending(a,true);
+                if(a->confirm==2)new_project(a);
+                if(a->confirm==8)recovery_restore(a);
+                if(a->confirm==9)recovery_discard(a);
+                if(a->confirm==3)a->exit_requested=true;
+                if(a->confirm==7){if(pd_file_manage(a->file_source,NULL,2,a->notice)){recent_project_change(a,a->file_source,NULL);if(!strcmp(a->project,a->file_source)){a->project[0]=0;a->project_native=false;a->doc.revision=++a->doc.serial;}a->page=4;browse_refresh(a);message(a,"File deleted");}else a->redraw=true;}
+                if(a->confirm==6)message(a,pd_delete_layer(&a->doc)?"Layer deleted - Undo to restore":"Keep at least one layer");
+            }
+            a->confirm=0;a->blocked=true;a->redraw=true;
+        }
+    }else if(pressed&&y<24){
+        a->layer_popup=false;a->layer_delete=false;a->layer_hold=-1;a->layer_drag=false;
+        finish(a);int b=x*6/a->width;
+        if(b==0)message(a,pd_undo(&a->doc)?"Undo":"No more undo");
+        if(b==1)message(a,pd_redo(&a->doc)?"Redo":"No redo");
+        if(b==2){a->page=a->page==2?0:2;if(a->page==2)color_open(a);}
+        if(b==3)a->page=a->page==1?0:1;
+        if(b==4){a->page=0;a->toolbox=!a->toolbox;}
+        else a->toolbox=false;
+        if(b==5)a->page=a->page?0:3;
+        a->blocked=true;a->redraw=true;
+    }else if(a->toolbox&&!a->page){
+        if(pressed){
+            int tx=a->handed?a->width-208:0;
+            if(x>=tx&&x<tx+104&&y>=32&&y<162){a->tool=(unsigned)(y-32)/26;message(a,a->tool==0?"Pencil":a->tool==1?"Eraser":a->tool==2?"Sample visible color":a->tool==3?"Fill: exact color on active layer":"Selection - drag to select or move");if(a->tool<2){a->page=21;a->brush_edit=a->tool;}if(a->tool==3)a->page=26;if(a->tool==4)a->page=23;clamp(a);}
+            if(x>=tx&&x<tx+104&&y>=162&&y<190){a->page=22;}
+            if(x>=tx+104&&x<tx+208&&y>=32&&y<110){a->tool=5+(unsigned)(y-32)/26;a->page=24;clamp(a);}
+            a->toolbox=false;a->blocked=true;a->redraw=true;
+        }
+    }else if(a->page){
+        if(a->page==26&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;if(xx<0||xx>=224||y>=184)a->page=0;
+            else if(y>=48&&y<72){a->fill_global=!a->fill_global;a->brush_dirty=true;}
+            else if(y>=76&&y<100){a->fill_visible=!a->fill_visible;a->brush_dirty=true;}
+            else if(y>=104&&y<128){if(xx<48&&a->fill_tolerance)a->fill_tolerance--;else if(xx>=176&&a->fill_tolerance<255)a->fill_tolerance++;a->brush_dirty=true;}
+            else if(y>=132&&y<154)a->brush_drag=true;else if(y>=158)a->page=0;if(!a->brush_drag)a->blocked=true;a->redraw=true;}
+            if(a->brush_drag){int left=a->handed?a->width-224:0,px=x-left-16;if(px<0)px=0;if(px>191)px=191;a->fill_tolerance=(unsigned)(px*255/191);a->brush_dirty=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==24&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;if(xx<0||xx>=224||y>=184)a->page=0;
+            else if(y>=48&&y<72)a->tool=5+(unsigned)(xx*3/224);
+            else if(y>=76&&y<100&&a->tool!=5)a->shape_filled=!a->shape_filled;
+            else if(y>=104&&y<128){if(xx<48&&a->brush_size[0]>1)a->brush_size[0]--;else if(xx>=176&&a->brush_size[0]<16)a->brush_size[0]++;a->brush_dirty=true;}
+            else if(y>=132&&y<154)a->brush_drag=true;else if(y>=158)a->page=0;if(!a->brush_drag)a->blocked=true;a->redraw=true;}
+            if(a->brush_drag){int left=a->handed?a->width-224:0,px=x-left-16;if(px<0)px=0;if(px>191)px=191;a->brush_size[0]=1+(unsigned)(px*15/191);a->brush_dirty=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==25&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;if(xx<0||xx>=224||y>=184)a->page=0;else if(y>=48&&y<152){unsigned op=(unsigned)((y-48)/26*2+xx/112);bool ok=false;if(a->selection_valid){if(op<3)ok=pd_transform_selection(&a->doc,a->selection,op,a->selection_draft);else if(op==3)ok=pd_duplicate_selection(&a->doc,a->selection);else ok=pd_scale_selection(&a->doc,a->selection,op==7?-2:(int)op-2,a->selection_draft);}if(ok){if(op!=3)memcpy(a->selection,a->selection_draft,sizeof(a->selection));int bx,by,bw,bh;a->selection_valid=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&bx,&by,&bw,&bh);selection_stamp(a);a->page=0;message(a,op==3?"Duplicated to layer - drag to move":"Selection transformed");}else message(a,op==3?"Select pixels; needs a free layer":"Needs <=128 selection, fit, unlocked");}else if(y>=158)a->page=23;a->blocked=true;a->redraw=true;}a->touching=true;return;}
+
+        if(a->page==23&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;if(xx<0||xx>=224||y>=186)a->page=0;
+            else if(y>=28&&y<46&&xx>=164)a->page=25;
+            else if(y>=48&&y<72)a->selection_shape=xx>=112;
+            else if(y>=76&&y<100)a->selection_mode=(unsigned)(xx*3/224);
+            else if(y>=104&&y<128)selection_action(a,xx*3/224);
+            else if(y>=132&&y<156)selection_action(a,xx<112?3:4);
+            else if(y>=160&&y<184){if(xx<112)selection_action(a,5);else a->page=0;}
+            a->blocked=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==28&&touch){if(pressed){
+            if(y>=28&&y<46&&x>=a->width-72)gallery_open(a);
+            else if(y>=48&&y<144){unsigned index=(unsigned)((y-48)/48*3+x*3/a->width);if(index<a->gallery_count)gallery_select(a,a->gallery_page*6+index);}
+            else if(y>=a->height-28){if(x<44){if(a->gallery_page){a->gallery_page--;gallery_page_load(a);}}
+                else if(x>=a->width-44){if((a->gallery_page+1)*6<a->listing.count){a->gallery_page++;gallery_page_load(a);}}
+                else if(a->selected>=0&&a->preview_ready&&pd_join(a->pending,a->folder,a->listing.entries[a->selected].name)){a->file_mode=0;a->confirm=4;message(a,"Open image? Unsaved art will be lost");}}
+            a->blocked=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==27&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;
+            if(xx<0||xx>=224||y>=190)a->page=0;
+            else if(y>=48&&y<72&&xx>=4&&xx<220){a->brush_pattern=(unsigned)((xx-4)/55);a->presets_dirty=true;}
+            else if(y>=94&&y<118&&xx>=4&&xx<220)a->brush_preset=(unsigned)((xx-4)/55);
+            else if(y>=140&&y<164&&xx>=4&&xx<220){unsigned char *p=a->brush_presets[a->brush_preset];
+                if(xx<112){a->brush_size[0]=p[0];a->brush_round[0]=p[1];a->pixel_perfect=p[2]!=0;a->brush_pattern=p[3];a->brush_dirty=true;message(a,"Pencil preset loaded");}
+                else{p[0]=(unsigned char)a->brush_size[0];p[1]=(unsigned char)a->brush_round[0];p[2]=a->pixel_perfect;p[3]=(unsigned char)a->brush_pattern;message(a,"Pencil preset stored");}a->presets_dirty=true;
+            }else if(y>=166)a->page=21;
+            a->blocked=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==21&&touch){
+            int left=a->handed?a->width-200:0;
+            if(pressed){if(x<left||x>=left+200||y>=(a->brush_edit?136:190)){a->page=0;}else if(y<54&&x>=left+140){a->page=0;a->toolbox=true;}else if(y>=56&&y<84){if(x<left+44&&a->brush_size[a->brush_edit]>1)a->brush_size[a->brush_edit]--;else if(x>=left+156&&a->brush_size[a->brush_edit]<16)a->brush_size[a->brush_edit]++;}else if(y>=88&&y<108)a->brush_drag=true;else if(y>=112&&y<134)a->brush_round[a->brush_edit]^=1;else if(!a->brush_edit&&y>=166&&y<188)a->page=27;else if(!a->brush_edit&&!a->brush_pattern&&y>=140&&y<164)a->pixel_perfect=!a->pixel_perfect;if(!a->brush_drag)a->blocked=true;a->brush_dirty=true;a->redraw=true;}
+            if(a->brush_drag){int px=x-left-16;if(px<0)px=0;if(px>167)px=167;a->brush_size[a->brush_edit]=1+(unsigned)(px*15/167);a->brush_dirty=true;a->redraw=true;}a->touching=true;return;
+        }
+        if(a->page==22&&touch){if(pressed){int row=(y-40)/24;if(y>=40&&row<5){if(!row)a->pixel_grid=!a->pixel_grid;else a->guides^=1u<<(row-1);clamp(a);a->brush_dirty=true;}else if(y>=a->height-24)a->page=0;a->blocked=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==1&&touch){layer_input(a,x,y,pressed);a->touching=touch;return;}
+        if(a->page==2&&touch){color_input(a,x,y,pressed);a->touching=touch;return;}
+        if(pressed){
+            if(a->page==8){
+                if(y>=32&&y<60)a->draft_handed^=1;
+                else if(y>=64&&y<92)a->draft_zoom_side=(a->draft_zoom_side+1)%3;
+                else if(y>=96&&y<120){a->draft_handed=0;a->draft_zoom_side=0;a->draft_bindings=228;}
+                else if(y>=124&&y<148){if(x<a->width/2){a->page=9;a->help_tab=0;}else a->page=7;}
+                else if(y>=a->height-32){
+                    if(x<a->width/2){if(settings_save(a)){a->handed=a->draft_handed;a->zoom_side=a->draft_zoom_side;a->bindings=a->draft_bindings;a->page=0;message(a,"Settings saved");}else message(a,"Settings save failed - retry");}
+                    else a->page=0;
+                }
+                a->blocked=true;a->redraw=true;
+            }
+            else if(a->page==9){if(y>=32&&y<56)a->help_tab=(unsigned)(x*4/a->width);else if(y>=a->height-28)a->page=x<a->width/2?10:8;a->blocked=true;a->redraw=true;}
+            else if(a->page==10){
+                if(y>=32&&y<136){unsigned row=(unsigned)(y-32)/26,old=(a->draft_bindings>>(row*2))&3,next=(old+1)&3;for(unsigned i=0;i<4;i++)if(i!=row&&((a->draft_bindings>>(i*2))&3)==next){a->draft_bindings=(a->draft_bindings&~(3u<<(i*2)))|(old<<(i*2));break;}a->draft_bindings=(a->draft_bindings&~(3u<<(row*2)))|(next<<(row*2));}
+                else if(y>=a->height-28){if(x<a->width/2)a->draft_bindings=228;else a->page=8;}
+                a->blocked=true;a->redraw=true;
+            }
+            else if(a->page==11){
+                if(y>=30&&y<54)numeric_open(a,(unsigned)(x*5/a->width));
+                else if(y>=80&&y<144){unsigned key=(unsigned)((y-80)/16*4+x*4/a->width);const char *keys="0123456789ABCDEF";if(key<16&&(!a->numeric_mode||key<10)){if(a->numeric_replace){a->numeric[0]=0;a->numeric_replace=false;}size_t n=strlen(a->numeric);if(n<(a->numeric_mode?3u:8u)){a->numeric[n]=keys[key];a->numeric[n+1]=0;}}}
+                else if(y>=a->height-28){int b=x*3/a->width;if(!b){size_t n=strlen(a->numeric);if(n)a->numeric[n-1]=0;a->numeric_replace=false;}else if(b==1)a->page=2;else {uint32_t color=a->color;bool ok;if(!a->numeric_mode)ok=pd_color_parse(a->numeric,&color);else {unsigned v=(unsigned)strtoul(a->numeric,NULL,10),shifts[]={0,16,8,0,24};ok=a->numeric[0]&&v<=255;if(ok)color=(color&~(255u<<shifts[a->numeric_mode]))|(v<<shifts[a->numeric_mode]);}if(ok){a->color=color;color_hsv(a);a->page=2;if(!a->palette_edit)recent_add(a,true);}else message(a,"Use 6/8 HEX digits or decimal 0-255");}}
+                a->blocked=true;a->redraw=true;a->picker_update=false;
+            }
+            else if(a->page==12){
+                if(y>=a->height-24)a->page=2;
+                else if(y>=30&&y<162){int row=(y-30)/22;if(row==0)numeric_open(a,0);if(row==1){uint32_t c=a->color;a->color=a->background;a->background=c;color_hsv(a);a->page=2;}if(row==2)a->page=13;if(row==3)browse(a,4);if(row==4)a->page=14;if(row==5)a->page=15;}
+                a->blocked=true;a->redraw=true;
+            }
+            else if(a->page==13){if(y>=a->height-28)a->page=12;else if(y>=40&&y<136){unsigned i=(unsigned)((y-40)/32*4+x*4/a->width);if(i<a->recent_count){a->color=a->recent[i];color_hsv(a);a->page=2;}}a->blocked=true;a->redraw=true;}
+            else if(a->page==14){if(y>=a->height-28)a->page=12;else if(y>=40&&y<136)browse(a,5+(unsigned)(y-40)/32);a->blocked=true;a->redraw=true;}
+            else if(a->page==15){
+                if(y>=a->height-28)a->page=12;
+                else if(y>=40&&y<68)message(a,palette_save(a)?"Default saved for new projects":"Default save failed");
+                else if((y>=76&&y<104)||(y>=112&&y<140)){bool builtin=y>=112;a->swatch_count=8;memcpy(a->swatches,palette,sizeof(palette));if(!builtin)palette_load(a);project_palette(a);a->palette_dirty=false;a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;a->color_tab=1;a->page=2;message(a,builtin?"Built-in colors restored to project":"Saved default copied into project");}
+                a->blocked=true;a->redraw=true;
+            }
+            else if(a->page==18){if(y>=a->height-28){if(x<a->width/2){a->confirm=2;message(a,"Create replaces the current drawing");}else a->page=3;}else if(y>=26&&y<48){a->page=20;a->size_axis=0;a->numeric_replace=true;snprintf(a->numeric,sizeof(a->numeric),"%u",a->new_width);}else if(y>=52&&y<82)a->new_background=(a->new_background+1)%3;else if(y>=86&&y<116)a->new_layers=a->new_layers%pd_capacity(a->new_width,a->new_height,a->doc.profile)+1;else if(y>=120&&y<150)a->new_current_palette=!a->new_current_palette;a->blocked=true;a->redraw=true;}
+            else if(a->page==20){
+                if(y>=32&&y<56){unsigned sizes[]={16,32,64,128,256,512};unsigned n=a->doc.profile>=2?6:4;a->new_width=a->new_height=sizes[x*(int)n/a->width];if(a->new_layers>pd_capacity(a->new_width,a->new_height,a->doc.profile))a->new_layers=pd_capacity(a->new_width,a->new_height,a->doc.profile);snprintf(a->numeric,sizeof(a->numeric),"%u",a->new_width);a->numeric_replace=true;}
+                else if(y>=60&&y<84){a->size_axis=x>=a->width/2;snprintf(a->numeric,sizeof(a->numeric),"%u",a->size_axis?a->new_height:a->new_width);a->numeric_replace=true;}
+                else if(y>=90&&y<150){unsigned key=(unsigned)((y-90)/20*3+x*3/a->width);if(key<9){size_t n=strlen(a->numeric);if(a->numeric_replace)n=0;if(n<3){a->numeric[n]=(char)('1'+key);a->numeric[n+1]=0;}a->numeric_replace=false;}}
+                else if(y>=150&&y<170){if(x<a->width/3){size_t n=strlen(a->numeric);if(n)a->numeric[n-1]=0;}else if(x<2*a->width/3){size_t n=a->numeric_replace?0:strlen(a->numeric);if(n<3){a->numeric[n]='0';a->numeric[n+1]=0;}a->numeric_replace=false;}else {unsigned v=(unsigned)atoi(a->numeric);if(v>=1&&v<=(a->doc.profile>=2?512u:128u)){if(a->size_axis)a->new_height=v;else a->new_width=v;if(a->new_layers>pd_capacity(a->new_width,a->new_height,a->doc.profile))a->new_layers=pd_capacity(a->new_width,a->new_height,a->doc.profile);a->numeric_replace=true;}else message(a,a->doc.profile>=2?"Size must be 1 to 512":"Size must be 1 to 128");}}
+                else if(y>=a->height-20)a->page=18;
+                a->blocked=true;a->redraw=true;
+            }
+            else if(a->page==19){if(y>=a->height-28)a->page=0;else if(y>=40&&y<66&&a->recovery_available){a->confirm=8;message(a,"Restore replaces current drawing");}else if(y>=72&&y<98&&a->recovery_available){a->confirm=9;message(a,"Delete recovery copies? Art is retained");}else if(y>=104&&y<130){a->recovery_enabled=!a->recovery_enabled;message(a,a->recovery_enabled?"Recovery enabled for this session":"Recovery paused for this session");}a->blocked=true;a->redraw=true;}
+            else if(a->page==16){if(y>=a->height-28)a->page=4;else if(y>=40&&y<136){unsigned row=(unsigned)(y-40)/32;if(row==2){a->confirm=7;message(a,"Delete selected file from storage?");}else {a->name_action=row==0?3:4;const char *base=strrchr(a->file_source,'/');base=base?base+1:a->file_source;const char *ext=strrchr(base,'.');size_t n=ext?(size_t)(ext-base):strlen(base);if(n>=sizeof(a->filename))n=sizeof(a->filename)-1;memcpy(a->filename,base,n);a->filename[n]=0;text_begin(a);}}a->blocked=true;a->redraw=true;}
+            else if(a->page==17){if(y>=a->height-28){if(x>=a->width/2){a->page=4;a->preview_attempted=false;}else if(a->recent_project_selected>=0){int n=snprintf(a->pending,sizeof(a->pending),"%s/%s",a->directory,a->recent_projects[a->recent_project_selected]);if(n<(int)sizeof(a->pending)){a->file_mode=0;a->confirm=4;message(a,"Open replaces current drawing");}}}else if(y>=30&&y<158){unsigned i=(unsigned)(y-30)/16;if(i<a->recent_project_count){a->recent_project_selected=(int)i;char path[PD_PATH];if(snprintf(path,sizeof(path),"%s/%s",a->directory,a->recent_projects[i])<(int)sizeof(path))preview_file(a,path);}}a->blocked=true;a->redraw=true;}
+            else if(a->page==4||a->page==5)browser_input(a,x,y);
+            else if(a->page==6){if(y>=45&&y<85)browse(a,2);else if(y>=95&&y<135)browse(a,3);}
+            else {int step=a->page==3?18:24;int i=(y-30)/step;if(y>=30&&i<(a->page==3?8:6))action(a,a->page==3&&i==7&&x>=a->width/2?8:i);}
+        }
+    }else if(a->tool==4&&touch&&y<50){
+        if(pressed){int action=x*8/a->width;if(action==0){a->selection_shape^=1;message(a,a->selection_shape?"Lasso selection":"Rectangle selection");}else if(action<=3){a->selection_mode=(unsigned)(action-1);message(a,action==1?"Replace / drag inside to move":action==2?"Add to selection":"Remove from selection");}else if(action<=6)selection_action(a,action-4);else selection_action(a,4);a->blocked=true;a->redraw=true;}
+    }else if(touch){
+        int wx=0,wy=0;
+        if(held&PD_PAN){
+            finish(a);
+            if(!a->pan){a->pan=true;a->panx=x;a->pany=y;}
+            int dx=a->panx-x,dy=a->pany-y;a->panx=x;a->pany=y;pan_pixels(a,dx,dy);
+        }else if(a->pan){a->blocked=true;}
+        else if((held&PD_SAMPLE)||a->tool==2){finish(a);pd_composite(&a->doc);if(world(a,x,y,&wx,&wy))a->color=pd_image(&a->doc)[((wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height)*a->doc.stride+(wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width]|0xff000000u;a->blocked=true;message(a,"Color sampled");}
+        else if(a->tool>=5&&!(held&PD_ERASE)){shape_input(a,x,y,pressed);}
+        else if(a->tool==4&&!(held&PD_ERASE)){selection_input(a,x,y,pressed);}
+        else if(a->tool==3&&!(held&PD_ERASE)&&world(a,x,y,&wx,&wy)){
+            finish(a);wx=(wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width;wy=(wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height;
+            bool changed=pd_fill_options(&a->doc,wx,wy,a->color,a->guides,a->selection_valid?a->selection:NULL,a->fill_global,a->fill_tolerance,a->fill_visible);message(a,changed?(a->fill_global?"Replaced matching colors on active layer":"Filled active layer"):(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)?"Layer locked":!a->doc.layer[a->doc.active].visible?"Layer hidden":"Fill made no change");if(changed){recent_add(a,false);selection_stamp(a);}a->blocked=true;a->redraw=true;
+        }
+        else if(world(a,x,y,&wx,&wy)){
+            if(!a->stroke){
+                if(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK){message(a,"Layer locked - unlock in layer options");a->blocked=true;}
+                else if(!a->doc.layer[a->doc.active].visible){message(a,"Layer hidden - enable in Layers");a->blocked=true;}
+                else {a->stroke=pd_begin(&a->doc);memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));a->lastx=wx;a->lasty=wy;}
+            }
+            bool erase=(held&PD_ERASE)!=0||a->tool==1;
+            if(a->stroke&&(pressed||wx!=a->lastx||wy!=a->lasty||erase!=a->last_erase)){if(a->lastx==-4097){memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));a->lastx=wx;a->lasty=wy;}
+                a->partial=!a->redraw;
+                a->dx0=a->lastx<wx?a->lastx:wx;a->dx1=(a->lastx>wx?a->lastx:wx)+1;
+                a->dy0=a->lasty<wy?a->lasty:wy;a->dy1=(a->lasty>wy?a->lasty:wy)+1;
+                unsigned bs=a->brush_size[erase?1:0];int low=(int)(bs/2),high=(int)bs-low-1;
+                a->dx0-=low;a->dy0-=low;a->dx1+=high;a->dy1+=high;if(a->dx0<0)a->dx0=0;if(a->dy0<0)a->dy0=0;if(a->dx1>(int)a->doc.width)a->dx1=(int)a->doc.width;if(a->dy1>(int)a->doc.height)a->dy1=(int)a->doc.height;
+                if(a->guides)memset(a->guide_damage,0,(pd_plane(&a->doc)/8));
+                if(a->pixel_perfect&&!a->brush_pattern&&!erase&&bs==1)pd_perfect_line(&a->doc,&a->perfect_stroke,a->lastx,a->lasty,wx,wy,a->color,a->guides,a->guides?a->guide_damage:NULL,a->selection_valid?a->selection:NULL);
+                else{memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));pd_pattern_line(&a->doc,a->lastx,a->lasty,wx,wy,erase?0:a->color,bs,a->brush_round[erase?1:0]!=0,a->guides,a->guides?a->guide_damage:NULL,a->selection_valid?a->selection:NULL,erase?0:a->brush_pattern);}
+                a->lastx=wx;a->lasty=wy;a->last_erase=erase;a->redraw=true;
+            }
+        }else a->lastx=-4097;
+    }
+    a->touching=touch;
+}
+static void rect(uint32_t *p,int w,int h,int x,int y,int rw,int rh,uint32_t c){
+    for(int yy=y;yy<y+rh;yy++)for(int xx=x;xx<x+rw;xx++)if(xx>=0&&xx<w&&yy>=0&&yy<h)p[yy*w+xx]=c;
+}
+static void text(uint32_t *p,int w,int h,int x,int y,const char *s,uint32_t c){
+    for(;*s;s++,x+=6){unsigned char rows[7];char ch=*s;if(ch>='a'&&ch<='z')ch=(char)(ch-'a'+'A');glyphRows(ch,rows);
+        for(int yy=0;yy<7;yy++)for(int xx=0;xx<5;xx++)if(rows[yy]&(1<<(4-xx)))rect(p,w,h,x+xx,y+yy,1,1,c);
+    }
+}
+static void button(uint32_t *p,int w,int h,int x,int y,int bw,int bh,const char *label,bool primary){
+    rect(p,w,h,x,y,bw,bh,UI_EDGE);rect(p,w,h,x+1,y+1,bw-2,bh-2,primary?UI_SELECTED:UI_PANEL);
+    text(p,w,h,x+6,y+(bh-7)/2,label,UI_TEXT);
+}
+static uint32_t grid_color(uint32_t c){return ((c>>1)&0x7f7f7f)+((((c>>16)&255)+((c>>8)&255)+(c&255)<384)?0x808080:0);}
+static uint32_t displayed(uint32_t p,int x,int y){unsigned a=p>>24,bg=((x/8+y/8)&1)?205:238;
+    if(a==255)return p&0xffffff;if(!a)return bg*0x010101;
+    unsigned r=(((p>>16)&255)*a+bg*(255-a)+127)/255,g=(((p>>8)&255)*a+bg*(255-a)+127)/255,b=((p&255)*a+bg*(255-a)+127)/255;return (r<<16)|(g<<8)|b;
+}
+static void render_palette(PdApp *a,uint32_t *p,int w,int h){
+    int fh=h-88,pitch=palette_pitch(a),cols=a->color_tab?5:1;
+    unsigned first=(unsigned)(a->palette_scroll[a->color_tab]/pitch)*cols;
+    unsigned end=first+(unsigned)((fh+pitch-1)/pitch+1)*cols;if(end>a->swatch_count)end=a->swatch_count;
+    for(unsigned i=first;i<end;i++){
+        int px=a->color_tab?8+(int)(i%5)*pitch:strip_left(a),py=32+(int)(i/(unsigned)cols)*pitch-a->palette_scroll[a->color_tab];
+        int cw=a->color_tab?pitch-6:w-px-8,ch=cw;
+        if(py+ch<=32||py>=32+fh)continue;
+        bool moving=a->swatch_drag&&(unsigned)a->swatch_target==i;uint32_t color=moving?a->swatches[a->swatch_hold]:a->swatches[i];
+        for(int yy=py;yy<py+ch;yy++)if(yy>=32&&yy<32+fh)for(int xx=px;xx<px+cw;xx++){
+            bool edge=xx<px+3||xx>=px+cw-3||yy<py+3||yy>=py+ch-3;p[yy*w+xx]=edge?(moving||i==a->swatch_selected?UI_ACCENT:UI_EDGE):displayed(color,xx,yy);
+        }
+        if(moving&&py>=32&&py+14<32+fh){rect(p,w,h,px+3,py+3,26,11,UI_BG);text(p,w,h,px+5,py+5,"MOVE",UI_TEXT);}
+    }
+    int total=((int)a->swatch_count+cols-1)/cols*pitch;if(total>fh){int thumb=fh*fh/total;if(thumb<8)thumb=8;int sy=32+a->palette_scroll[a->color_tab]*(fh-thumb)/(total-fh);rect(p,w,h,w-4,32,2,fh,UI_PANEL);rect(p,w,h,w-4,sy,2,thumb,UI_ACCENT);}
+}
+/* Original 8x8 UI glyphs, rendered at 2x for native stylus screens. */
+static void icon(uint32_t *p,int w,int h,int x,int y,unsigned id,uint32_t c){
+    static const unsigned char bits[][8]={
+        {0x20,0x60,0xfe,0x61,0x21,0x01,0x02,0x1c}, /* undo */
+        {0x04,0x06,0x7f,0x86,0x84,0x80,0x40,0x38}, /* redo */
+        {0x3c,0x7e,0xdb,0xff,0xdb,0xf8,0x70,0x20}, /* palette */
+        {0x18,0x66,0x81,0x66,0x99,0x66,0x99,0x66}, /* layers */
+        {0x18,0x24,0x7e,0x81,0xff,0x99,0x81,0x7e}, /* toolbox */
+        {0,0x7e,0x7e,0,0x7e,0x7e,0,0}, /* menu */
+        {0x0c,0x1e,0x3a,0x74,0xe8,0xd0,0xa0,0xc0}, /* pencil */
+        {0x1c,0x22,0x41,0x82,0x44,0x28,0x10,0x7e}, /* eraser */
+        {0x06,0x0f,0x1e,0x2c,0x48,0x50,0x60,0xc0}, /* sampler */
+        {0x10,0x30,0x7e,0xff,0x7e,0x30,0x10,0}, /* back */
+        {0x24,0x24,0xff,0x24,0x24,0xff,0x24,0x24}, /* guides lattice */
+        {0x20,0x50,0x88,0x44,0x2a,0x12,0x01,0x03}, /* fill bucket and drop */
+        {0xaa,0x81,0,0x81,0,0x81,0,0x55}, /* rectangular selection */
+        {0x3c,0x42,0x81,0x81,0x42,0x3c,0x08,0x10}, /* lasso */
+        {0xff,0x81,0x81,0x99,0x99,0x81,0x81,0xff}, /* replace */
+        {0,0x18,0x18,0x7e,0x7e,0x18,0x18,0}, /* add */
+        {0,0,0,0x7e,0x7e,0,0,0}, /* subtract */
+        {0x7c,0x44,0x5f,0x51,0x71,0x11,0x11,0x1f}, /* copy */
+        {0x42,0x24,0x18,0x18,0x24,0x5a,0x66,0x42}, /* cut */
+        {0x18,0x7e,0x42,0x5a,0x42,0x5a,0x42,0x7e}, /* paste */
+        {0x81,0x42,0x24,0x18,0x18,0x24,0x42,0x81}, /* deselect */
+        {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80}, /* line */
+        {0xff,0x81,0x81,0x81,0x81,0x81,0x81,0xff}, /* rectangle */
+        {0x3c,0x42,0x81,0x81,0x81,0x81,0x42,0x3c} /* ellipse */
+    };
+    for(int yy=0;yy<8;yy++)for(int xx=0;xx<8;xx++)if(bits[id][yy]&(128>>xx))rect(p,w,h,x+xx*2,y+yy*2,2,2,c);
+}
+/* Border is a one-screen-pixel overlay, clipped below the toolbar. */
+static void canvas_border(PdApp *a,uint32_t *bottom){
+    if(!(a->guides&12))return;int w=a->width,h=a->height,z=a->zoom;
+    int x=((int)a->doc.width*z<w?(w-(int)a->doc.width*z)/2:0)-a->ox*z-a->subx;
+    int y=canvas_top(a)+((int)a->doc.height*z<h-canvas_top(a)?(h-canvas_top(a)-(int)a->doc.height*z)/2:0)-a->oy*z-a->suby;
+    int right=x+(int)a->doc.width*z-1,lower=y+(int)a->doc.height*z-1;
+    int top=y<24?24:y,bottomy=lower>=h?h-1:lower;
+    if(y>=24)rect(bottom,w,h,x,y,right-x+1,1,0xffbf47);
+    if(lower>=24)rect(bottom,w,h,x,lower,right-x+1,1,0xffbf47);
+    if(bottomy>=top){rect(bottom,w,h,x,top,1,bottomy-top+1,0xffbf47);rect(bottom,w,h,right,top,1,bottomy-top+1,0xffbf47);}
+}
+static void selection_line(uint32_t *p,int w,int h,int x0,int y0,int x1,int y1){
+    int dx=abs(x1-x0),sx=x0<x1?1:-1,dy=-abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;
+    for(;;){if(x0>=0&&x0<w&&y0>=24&&y0<h)p[y0*w+x0]=((x0+y0)/3)&1?0xffffff:0x141b20;if(x0==x1&&y0==y1)break;int twice=2*err;if(twice>=dy){err+=dy;x0+=sx;}if(twice<=dx){err+=dx;y0+=sy;}}
+}
+static void selection_overlay(PdApp *a,uint32_t *bottom){
+    if(!a->selection_valid&&!a->selection_drag)return;int w=a->width,h=a->height,z=a->zoom,dw=(int)a->doc.width,dh=(int)a->doc.height;
+    int left=(dw*z<w?(w-dw*z)/2:0)-a->ox*z-a->subx,upper=canvas_top(a)+(dh*z<h-canvas_top(a)?(h-canvas_top(a)-dh*z)/2:0)-a->oy*z-a->suby;
+    const uint32_t *mask=a->selection_move?a->selection_base:a->selection;int dx=a->selection_move?a->selection_dx:0,dy=a->selection_move?a->selection_dy:0;
+    for(int wy=0;wy<dh;wy++)for(int wx=0;wx<dw;wx++){if(!selected(a,mask,wx,wy))continue;bool l=!selected(a,mask,wx-1,wy),r=!selected(a,mask,wx+1,wy),u=!selected(a,mask,wx,wy-1),b=!selected(a,mask,wx,wy+1);if(!l&&!r&&!u&&!b)continue;
+        int fx=left+(wx+dx)*z,fy=upper+(wy+dy)*z;if(a->guides&4){fx=(fx%(dw*z)+dw*z)%(dw*z);if(fx>0)fx-=dw*z;}if(a->guides&8){fy=24+((fy-24)%(dh*z)+dh*z)%(dh*z);if(fy>24)fy-=dh*z;}
+        for(int y=fy;y<h;y+=(a->guides&8)?dh*z:h+dh*z)for(int x=fx;x<w;x+=(a->guides&4)?dw*z:w+dw*z){if(x+z<=0||y+z<=24)continue;if(l)selection_line(bottom,w,h,x,y,x,y+z-1);if(r)selection_line(bottom,w,h,x+z-1,y,x+z-1,y+z-1);if(u)selection_line(bottom,w,h,x,y,x+z-1,y);if(b)selection_line(bottom,w,h,x,y+z-1,x+z-1,y+z-1);}
+    }
+    if(a->selection_drag&&!a->selection_move&&a->selection_shape&&a->lasso_count){int ox=left+a->selection_offset_x*z,oy=upper+a->selection_offset_y*z;for(unsigned i=0;i<a->lasso_count;i++){unsigned j=(i+1)%a->lasso_count;selection_line(bottom,w,h,ox+a->lasso[i][0]*z+z/2,oy+a->lasso[i][1]*z+z/2,ox+a->lasso[j][0]*z+z/2,oy+a->lasso[j][1]*z+z/2);}}
+}
+static void selection_toolbar(PdApp *a,uint32_t *bottom){
+    if(a->tool!=4||a->page||a->toolbox||a->confirm||a->zoom_overlay)return;int w=a->width,h=a->height;
+    rect(bottom,w,h,0,24,w,26,UI_BG);for(int i=0;i<8;i++){int x=i*w/8,width=(i+1)*w/8-x;bool on=i>=1&&i<=3&&a->selection_mode==(unsigned)(i-1);rect(bottom,w,h,x+1,25,width-2,24,on?UI_SELECTED:UI_PANEL);unsigned glyph=i==0?(a->selection_shape?13:12):(unsigned)(13+i);icon(bottom,w,h,x+width/2-8,29,glyph,UI_TEXT);}
+}
+static void guided_render(PdApp *a,uint32_t *bottom){
+    int w=a->width,h=a->height,z=a->zoom,dw=(int)a->doc.width,dh=(int)a->doc.height;
+    int left=dw*z<w?(w-dw*z)/2:0,upper=canvas_top(a)+(dh*z<h-canvas_top(a)?(h-canvas_top(a)-dh*z)/2:0);
+    /* A 2 KiB bitset records actual writes, including reflected/wrapped pixels.
+       Composite each changed pixel once, then stamp only its visible copies. */
+    for(unsigned word=0;word<pd_plane(&a->doc)/32;word++){uint32_t bits=a->guide_damage[word];if(!bits)continue;
+        for(unsigned bit=0;bits;bit++,bits>>=1){if(!(bits&1))continue;unsigned index=word*32+bit;int wx=(int)(index%a->doc.stride),wy=(int)(index/a->doc.stride);
+            pd_composite_rect(&a->doc,wx,wy,wx+1,wy+1);uint32_t c=displayed(pd_image(&a->doc)[index],wx,wy);
+            int originx=left+(wx-a->ox)*z-a->subx,originy=upper+(wy-a->oy)*z-a->suby;
+            int firstx=originx,firsty=originy;if(a->guides&4){firstx=(originx%(dw*z)+dw*z)%(dw*z);if(firstx>0)firstx-=dw*z;}if(a->guides&8){firsty=24+((originy-24)%(dh*z)+dh*z)%(dh*z);if(firsty>24)firsty-=dh*z;}
+            for(int y=firsty;y<h;y+=(a->guides&8)?dh*z:h+dh*z){for(int x=firstx;x<w;x+=(a->guides&4)?dw*z:w+dw*z){
+                int x0=x<0?0:x,y0=y<24?24:y,x1=x+z>w?w:x+z,y1=y+z>h?h:y+z;
+                for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=(a->pixel_grid&&z>=8&&(yy==y||xx==x))?grid_color(c):c;
+            }}
+        }
+    }
+    canvas_border(a,bottom);selection_overlay(a,bottom);selection_toolbar(a,bottom);a->px0=0;a->py0=24;a->px1=w;a->py1=h;a->present_top=false;a->partial=false;a->redraw=false;
+}
+void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
+    int w=a->width,h=a->height;char label[80];
+    bool pan_only=a->pan_frame&&!a->page&&!a->confirm&&!a->doc.editing; a->pan_frame=false;
+    bool picker_only=a->picker_update&&a->page==2&&!a->confirm;
+    bool keep_field=picker_only&&a->picker_field&&!a->color_tab&&a->painted_hue==a->hue;
+    a->picker_update=false;
+    a->present_top=true;a->px0=0;a->py0=0;a->px1=w;a->py1=h;
+    if(a->partial&&(a->stroke||a->shape_drag)&&!a->page&&!a->confirm){
+        if(a->guides||a->shape_drag){guided_render(a,bottom);return;}
+        pd_composite_rect(&a->doc,a->dx0,a->dy0,a->dx1,a->dy1);
+        int left=(int)a->doc.width*a->zoom<w?(w-(int)a->doc.width*a->zoom)/2:0;
+        int upper=canvas_top(a)+((int)a->doc.height*a->zoom<h-canvas_top(a)?(h-canvas_top(a)-(int)a->doc.height*a->zoom)/2:0);
+        a->px0=left+(a->dx0-a->ox)*a->zoom-a->subx;a->px1=left+(a->dx1-a->ox)*a->zoom-a->subx;
+        a->py0=upper+(a->dy0-a->oy)*a->zoom-a->suby;a->py1=upper+(a->dy1-a->oy)*a->zoom-a->suby;
+        if(a->px0<0)a->px0=0;if(a->px1>w)a->px1=w;
+        if(a->py0<24)a->py0=24;if(a->py1>h)a->py1=h;
+        for(int wy=a->dy0;wy<a->dy1;wy++)for(int wx=a->dx0;wx<a->dx1;wx++){
+            int x=left+(wx-a->ox)*a->zoom-a->subx,y=upper+(wy-a->oy)*a->zoom-a->suby;
+            int x0=x<0?0:x,y0=y<24?24:y,x1=x+a->zoom,y1=y+a->zoom;
+            if(x1>w)x1=w;if(y1>h)y1=h;
+            uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);
+            for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=(a->pixel_grid&&a->zoom>=8&&(yy==y||xx==x))?grid_color(c):c;
+        }
+        selection_overlay(a,bottom);selection_toolbar(a,bottom);
+        /* Overview and text catch up on lift; no top-screen work while inking. */
+        a->present_top=false;a->partial=false;a->redraw=false;return;
+    }
+    a->partial=false;if(!pan_only&&!picker_only&&!a->selection_drag)pd_composite(&a->doc);
+    if(keep_field){
+        /* Keep the existing HSV field, restoring only the previous cursor pixels. */
+        int fw=h-88,fh=fw;
+        for(int yy=a->painted_sy-3;yy<=a->painted_sy+3;yy++)for(int xx=a->painted_sx-3;xx<=a->painted_sx+3;xx++)
+            if(xx>=8&&xx<8+fw&&yy>=32&&yy<32+fh)bottom[yy*w+xx]=hsv(a->hue,(unsigned)((xx-8)*255/(fw-1)),(unsigned)(255-(yy-32)*255/(fh-1)))&0xffffffu;
+        rect(bottom,w,h,0,0,w,32,UI_BG);rect(bottom,w,h,0,32,8,fh,UI_BG);
+        rect(bottom,w,h,8+fw,32,w-8-fw,fh,UI_BG);rect(bottom,w,h,0,32+fh,w,h-32-fh,UI_BG);
+    }else rect(bottom,w,h,0,0,w,h,UI_BG);
+    if(!picker_only)rect(top,tw,th,0,0,tw,th,UI_BG);
+    rect(bottom,w,h,0,0,w,24,0x182126);
+    for(int i=0;i<6;i++){
+        if((i==2&&a->page==2)||(i==3&&a->page==1)||(i==4&&a->toolbox))rect(bottom,w,h,i*w/6,0,w/6,24,0x0d7a75);
+        icon(bottom,w,h,(2*i+1)*w/12-8,4,(unsigned)(i==5&&a->page?9:i),0xffffff);
+        if(i==2)rect(bottom,w,h,(2*i+1)*w/12+10,6,5,12,a->color);
+    }
+    if(a->confirm){text(bottom,w,h,8,48,a->notice,UI_TEXT);text(bottom,w,h,8,70,a->confirm==6?"UNDO CAN RESTORE THIS LAYER":"THIS CANNOT BE UNDONE",0xffaaa0);
+        if((a->confirm==2&&(a->new_width>128||a->new_height>128))||((a->confirm==4||a->confirm==8)&&a->doc.profile>=2)){text(bottom,w,h,8,94,"LARGE CANVASES MAY BE SLOWER",UI_TEXT);text(bottom,w,h,8,110,"LAYERS / TOOLS LIMITED BY MEMORY",UI_MUTED);text(bottom,w,h,8,126,"CLIPBOARD / TRANSFORMS: 128 X 128",UI_MUTED);}
+        if(a->confirm==7){const char *base=strrchr(a->file_source,'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->file_source);text(bottom,w,h,8,92,label,UI_TEXT);}
+        if(a->confirm==6){snprintf(label,sizeof(label),"%.38s",a->doc.names[a->doc.active]);text(bottom,w,h,8,92,label,UI_TEXT);}
+        button(bottom,w,h,4,h-32,w/2-8,28,"CONFIRM",true);button(bottom,w,h,w/2+4,h-32,w/2-8,28,"CANCEL",false);
+    }else if(a->page==1){
+        layer_clamp(a);unsigned count=layer_count(a);
+        snprintf(label,sizeof(label),"%u/%u LAYERS  %u SLOTS FREE",count,a->doc.capacity,a->doc.capacity-count);text(bottom,w,h,8,28,label,UI_MUTED);
+        for(int row=0;row<(int)count;row++){
+            int slot=layer_at(a,row),y=row*28-a->layer_scroll;if(y+26<=0||y>=h-74)continue;PdLayer *l=&a->doc.layer[slot];
+            rect(bottom+42*w,w,h-74,2,y,w-16,26,UI_EDGE);rect(bottom+42*w,w,h-74,3,y+1,w-18,24,a->doc.active==(unsigned)slot?UI_SELECTED:UI_PANEL);
+            icon(bottom+42*w,w,h-74,5,y+5,5,UI_TEXT);
+            /* Eye silhouette plus pupil; a slash indicates hidden. */
+            rect(bottom+42*w,w,h-74,28,y+9,16,8,UI_TEXT);rect(bottom+42*w,w,h-74,31,y+6,10,14,UI_TEXT);rect(bottom+42*w,w,h-74,34,y+9,4,8,UI_BG);
+            if(!l->visible)for(int i=0;i<16;i++)rect(bottom+42*w,w,h-74,28+i,y+20-i,2,2,UI_BG);
+            snprintf(label,sizeof(label),"%.21s",a->doc.names[slot]);text(bottom+42*w,w,h-74,52,y+5,label,UI_TEXT);
+            static const char *modes[]={"NORMAL","MULTIPLY","SCREEN","OVERLAY"};snprintf(label,sizeof(label),"%s %u%% %s",modes[l->blend],(unsigned)l->opacity*100/255,(l->flags&PD_LAYER_LOCK)?"LOCK":(l->flags&PD_LAYER_ALPHA_LOCK)?"ALPHA":"");text(bottom+42*w,w,h-74,52,y+16,label,UI_MUTED);
+        }
+        int area=h-74,total=(int)count*28,thumb=total>area?area*area/total:area,pos=total>area?a->layer_scroll*(area-thumb)/(total-area):0;
+        rect(bottom,w,h,w-10,42,6,area,UI_PANEL);rect(bottom,w,h,w-10,42+pos,6,thumb,UI_ACCENT);
+        if(a->layer_drag){int yy=a->layer_drag_y-13;if(yy<42)yy=42;if(yy>h-58)yy=h-58;snprintf(label,sizeof(label),"MOVE: %.24s",a->doc.names[a->doc.active]);button(bottom,w,h,48,yy,w-64,26,label,true);}
+        button(bottom,w,h,4,h-28,w-8,24,"+ NEW LAYER",count<a->doc.capacity);
+        if(a->layer_popup){
+            rect(bottom,w,h,6,34,w-20,150,UI_EDGE);rect(bottom,w,h,7,35,w-22,148,UI_BG);
+            snprintf(label,sizeof(label),"OPACITY %u%%",(unsigned)a->doc.layer[a->doc.active].opacity*100/255);text(bottom,w,h,16,37,label,UI_TEXT);
+            rect(bottom,w,h,16,50,w-40,14,UI_PANEL);int sx=16+(int)a->doc.layer[a->doc.active].opacity*(w-41)/255;rect(bottom,w,h,16,50,sx-16,14,UI_SELECTED);rect(bottom,w,h,sx-2,47,4,20,UI_TEXT);
+            static const char *modes[]={"NORMAL","MULTIPLY","SCREEN","OVERLAY"};snprintf(label,sizeof(label),"BLEND: %s",modes[a->doc.layer[a->doc.active].blend]);button(bottom,w,h,12,76,w-32,22,label,false);
+            button(bottom,w,h,12,102,w/2-20,24,"RENAME",false);button(bottom,w,h,w/2,102,w/2-20,24,"DUPLICATE",false);
+            button(bottom,w,h,12,130,w/2-20,24,"MERGE DOWN",false);button(bottom,w,h,w/2,130,w/2-20,24,"DELETE",false);
+            button(bottom,w,h,12,158,w/2-20,22,"LOCK",(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)!=0);button(bottom,w,h,w/2,158,w/2-20,22,"ALPHA LOCK",(a->doc.layer[a->doc.active].flags&PD_LAYER_ALPHA_LOCK)!=0);text(bottom,w,h,w-30,37,"X",UI_TEXT);
+        }
+        if(a->layer_delete){
+            rect(bottom,w,h,24,66,w-48,90,UI_EDGE);rect(bottom,w,h,25,67,w-50,88,UI_BG);
+            text(bottom,w,h,36,78,"DELETE LAYER?",UI_TEXT);snprintf(label,sizeof(label),"%.28s",a->doc.names[a->doc.active]);text(bottom,w,h,36,96,label,UI_MUTED);
+            button(bottom,w,h,32,120,w/2-40,28,"DELETE",true);button(bottom,w,h,w/2+4,120,w/2-36,28,"CANCEL",false);
+        }
+    }else if(a->page==2){
+        int fw=h-88,fh=fw;
+        if(a->color_tab){
+            snprintf(label,sizeof(label),"PALETTE %u COLORS  SELECTED %u",a->swatch_count,a->swatch_selected+1);text(bottom,w,h,8,23,label,UI_MUTED);
+            render_palette(a,bottom,w,h);
+        }else{
+        text(bottom,w,h,8,23,"COLOR",UI_MUTED);text(bottom,w,h,fw+16,23,"HUE",UI_MUTED);text(bottom,w,h,fw+40,23,"FG / BG",UI_MUTED);
+        if(!keep_field)rect(bottom,w,h,6,30,fw+4,fh+4,UI_EDGE);
+        else {rect(bottom,w,h,6,30,fw+4,2,UI_EDGE);rect(bottom,w,h,6,32,2,fh,UI_EDGE);rect(bottom,w,h,8+fw,32,2,fh,UI_EDGE);rect(bottom,w,h,6,32+fh,fw+4,2,UI_EDGE);}
+        rect(bottom,w,h,fw+14,30,20,fh+4,UI_EDGE);
+        unsigned char sat[320];uint32_t ramp[256];
+        if(!keep_field){for(unsigned c=0;c<256;c++)ramp[c]=hsv(a->hue,255,c)&0xffffffu;for(int xx=0;xx<fw;xx++)sat[xx]=(unsigned char)(xx*255/(fw-1));}
+        for(int yy=0;yy<fh;yy++){
+            unsigned val=(unsigned)(255-yy*255/(fh-1));
+            if(!keep_field)for(int xx=0;xx<fw;xx++){unsigned c=(val*sat[xx]+127)/255;bottom[(yy+32)*w+xx+8]=ramp[c]+(val-c)*0x010101u;}
+            rect(bottom,w,h,fw+16,yy+32,16,1,hsv((unsigned)(yy*359/(fh-1)),255,255)&0xffffffu);
+        }
+        int sx=8+(int)a->saturation*(fw-1)/255,sy=32+(255-(int)a->value)*(fh-1)/255;
+        a->painted_sx=sx;a->painted_sy=sy;a->painted_hue=a->hue;
+        rect(bottom,w,h,sx-3,sy-3,7,7,0);rect(bottom,w,h,sx-2,sy-2,5,5,UI_TEXT);rect(bottom,w,h,sx-1,sy-1,3,3,hsv(a->hue,a->saturation,a->value)&0xffffffu);
+        int hy=32+(int)a->hue*(fh-1)/359;rect(bottom,w,h,fw+14,hy-1,20,3,0);rect(bottom,w,h,fw+14,hy,20,1,UI_TEXT);
+        int cx=fw+40,cw=strip_left(a)-8-cx;
+        rect(bottom,w,h,cx-2,30,cw+4,24,UI_EDGE);
+        for(int yy=32;yy<52;yy++)for(int xx=cx;xx<cx+cw;xx++)bottom[yy*w+xx]=displayed(xx<cx+cw/2?a->color:a->background,xx,yy);
+        snprintf(label,sizeof(label),"#%06X",(unsigned)(a->color&0xffffff));text(bottom,w,h,cx,57,label,UI_TEXT);
+        const char *channels[]={"R","G","B"};unsigned shifts[]={16,8,0};for(unsigned i=0;i<3;i++){int x=cx+(int)i*cw/3;text(bottom,w,h,x,68,channels[i],UI_MUTED);snprintf(label,sizeof(label),"%u",(unsigned)((a->color>>shifts[i])&255));text(bottom,w,h,x,77,label,UI_TEXT);}
+        text(bottom,w,h,cx,89,"RECENT",UI_MUTED);
+        int pitch=recent_pitch(a);for(unsigned i=0;i<recent_visible(a);i++){int x=cx+(int)(i%4)*pitch,y=100+(int)(i/4)*pitch,side=pitch-3;rect(bottom,w,h,x,y,side,side,UI_EDGE);for(int yy=y+2;yy<y+side-2;yy++)for(int xx=x+2;xx<x+side-2;xx++)bottom[yy*w+xx]=displayed(a->recent[i],xx,yy);}
+        button(bottom,w,h,cx,h-72,cw,18,"NUM",false);
+        text(bottom,w,h,w-46,23,"PALETTE",UI_MUTED);
+        render_palette(a,bottom,w,h);
+        }
+        if(a->palette_edit){button(bottom,w,h,4,h-48,w/2-8,22,"SAVE",true);button(bottom,w,h,w/2+4,h-48,w/2-8,22,"BACK",false);}
+        else {button(bottom,w,h,4,h-48,88,22,a->color_tab?"PICKER":"PALETTE",true);button(bottom,w,h,100,h-48,w-104,22,"MORE",false);}
+        if(a->color_tab){
+            button(bottom,w,h,4,h-24,w/3-8,22,"ADD",false);button(bottom,w,h,w/3+4,h-24,w/3-8,22,"EDIT",false);button(bottom,w,h,2*w/3+4,h-24,w/3-8,22,"REMOVE",false);
+        }else{
+            snprintf(label,sizeof(label),"A%3u",(unsigned)(a->color>>24));text(bottom,w,h,8,h-16,label,UI_TEXT);
+            for(int xx=48;xx<w-8;xx++){uint32_t c=(a->color&0xffffff)|((unsigned)((xx-48)*255/(w-57))<<24),shades[2]={displayed(c,0,0),displayed(c,8,0)};for(int yy=h-20;yy<h-4;yy++)bottom[yy*w+xx]=shades[((xx/8)+(yy/8))&1];}
+            int ax=48+(int)(a->color>>24)*(w-57)/255;rect(bottom,w,h,ax-1,h-22,3,20,0);rect(bottom,w,h,ax,h-22,1,20,UI_TEXT);
+        }
+    }else if(a->page==3){
+        const char *items[]={"SAVE","SAVE AS","OPEN / FILE BROWSER","EXPORT","NEW PROJECT","EXIT","SETTINGS","RECOVERY"};
+        for(int i=0;i<7;i++)button(bottom,w,h,4,30+i*18,w-8,16,items[i],false);button(bottom,w,h,4,156,w/2-8,16,"RECOVERY",false);button(bottom,w,h,w/2+4,156,w/2-8,16,"COMMUNITY",false);
+        const char *name=strrchr(a->project,'/');snprintf(label,sizeof(label),"%.38s",name?name+1:"UNTITLED - SAVE AS TO NAME");text(bottom,w,h,8,h-10,label,UI_ACCENT);
+    }else if(a->page==4){
+        const char *titles[]={"OPEN PROJECT","SAVE PDD PROJECT","EXPORT ASEPRITE","EXPORT PNG","IMPORT PALETTE","EXPORT GPL PALETTE","EXPORT HEX PALETTE","EXPORT PNG PALETTE"};
+        snprintf(label,sizeof(label),"%.14s",titles[a->file_mode]);text(bottom,w,h,8,30,label,UI_ACCENT);button(bottom,w,h,w-36,26,32,16,"...",a->selected>=0);if(a->file_mode<=1)button(bottom,w,h,w-94,26,54,16,"RECENT",false);
+        const char *folder=a->folder;if(!strncmp(folder,a->directory,strlen(a->directory)))folder+=strlen(a->directory);size_t len=strlen(folder);if(len>36)folder+=len-36;snprintf(label,sizeof(label),"~%.36s",folder);text(bottom,w,h,8,42,label,UI_TEXT);
+        button(bottom,w,h,4,54,42,22,"UP",false);snprintf(label,sizeof(label),"TYPE: %s >",filter_names[a->file_filter]);button(bottom,w,h,50,54,w-54,22,label,false);
+        unsigned rows=file_rows(a);int area=h-116;
+        for(unsigned row=0;row<rows;row++){int yy=80+(int)row*24-a->file_scroll;if(yy+23<=80||yy>=h-36)continue;int i=file_index(a,row);PdEntry *e=&a->listing.entries[i];const char *types[]={"FILE","PDD","ASE","GPL","HEX","PNG"};snprintf(label,sizeof(label),"%.30s",e->name);button(bottom+80*w,w,area,4,yy-80,w-18,23,"",a->selected==i);text(bottom+80*w,w,area,10,yy-77,label,UI_TEXT);text(bottom+80*w,w,area,10,yy-67,e->directory?"FOLDER":types[file_type(e->name)],UI_MUTED);}
+        if(!rows)text(bottom,w,h,8,90,"NO MATCHING FILES",UI_MUTED);
+        rect(bottom,w,h,w-10,80,6,area,UI_PANEL);if(rows){int total=(int)rows*24,thumb=total>area?area*area/total:area;if(thumb<8)thumb=8;int pos=total>area?a->file_scroll*(area-thumb)/(total-area):0;rect(bottom,w,h,w-10,80+pos,6,thumb,UI_ACCENT);}
+        button(bottom,w,h,4,h-32,w/3-8,28,"NEW DIR",false);button(bottom,w,h,w/3+4,h-32,w/3-8,28,"CANCEL",false);button(bottom,w,h,2*w/3+4,h-32,w/3-8,28,a->file_mode==4?"IMPORT":a->file_mode?"NAME":"OPEN",true);
+    }else if(a->page==18){
+        snprintf(label,sizeof(label),"SIZE: %u X %u  >",a->new_width,a->new_height);button(bottom,w,h,4,26,w-8,22,label,true);
+        const char *bg[]={"TRANSPARENT","WHITE","BG COLOR"};snprintf(label,sizeof(label),"BACKGROUND: %s",bg[a->new_background]);button(bottom,w,h,4,52,w-8,28,label,false);
+        snprintf(label,sizeof(label),"STARTING LAYERS: %u",a->new_layers);button(bottom,w,h,4,86,w-8,28,label,false);button(bottom,w,h,4,120,w-8,28,a->new_current_palette?"PALETTE: CURRENT PROJECT":"PALETTE: MY DEFAULT",false);
+        button(bottom,w,h,4,h-28,w/2-8,24,"CREATE",true);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"CANCEL",false);
+    }else if(a->page==22){
+        icon(bottom,w,h,8,25,10,UI_TEXT);text(bottom,w,h,32,28,"GUIDES",UI_TEXT);const char *names[]={"PIXEL GRID (8X+)","SYMMETRY X","SYMMETRY Y","TILE X","TILE Y"};for(int i=0;i<5;i++){bool on=i?(a->guides&(1u<<(i-1)))!=0:a->pixel_grid;snprintf(label,sizeof(label),"%s: %s",names[i],on?"ON":"OFF");button(bottom,w,h,4,40+i*24,w-8,22,label,on);}button(bottom,w,h,4,h-24,w-8,22,"DONE",false);
+    }else if(a->page==20){
+        const char *sizes[]={"16","32","64","128","256","512"};int n=a->doc.profile>=2?6:4;for(int i=0;i<n;i++)button(bottom,w,h,i*w/n+2,32,w/n-4,22,sizes[i],false);
+        snprintf(label,sizeof(label),"W: %u",a->new_width);button(bottom,w,h,4,60,w/2-8,24,label,!a->size_axis);snprintf(label,sizeof(label),"H: %u",a->new_height);button(bottom,w,h,w/2+4,60,w/2-8,24,label,a->size_axis!=0);
+        for(int i=0;i<9;i++){char key[2]={(char)('1'+i),0};button(bottom,w,h,(i%3)*w/3+2,90+(i/3)*20,w/3-4,18,key,false);}
+        button(bottom,w,h,2,150,w/3-4,20,"DELETE",false);button(bottom,w,h,w/3+2,150,w/3-4,20,"0",false);snprintf(label,sizeof(label),"SET %s",a->numeric);button(bottom,w,h,2*w/3+2,150,w/3-4,20,label,true);button(bottom,w,h,4,h-20,w-8,18,"DONE",false);
+    }else if(a->page==19){
+        text(bottom,w,h,8,28,"RECOVERY - SEPARATE FROM SAVES",UI_ACCENT);
+        button(bottom,w,h,4,40,w-8,26,a->recovery_available?"RESTORE RECOVERY":"NO RECOVERY COPY",a->recovery_available);
+        button(bottom,w,h,4,72,w-8,26,"DISCARD RECOVERY COPIES",false);button(bottom,w,h,4,104,w-8,26,a->recovery_enabled?"AUTOSAVE: ON (THIS SESSION)":"AUTOSAVE: OFF (THIS SESSION)",false);
+        text(bottom,w,h,8,138,a->recovery_pending?"RESTORE / DISCARD TO RESUME SAVING":"EVERY 2 MINUTES, AFTER 2S IDLE",UI_MUTED);button(bottom,w,h,4,h-28,w-8,24,"BACK / KEEP FOR LATER",false);
+    }else if(a->page==5){
+        text(bottom,w,h,8,32,a->name_action==2?"RENAME LAYER":a->name_action==3?"RENAME FILE":a->name_action==4?"DUPLICATE FILE":a->name_action?"NEW FOLDER NAME":"FILENAME (WITHOUT EXTENSION)",UI_TEXT);
+        unsigned start=text_start(a);char shown[64];snprintf(shown,sizeof(shown),"%.38s",a->filename+start);rect(bottom,w,h,4,43,w-8,22,UI_EDGE);rect(bottom,w,h,5,44,w-10,20,UI_PANEL);text(bottom,w,h,8,50,shown,UI_ACCENT);rect(bottom,w,h,8+(int)(a->text_cursor-start)*6,48,1,13,UI_TEXT);
+        int rh=text_row_height(a),kw=(w-8)/10;for(unsigned row=0;row<3;row++){const char *keys=text_keys(a->text_mode,row);int left=(w-(int)strlen(keys)*kw)/2;for(unsigned i=0;i<strlen(keys);i++){char key[2]={keys[i],0};int x=left+(int)i*kw,y=72+(int)row*rh;button(bottom,w,h,x+1,y,kw-2,rh-2,"",false);text(bottom,w,h,x+kw/2-3,y+(rh-8)/2,key,UI_TEXT);}}
+        int cy=72+rh*3;button(bottom,w,h,2,cy,w/7-4,rh-2,a->text_mode==1?"abc":"ABC",a->text_mode==1);button(bottom,w,h,w/7+2,cy,w/7-4,rh-2,a->text_mode==2?"ABC":"123",a->text_mode==2);button(bottom,w,h,2*w/7+2,cy,3*w/7-4,rh-2,"SPACE",false);button(bottom,w,h,5*w/7+2,cy,w/7-4,rh-2,"<",false);button(bottom,w,h,6*w/7+2,cy,w/7-4,rh-2,">",false);
+        button(bottom,w,h,4,h-28,w/3-8,24,"DELETE",false);button(bottom,w,h,w/3+4,h-28,w/3-8,24,"CANCEL",false);button(bottom,w,h,2*w/3+4,h-28,w/3-8,24,"DONE",true);
+    }else if(a->page==6){
+        button(bottom,w,h,4,45,w-8,40,"ASEPRITE - EDITABLE LAYERS",false);
+        button(bottom,w,h,4,95,w-8,40,"PNG - VISIBLE IMAGE + ALPHA",false);
+    }else if(a->page==8){
+        button(bottom,w,h,4,32,w-8,28,a->draft_handed?"TOOLBOX: RIGHT SIDE":"TOOLBOX: LEFT SIDE",false);
+        const char *sides[]={"ZOOM SIDE: FOLLOW TOOLBOX","ZOOM SIDE: LEFT","ZOOM SIDE: RIGHT"};button(bottom,w,h,4,64,w-8,28,sides[a->draft_zoom_side],false);
+        button(bottom,w,h,4,96,w-8,24,"RESET DRAFT TO DEFAULTS",false);
+        button(bottom,w,h,4,124,w/2-8,24,"CONTROLS / HELP",false);button(bottom,w,h,w/2+4,124,w/2-8,24,"TIMINGS",false);
+        button(bottom,w,h,4,h-32,w/2-8,28,"SAVE",true);button(bottom,w,h,w/2+4,h-32,w/2-8,28,"CANCEL",false);
+    }else if(a->page==9){
+        const char *tabs[]={"DRAW","COLOR","LAYERS","KEYS"};for(int i=0;i<4;i++)button(bottom,w,h,i*w/4+4,32,w/4-8,24,tabs[i],a->help_tab==(unsigned)i);
+        static const char *lines[4][7]={
+            {"A / LEFT + DRAG: PAN","B / DOWN: TOGGLE TOOLBOX","X / UP + TAP: SAMPLE COLOR","HOLD Y / RIGHT: TAP + OR -","L / R: TEMPORARY ERASER","START: SAVE  SELECT: MENU","3DS CIRCLE PAD: PAN"},
+            {"TAP A SWATCH TO USE COLOR","QUICK VERTICAL DRAG: SCROLL","HOLD 150 MS: DRAG TO REORDER","DRAG TO EDGE: SCROLL WHILE MOVING","EDIT: PICKER OPENS SELECTED COLOR","SAVE: UPDATE  BACK: DISCARD","ADD / REMOVE: CHANGE PALETTE"},
+            {"TAP ROW: SELECT AND PREVIEW","EYE: TOGGLE LAYER VISIBILITY","ROW MENU: OPACITY AND BLEND","RENAME / DUPLICATE / DELETE","MERGE DOWN: VISIBLE NORMAL PAIR","HOLD 150 MS: DRAG TO REORDER","UNDO RESTORES LAYER CHANGES"},
+            {"HOLD ZOOM + L: UNDO","HOLD ZOOM + R: REDO","LIFT PEN BEFORE USING SHORTCUTS","TAP SHOULDER ONCE PER STEP","BOTH SHOULDERS: NO HISTORY ACTION","CANVAS ONLY - MENUS KEEP DRAFTS","REMAP ALSO CHANGES ZOOM MODIFIER"}
+        };
+        for(int i=0;i<7;i++){
+            const char *line=lines[a->help_tab][i];
+            if(!a->help_tab&&i<4){unsigned action=i==0?1:i==1?0:(unsigned)i;const char *tails[]={" + DRAG: PAN",": TOOLBOX"," + TAP: SAMPLE",": HOLD FOR ZOOM"};snprintf(label,sizeof(label),"%s%s",binding_name(a,action),tails[i]);line=label;}
+            if(a->help_tab==3&&i<2){snprintf(label,sizeof(label),"HOLD %s + %s: %s",binding_name(a,3),i?"R":"L",i?"REDO":"UNDO");line=label;}
+            text(bottom,w,h,8,64+i*12,line,i&1?UI_MUTED:UI_TEXT);
+        }
+        button(bottom,w,h,4,h-28,w/2-8,24,"REMAP",false);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"SETTINGS",false);
+    }else if(a->page==10){
+        for(unsigned i=0;i<4;i++){snprintf(label,sizeof(label),"%s: %s",control_names[i],action_names[(a->draft_bindings>>(i*2))&3]);button(bottom,w,h,4,32+(int)i*26,w-8,24,label,false);}
+        text(bottom,w,h,8,140,"TAP TO CYCLE - CONFLICTS SWAP",UI_MUTED);
+        button(bottom,w,h,4,h-28,w/2-8,24,"DEFAULTS",false);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"SETTINGS",false);
+    }else if(a->page==11){
+        const char *names[]={"HEX","R","G","B","A"};for(int i=0;i<5;i++)button(bottom,w,h,i*w/5+2,30,w/5-4,24,names[i],a->numeric_mode==(unsigned)i);
+        snprintf(label,sizeof(label),"%s%s",a->numeric_mode?"0-255: ":"RRGGBB[AA]: ",a->numeric);text(bottom,w,h,8,62,label,UI_ACCENT);
+        const char *keys="0123456789ABCDEF";for(int i=0;i<16;i++){char key[2]={keys[i],0};button(bottom,w,h,(i%4)*w/4+2,80+(i/4)*16,w/4-4,15,key,false);}
+        button(bottom,w,h,4,h-28,w/3-8,24,"DELETE",false);button(bottom,w,h,w/3+4,h-28,w/3-8,24,"BACK",false);button(bottom,w,h,2*w/3+4,h-28,w/3-8,24,"SET",true);
+    }else if(a->page==12){
+        const char *items[]={"NUMERIC COLOR","SWAP FOREGROUND / BACKGROUND","RECENT COLORS","IMPORT PALETTE","EXPORT PALETTE","DEFAULT PALETTE"};for(int i=0;i<6;i++)button(bottom,w,h,4,30+i*22,w-8,20,items[i],false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO PICKER",false);
+    }else if(a->page==13){
+        text(bottom,w,h,8,27,"RECENT COLORS - THIS SESSION",UI_MUTED);for(unsigned i=0;i<a->recent_count;i++){int x=(int)(i%4)*w/4+4,y=40+(int)(i/4)*32;rect(bottom,w,h,x,y,w/4-8,28,UI_EDGE);for(int yy=y+3;yy<y+25;yy++)for(int xx=x+3;xx<x+w/4-11;xx++)bottom[yy*w+xx]=displayed(a->recent[i],xx,yy);}button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
+    }else if(a->page==14){const char *items[]={"GPL - OPAQUE RGB ONLY","HEX - RRGGBBAA","PNG - RGBA COLOR STRIP"};for(int i=0;i<3;i++)button(bottom,w,h,4,40+i*32,w-8,28,items[i],false);button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
+    }else if(a->page==15){button(bottom,w,h,4,40,w-8,28,"SAVE AS MY DEFAULT",false);button(bottom,w,h,4,76,w-8,28,"USE MY DEFAULT",false);button(bottom,w,h,4,112,w-8,28,"RESTORE BUILT-IN COLORS",false);text(bottom,w,h,8,146,"RESTORE CHANGES THIS PROJECT ONLY",UI_MUTED);button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
+    }else if(a->page==16){
+        const char *base=strrchr(a->file_source,'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->file_source);text(bottom,w,h,8,27,label,UI_MUTED);const char *items[]={"RENAME FILE","DUPLICATE FILE","DELETE FILE"};for(int i=0;i<3;i++)button(bottom,w,h,4,40+i*32,w-8,28,items[i],false);button(bottom,w,h,4,h-28,w-8,24,"BACK TO FILES",false);
+    }else if(a->page==17){
+        for(unsigned i=0;i<a->recent_project_count;i++){const char *base=strrchr(a->recent_projects[i],'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->recent_projects[i]);button(bottom,w,h,4,30+(int)i*16,w-8,15,label,a->recent_project_selected==(int)i);}if(!a->recent_project_count)text(bottom,w,h,8,50,"NO RECENT PROJECTS YET",UI_MUTED);button(bottom,w,h,4,h-28,w/2-8,24,"OPEN",a->recent_project_selected>=0);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"BACK TO FILES",false);
+    }else if(a->page==7){
+        text(bottom,w,h,8,45,"DRAW MAX MICROSECONDS",UI_TEXT);
+        snprintf(label,sizeof(label),"IN %u RENDER %u COPY %u",a->input_us,a->render_us,a->present_us);text(bottom,w,h,8,65,label,UI_TEXT);
+        snprintf(label,sizeof(label),"SAMPLE GAP %u / N %u",a->gap_us,a->samples);text(bottom,w,h,8,85,label,UI_TEXT);
+    }else{
+        /* Map once per row/column: ARM9 has no hardware integer divide. */
+        int left=(int)a->doc.width*a->zoom<w?(w-(int)a->doc.width*a->zoom)/2:0;
+        int upper=canvas_top(a)+((int)a->doc.height*a->zoom<h-canvas_top(a)?(h-canvas_top(a)-(int)a->doc.height*a->zoom)/2:0);
+        left-=a->subx;upper-=a->suby;
+        if(!(a->guides&12)&&!a->subx&&!a->suby){
+            for(int y=24;y<h;y++){uint32_t *row=bottom+y*w;int wy=a->oy+(y-upper)/a->zoom;
+                if(y<upper||wy>=(int)a->doc.height){for(int x=0;x<w;x++)row[x]=0x53616b;continue;}
+                for(int x=0;x<left;x++)row[x]=0x53616b;int x=left;
+                for(int wx=a->ox;x<w&&wx<(int)a->doc.width;wx++){uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);int end=x+a->zoom;if(end>w)end=w;int start=x;bool gridrow=a->pixel_grid&&a->zoom>=8&&(y-upper)%a->zoom==0;while(x<end){row[x]=(a->pixel_grid&&a->zoom>=8&&(gridrow||x==start))?grid_color(c):c;x++;}}
+                while(x<w)row[x++]=0x53616b;
+            }
+        }else for(int y=24;y<h;y++){
+            uint32_t *row=bottom+y*w;int dy=y-upper,wy=a->oy+(dy>=0?dy/a->zoom:-((-dy+a->zoom-1)/a->zoom));
+            if(!(a->guides&8)&&(y<upper||wy<0||wy>=(int)a->doc.height)){for(int x=0;x<w;x++)row[x]=0x53616b;continue;}
+            int sy=(wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height;
+            for(int x=0;x<w;){int dx=x-left,wx=a->ox+(dx>=0?dx/a->zoom:-((-dx+a->zoom-1)/a->zoom));int phase=(dx%a->zoom+a->zoom)%a->zoom,end=x+a->zoom-phase;if(end>w)end=w;
+                bool valid=(a->guides&4)||(x>=left&&wx>=0&&wx<(int)a->doc.width);int sx=(wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width;
+                uint32_t c=valid?displayed(pd_image(&a->doc)[sy*a->doc.stride+sx],sx,sy):0x53616b;
+                bool gridrow=a->pixel_grid&&a->zoom>=8&&dy%a->zoom==0;int start=x;while(x<end){row[x]=(valid&&a->pixel_grid&&a->zoom>=8&&(gridrow||(x==start&&!phase)))?grid_color(c):c;x++;}
+            }
+        }
+    }
+    if(!a->page||a->page==21||a->page==23||a->page==24){canvas_border(a,bottom);selection_overlay(a,bottom);}
+    if(a->page==26){int left=a->handed?w-224:0;rect(bottom,w,h,left,24,224,162,UI_EDGE);rect(bottom,w,h,left+2,26,220,158,UI_BG);text(bottom,w,h,left+8,33,"FILL OPTIONS",UI_TEXT);button(bottom,w,h,left+4,48,216,24,a->fill_global?"GLOBAL / REPLACE COLOR":"CONTIGUOUS REGION",a->fill_global);button(bottom,w,h,left+4,76,216,24,a->fill_visible?"MATCH: VISIBLE IMAGE":"MATCH: ACTIVE LAYER",a->fill_visible);button(bottom,w,h,left+4,104,40,24,"-",false);snprintf(label,sizeof(label),"TOLERANCE %u",a->fill_tolerance);text(bottom,w,h,left+54,112,label,UI_TEXT);button(bottom,w,h,left+180,104,40,24,"+",false);rect(bottom,w,h,left+16,140,192,6,UI_PANEL);int sx=left+16+(int)a->fill_tolerance*191/255;rect(bottom,w,h,sx-2,132,4,22,UI_TEXT);button(bottom,w,h,left+4,158,216,24,"DONE",false);}
+    if(a->page==24){int left=a->handed?w-224:0;rect(bottom,w,h,left,24,224,162,UI_EDGE);rect(bottom,w,h,left+2,26,220,158,UI_BG);text(bottom,w,h,left+8,33,"SHAPE OPTIONS",UI_TEXT);const char *names[]={"LINE","RECT","ELLIPSE"};for(int i=0;i<3;i++)button(bottom,w,h,left+4+i*74,48,70,24,names[i],a->tool==(unsigned)(5+i));button(bottom,w,h,left+4,76,216,24,a->tool==5?"LINE":a->shape_filled?"FILLED":"OUTLINE",a->shape_filled&&a->tool!=5);button(bottom,w,h,left+4,104,40,24,"-",false);snprintf(label,sizeof(label),"SIZE %u",a->brush_size[0]);text(bottom,w,h,left+80,112,label,UI_TEXT);button(bottom,w,h,left+180,104,40,24,"+",false);rect(bottom,w,h,left+16,140,192,6,UI_PANEL);int sx=left+16+(int)(a->brush_size[0]-1)*191/15;rect(bottom,w,h,sx-2,132,4,22,UI_TEXT);button(bottom,w,h,left+4,158,216,24,"DONE",false);}
+    if(a->page==25){int left=a->handed?w-224:0;rect(bottom,w,h,left,24,224,160,UI_EDGE);rect(bottom,w,h,left+2,26,220,156,UI_BG);text(bottom,w,h,left+8,33,"TRANSFORM SELECTION",UI_TEXT);const char *names[]={"FLIP H","FLIP V","ROTATE 90","DUP TO LAYER","SCALE 2X","SCALE 3X","SCALE 4X","HALF SIZE"};for(int i=0;i<8;i++)button(bottom,w,h,left+4+(i%2)*112,48+(i/2)*26,104,24,names[i],false);button(bottom,w,h,left+4,158,216,22,"BACK",false);}
+    if(a->page==23){int left=a->handed?w-224:0;rect(bottom,w,h,left,24,224,164,UI_EDGE);rect(bottom,w,h,left+2,26,220,160,UI_BG);text(bottom,w,h,left+8,33,"SELECTION",UI_TEXT);button(bottom,w,h,left+164,28,56,18,"MORE",false);
+        button(bottom,w,h,left+4,48,106,24,"RECTANGLE",!a->selection_shape);button(bottom,w,h,left+114,48,106,24,"LASSO",a->selection_shape!=0);
+        const char *modes[]={"REPLACE","ADD","REMOVE"},*actions[]={"COPY","CUT","PASTE"};for(int i=0;i<3;i++){button(bottom,w,h,left+4+i*74,76,70,24,modes[i],a->selection_mode==(unsigned)i);button(bottom,w,h,left+4+i*74,104,70,24,actions[i],false);}
+        button(bottom,w,h,left+4,132,106,24,"SELECT ALL",false);button(bottom,w,h,left+114,132,106,24,"DESELECT",false);button(bottom,w,h,left+4,160,106,24,"DELETE",false);button(bottom,w,h,left+114,160,106,24,"DONE",false);
+    }
+    if(a->page==28&&!a->confirm){
+        rect(bottom,w,h,0,24,w,h-24,UI_BG);
+        text(bottom,w,h,8,32,"GALLERY / LOCAL CACHE",UI_ACCENT);button(bottom,w,h,w-72,28,68,18,"REFRESH",false);
+        int cw=w/3;for(unsigned i=0;i<a->gallery_count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;
+            rect(bottom,w,h,xx+3,yy,cw-6,46,a->selected==(int)(a->gallery_page*6+i)?UI_SELECTED:UI_PANEL);
+            if(a->gallery_ready[i])for(int y=0;y<32;y++)for(int x=0;x<32;x++)bottom[(yy+2+y)*w+xx+(cw-32)/2+x]=displayed(a->gallery_thumbs[i][y*32+x],x,y);
+            else text(bottom,w,h,xx+8,yy+14,"UNREADABLE",UI_MUTED);
+            snprintf(label,sizeof(label),"%.*s",(cw-12)/6,a->listing.entries[a->gallery_page*6+i].name);text(bottom,w,h,xx+6,yy+36,label,UI_TEXT);
+        }
+        if(!a->gallery_count){text(bottom,w,h,8,65,"NO CACHED ART YET",UI_TEXT);text(bottom,w,h,8,83,"COPY PNGS (UP TO 128 X 128) TO",UI_MUTED);text(bottom,w,h,8,97,"PIXELDOODLE/COMMUNITY",UI_TEXT);}
+        snprintf(label,sizeof(label),"%u ITEMS / PAGE %u%s",a->listing.count,a->gallery_page+1,a->listing.truncated?" (LIMIT)":"");text(bottom,w,h,8,h-40,label,UI_MUTED);
+        button(bottom,w,h,4,h-28,36,24,"<",false);button(bottom,w,h,44,h-28,w-88,24,"OPEN COPY",a->preview_ready);button(bottom,w,h,w-40,h-28,36,24,">",false);
+    }
+    if(a->page==27){int left=a->handed?w-224:0;rect(bottom,w,h,left,24,224,166,UI_EDGE);rect(bottom,w,h,left+2,26,220,162,UI_BG);
+        text(bottom,w,h,left+8,33,"PENCIL DITHER",UI_TEXT);const char *patterns[]={"SOLID","25%","50%","75%"};
+        for(unsigned i=0;i<4;i++)button(bottom,w,h,left+4+(int)i*55,48,51,24,patterns[i],a->brush_pattern==i);
+        text(bottom,w,h,left+8,80,"BRUSH PRESETS",UI_TEXT);
+        for(unsigned i=0;i<4;i++){snprintf(label,sizeof(label),"%u",i+1);button(bottom,w,h,left+4+(int)i*55,94,51,24,label,a->brush_preset==i);}
+        unsigned char *p=a->brush_presets[a->brush_preset];snprintf(label,sizeof(label),"%uPX %s %s%s",p[0],p[1]?"ROUND":"SQUARE",patterns[p[3]],p[2]&&p[0]==1&&!p[3]?" PP":"");text(bottom,w,h,left+8,126,label,UI_TEXT);
+        button(bottom,w,h,left+4,140,104,24,"LOAD",false);button(bottom,w,h,left+116,140,104,24,"STORE",false);button(bottom,w,h,left+4,166,216,22,"BACK TO PENCIL",false);
+    }
+    if(a->page==21){int left=a->handed?w-200:0;rect(bottom,w,h,left,24,200,a->brush_edit?114:168,UI_EDGE);rect(bottom,w,h,left+2,26,196,a->brush_edit?110:164,UI_BG);icon(bottom,w,h,left+8,32,6+a->brush_edit,UI_TEXT);text(bottom,w,h,left+32,36,a->brush_edit?"ERASER":"PENCIL",UI_TEXT);button(bottom,w,h,left+140,28,56,24,"TOOLS",false);
+        button(bottom,w,h,left+4,56,36,28,"-",false);snprintf(label,sizeof(label),"%u PX",a->brush_size[a->brush_edit]);text(bottom,w,h,left+72,66,label,UI_TEXT);button(bottom,w,h,left+160,56,36,28,"+",false);
+        rect(bottom,w,h,left+16,94,168,8,UI_PANEL);int sx=left+16+(int)(a->brush_size[a->brush_edit]-1)*167/15;rect(bottom,w,h,left+16,94,sx-left-16,8,UI_SELECTED);rect(bottom,w,h,sx-2,88,4,20,UI_TEXT);button(bottom,w,h,left+4,112,192,22,a->brush_round[a->brush_edit]?"TIP: ROUND":"TIP: SQUARE",false);if(!a->brush_edit)button(bottom,w,h,left+4,140,192,24,a->brush_pattern?"PIXEL PERFECT: SOLID ONLY":a->pixel_perfect?"PIXEL PERFECT: ON (1PX)":"PIXEL PERFECT: OFF",a->pixel_perfect&&!a->brush_pattern);if(!a->brush_edit)button(bottom,w,h,left+4,166,192,22,"DITHER / PRESETS",a->brush_pattern!=0);
+    }
+    a->picker_field=a->page==2&&!a->confirm&&!a->color_tab;
+    if(picker_only){a->present_top=false;a->py0=0;a->redraw=false;return;}
+    if(a->toolbox&&!a->page&&!a->confirm){
+        int tx=a->handed?w-208:0;rect(bottom,w,h,tx,24,208,166,0x182126);
+        const char *names[]={"PENCIL","ERASER","SAMPLE","FILL","SELECT"};
+        for(unsigned i=0;i<5;i++){
+            rect(bottom,w,h,tx+4,32+(int)i*26,96,24,a->tool==i?0x0d7a75:0x35444b);
+            icon(bottom,w,h,tx+8,36+(int)i*26,i>=3?8+i:6+i,0xffffff);text(bottom,w,h,tx+32,41+(int)i*26,names[i],0xffffff);
+        }
+        const char *shapes[]={"LINE","RECTANGLE","ELLIPSE"};for(unsigned i=0;i<3;i++){rect(bottom,w,h,tx+108,32+(int)i*26,96,24,a->tool==5+i?UI_SELECTED:UI_PANEL);icon(bottom,w,h,tx+112,36+(int)i*26,21+i,UI_TEXT);text(bottom,w,h,tx+136,41+(int)i*26,shapes[i],UI_TEXT);}
+        button(bottom,w,h,tx+4,164,96,24,"",false);icon(bottom,w,h,tx+8,168,10,UI_TEXT);text(bottom,w,h,tx+32,173,"GUIDES",UI_TEXT);
+    }
+    if(a->zoom_overlay){
+        int zx=zoom_left(a);rect(bottom,w,h,zx,40,48,56,0x0d7a75);rect(bottom,w,h,zx,112,48,56,0x0d7a75);
+        rect(bottom,w,h,zx+12,66,24,4,0xffffff);rect(bottom,w,h,zx+22,56,4,24,0xffffff);
+        rect(bottom,w,h,zx+12,138,24,4,0xffffff);
+    }
+    if((a->page==4||a->page==17||a->page==28)&&a->preview_attempted){
+        text(top,tw,th,8,6,a->page==28?"CACHED ART - OFFLINE PREVIEW":"FILE PREVIEW - CURRENT ART RETAINED",UI_ACCENT);text(top,tw,th,8,24,a->preview_name,UI_TEXT);
+        int size=th-80;if(size>128)size=128;int left=(tw-size)/2;if(a->preview_ready){for(int y=0;y<size;y++)for(int x=0;x<size;x++)top[(42+y)*tw+left+x]=displayed(a->file_preview[(y*64/size)*64+x*64/size],x,y);}else text(top,tw,th,8,60,a->preview_error,UI_MUTED);
+        if(a->preview_palette_count){snprintf(label,sizeof(label),"PALETTE: %u COLORS",a->preview_palette_count);text(top,tw,th,8,th-34,label,UI_ACCENT);}
+        text(top,tw,th,8,th-22,a->preview_palette_count?"IMPORT FROM THE PALETTE MENU":a->page==17&&a->recent_files_unsaved?"RECENT LIST NOT SAVED TO DISK":"SELECT OPEN TO REPLACE CURRENT ART",UI_MUTED);a->redraw=false;return;
+    }
+    selection_toolbar(a,bottom);
+    if(a->selection_drag){a->present_top=false;a->redraw=false;return;}
+    bool solo=a->page==1||(a->page==5&&a->name_action==2);
+    rect(top,tw,th,0,0,tw,20,0x182126);
+    snprintf(label,sizeof(label),solo?"LAYER: %.30s":"PIXEL DOODLE " PD_VERSION,a->doc.names[a->doc.active]);text(top,tw,th,8,6,label,0xffffff);
+    int size=th-76;if(size>128)size=128;unsigned dw=a->doc.width,dh=a->doc.height,max=dw>dh?dw:dh;
+    int mw=(int)(dw*(unsigned)size/max),mh=(int)(dh*(unsigned)size/max);if(mw<1)mw=1;if(mh<1)mh=1;int left=(tw-mw)/2;
+    for(int y=0;y<mh;y++)for(int x=0;x<mw;x++){int wx=x*(int)dw/mw,wy=y*(int)dh/mh;uint32_t p=solo?pd_pixels(&a->doc.layer[a->doc.active])[wy*a->doc.stride+wx]:pd_image(&a->doc)[wy*a->doc.stride+wx];top[(24+y)*tw+left+x]=displayed(p,wx,wy);}
+    int vx=left+a->ox*mw/(int)dw,vy=24+a->oy*mh/(int)dh;
+    int vw=w/a->zoom,vh=(h-canvas_top(a))/a->zoom;if(vw>(int)dw)vw=(int)dw;if(vh>(int)dh)vh=(int)dh;
+    vw=vw*mw/(int)dw;vh=vh*mh/(int)dh;if(vw<1)vw=1;if(vh<1)vh=1;
+    int vr=vx+vw,vb=vy+vh;if(vx<left)vx=left;if(vy<24)vy=24;if(vr>left+mw)vr=left+mw;if(vb>24+mh)vb=24+mh;vw=vr-vx;vh=vb-vy;
+    if(!solo&&vw>0&&vh>0){rect(top,tw,th,vx,vy,vw,1,0x0d7a75);rect(top,tw,th,vx,vy+vh-1,vw,1,0x0d7a75);
+    rect(top,tw,th,vx,vy,1,vh,0x0d7a75);rect(top,tw,th,vx+vw-1,vy,1,vh,0x0d7a75);}
+    snprintf(label,sizeof(label),"%s  L%u  %dX  %s",a->platform,a->doc.active+1,a->zoom,pd_dirty(&a->doc)||a->stroke?"UNSAVED":"SAVED");text(top,tw,th,8,th-45,label,UI_ACCENT);
+    text(top,tw,th,8,th-32,a->notice,UI_TEXT);
+    if(solo)snprintf(label,sizeof(label),"UNDO %u/%u  %u/%u KIB",a->doc.cursor,a->doc.count,(a->doc.history_used+1023)/1024,a->doc.history_capacity/1024);
+    if(!solo)snprintf(label,sizeof(label),"B:%s A:%s X:%s Y:%s",action_names[a->bindings&3],action_names[(a->bindings>>2)&3],action_names[(a->bindings>>4)&3],action_names[(a->bindings>>6)&3]);
+    text(top,tw,th,8,th-19,label,UI_TEXT);
+    text(top,tw,th,8,th-9,solo?"RAW LAYER - BEFORE OPACITY/BLEND":"L/R:ERASE START:SAVE SELECT:MENU",UI_TEXT);a->redraw=false;
+}

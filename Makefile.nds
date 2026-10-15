@@ -1,0 +1,11 @@
+BLOCKSDS ?= /opt/blocksds/core
+NAME := PixelDoodle
+GAME_TITLE := Pixel Doodle
+PD_VERSION := $(shell sed -n 's/^\#define PD_VERSION "\(.*\)"/\1/p' core/version.h)
+GAME_SUBTITLE := Offline pixel art $(PD_VERSION)
+GAME_AUTHOR := Tommy
+GAME_ICON := assets/icon-nds.gif
+SOURCEDIRS := core ui platform/nds vendor/zlib
+INCLUDEDIRS := core ui vendor/zlib
+CFLAGS := -Wall -Wextra -Werror -Wno-misleading-indentation -std=gnu11
+include $(BLOCKSDS)/sys/default_makefiles/rom_arm9/Makefile

@@ -1,0 +1,33 @@
+# Build products and dependencies
+build/
+dist/
+node_modules/
+*.nds
+!Makefile.nds
+*.3dsx
+*.cia
+*.elf
+*.o
+
+# Private/local state; synthetic fixtures must use explicit separate paths
+.env
+.env.*
+!.env.example
+runtime/
+userdata/
+backups/
+uploads/
+*.sqlite
+*.sqlite-*
+*.log
+identity*
+recovery*
+seed.bin
+consuming.bin
+next.bin
+*.pxp
+*.pxr
+*.pdd
+*.smdh
+*.map
+*.lst
