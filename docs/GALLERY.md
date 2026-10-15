@@ -12,7 +12,7 @@ community/ now contains a loopback-only read-only Node service and responsive ga
 
 The handheld Community entry currently browses manually supplied PNGs under the app's `community` folder. Six bounded thumbnails, paging, selected-art preview, refresh and confirmed import are implemented. It is clearly labeled local/offline, carries no artist/approval/account assertions and has no network transport. PNG derivatives must fit 128x128 for consistent DS support. No automatic uploads, credentials or service deployment exists; the local website prototype above is separate from native networking.
 
-Next: implement an isolated local/staging gallery service and website with approved-public pagination and derivative delivery, then connect verified handheld transport. Establish trusted entropy separately for DS pairing; do not copy Collab Doodle credentials. Add email/Discord web authentication, explicit device grants and uploads only after browsing and authorization boundaries are tested. The agreed roadmap's moderation timer/hold/notification requirements still govern eventual publishing.
+Next: implement an isolated local/staging gallery service and website with approved-public pagination and derivative delivery, then connect verified handheld transport. Establish trusted entropy separately for DS pairing; do not copy Collab Doodle credentials. Add email/Discord web authentication and explicit device grants. Keep web uploads disabled; build console-only submission over an explicitly granted device identity. The agreed roadmap's moderation timer/hold/notification requirements still govern eventual publishing.
 
 ## Experience
 

@@ -1,0 +1,4 @@
+CREATE TABLE artists(id TEXT PRIMARY KEY,name TEXT NOT NULL,bio TEXT NOT NULL);
+CREATE TABLE artworks(id TEXT PRIMARY KEY,artist TEXT NOT NULL REFERENCES artists(id),title TEXT NOT NULL,tags TEXT NOT NULL CHECK(json_valid(tags)),width INTEGER NOT NULL CHECK(width BETWEEN 1 AND 512),height INTEGER NOT NULL CHECK(height BETWEEN 1 AND 512),status TEXT NOT NULL CHECK(status IN ('pending','published','denied','held')),visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),publishedAt TEXT NOT NULL,synthetic INTEGER NOT NULL CHECK(synthetic IN (0,1)),image BLOB NOT NULL CHECK(length(image) BETWEEN 1 AND 1048576));
+CREATE INDEX artwork_public_order ON artworks(status,visibility,publishedAt DESC,id);
+CREATE TABLE derivatives(artwork TEXT PRIMARY KEY REFERENCES artworks(id) ON DELETE CASCADE,width INTEGER NOT NULL CHECK(width BETWEEN 1 AND 128),height INTEGER NOT NULL CHECK(height BETWEEN 1 AND 128),image BLOB NOT NULL CHECK(length(image) BETWEEN 1 AND 131072));

@@ -65,7 +65,7 @@ Settings groups: workspace, input, canvas/grid, tools, palettes, files/recovery 
 
 ## Community and accounts
 
-Browse approved gallery artwork anonymously on website or handheld: recent art, tags/search, artist profiles, paged thumbnails, top-screen selected art, touch navigation, zoom/pan and actual size. Use bounded caches and device-appropriate derivatives. Favorites and uploads require sign-in. My uploads shows published/pending/declined and any moderation reason. Downloads expose flattened images; layered originals only with creator opt-in and local compatibility checks.
+Browse approved gallery artwork anonymously on website or handheld: recent art, tags/search, artist profiles, paged thumbnails, top-screen selected art, touch navigation, zoom/pan and actual size. Use bounded caches and device-appropriate derivatives. Favorites require sign-in. Artwork submissions are console-only; web upload UI and API stay disabled. My uploads shows published/pending/declined and any moderation reason. Downloads expose flattened images; layered originals only with creator opt-in and local compatibility checks.
 
 Community actions requiring an account initiate pairing: console shows an expiring code and website URL; browser signs in or creates an account through email magic link/code or Discord OAuth with minimal identity permissions. User explicitly approves that device. Device receives scoped revocable credentials, never Discord tokens or email login secrets. Pairing user code and private polling credential are distinct. Rate-limit and expire both flows.
 
@@ -157,3 +157,56 @@ Slice 5 follow-up: brush size/shape moved to the top pencil/eraser popup. Separa
 ### Artwork pages and drawing playback (2026-10-15 refinement)
 
 Keep direct per-artwork pages with image, artist, description, dimensions and downloads, inspired by Colors Live. Add genuine timelapse playback after native timed-action recording and upload support: versioned replay data, bounded recording/storage on DS, palette/layer/tool changes and undo semantics, validated server ingestion, and a web player. PNG alone cannot reproduce drawing history. Show playback controls only for artworks with validated replay data; existing artwork remains fully viewable without it. Gallery preserves canvas aspect ratios and supports persistent light/dark themes.
+
+
+## Community 0.3.0 durable storage foundation (2026-10-15)
+
+Initial source committed/pushed as ca5fe19 to origin/main at user's request.
+Subsequent local work adds opt-in SQLite repository (Node 24+), schema v1,
+transactional explicit trusted demo seeding, stored PNGs and metadata, and
+restart/hidden-media regression tests. No HTTP mutation/auth/ingestion or real
+moderation implemented. Default remains in-memory demo; GALLERY_DATABASE opts
+into persistence and never seeds implicitly. Both owned preview processes now
+use ignored runtime/community-preview.sqlite, retaining loopback/Tailscale URLs.
+Nine test groups pass. Next: bounded validated artwork ingestion/derivatives,
+then verified transport and account/device pairing. These subsequent changes
+remain local, separate from the requested initial push.
+
+
+## Community 0.4.0 local ingestion and derivatives (2026-10-15)
+
+Added bounded static PNG decoding/canonical RGBA re-encoding, nearest-neighbor
+128px derivatives, existing-artist local ingest CLI and transactional pending/
+private imports. Schema v2 atomically backfills derivatives; failures preserve
+v1. Thumbnail and full-image routes both gate published/public. Gallery uses
+thumbnails; detail offers separate full and handheld PNG downloads. See
+community/README.md for strict PNG subset, 2 MiB input / 1 MiB canonical limit,
+metadata stripping and operator-only scope. Sixteen Node groups plus independent
+Pillow pixel/decode checks pass. No HTTP uploads, real authentication, approval,
+notifications or network-native integration yet. Next: account/device pairing
+and authenticated upload/moderation; verified handheld transport remains needed.
+No further commit/push requested; changes remain local after initial ca5fe19.
+
+## PHP/Apache and interactive Discord moderation (2026-10-15)
+
+User switched production backend to PHP/Apache; see community-php/README.md.
+Laravel 13 read-only gallery port is tested. Next: port auth/session+Discord OAuth,
+then device pairing, bounded ingestion and moderation ledger/outbox to PHP; retire
+Node runtime after parity checks. Keep frontend and native API contracts stable.
+Dedicated bot review posts have images, descriptions, uploader and action buttons;
+see DISCORD-REVIEW-BOT.md. Bot and web decisions share one backend authority.
+
+
+## PHP community deployment package (2026-10-15)
+
+Community site PHP port now includes authenticated artist profiles and bounded
+PNG uploads, private pending submissions/owner history, moderator queue with
+Approve/Reject/optional reason/Hold, Ed25519-verified Discord HTTP interactions,
+moderator role + explicit Discord account link commands, and a scheduled queue
+worker with receipt-gated eight-hour approval. Gallery schema 4 safely upgrades
+existing schema 3. Local-only public/private ZIPs are under build; they include
+production dependencies but no secrets, databases or fixture artwork. Live server,
+SMTP, Discord portal, worker timer and final first-user acceptance remain in
+HANDS-ON-CHECKLIST.md. Direct handheld uploads, Aseprite website uploads, account
+link UI and timelapse playback remain later work. No production deployment or
+GitHub publication was performed.

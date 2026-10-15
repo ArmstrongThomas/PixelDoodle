@@ -199,3 +199,199 @@ User explicitly requested mobile access over Tailscale. server.mjs supports PREV
 User accepted the colorful community design and requested its pixel logo as NDS/3DSX/CIA app icons. assets/icon-nds.gif (32px) and icon-3ds.png (48px) rasterize the five-square website mark in lime with pink offset shadow on purple. Source SVG, large PNG preview and scripts/generate-icons.py retained; Pillow required to regenerate assets and CIA banner. NDS GAME_ICON and 3DS SMDH now use app-owned assets instead of SDK defaults. CIA HOME Menu banner uses the same logo. No runtime or format/version change: native remains 0.12.0, CIA metadata 192.
 
 NDS/3DSX/CIA rebuild and existing header/identity checks pass. scripts/verify-icons.py independently decodes tiled NDS RGB555 and SMDH RGB565 and compares every icon pixel with the source; verifies exact SMDH embedded in 3DSX. Stable build/test-0.12.0-icons contains all three packages plus SMDH; prior candidates preserved. Physical launcher/CIA installation appearance untested; no emulator restart or hardware transfer.
+
+
+## Community 0.3.0 durable storage foundation (2026-10-15)
+
+Initial source committed/pushed as ca5fe19 to origin/main at user's request.
+Subsequent local work adds opt-in SQLite repository (Node 24+), schema v1,
+transactional explicit trusted demo seeding, stored PNGs and metadata, and
+restart/hidden-media regression tests. No HTTP mutation/auth/ingestion or real
+moderation implemented. Default remains in-memory demo; GALLERY_DATABASE opts
+into persistence and never seeds implicitly. Both owned preview processes now
+use ignored runtime/community-preview.sqlite, retaining loopback/Tailscale URLs.
+Nine test groups pass. Next: bounded validated artwork ingestion/derivatives,
+then verified transport and account/device pairing. These subsequent changes
+remain local, separate from the requested initial push.
+
+
+## Community 0.4.0 local ingestion and derivatives (2026-10-15)
+
+Added bounded static PNG decoding/canonical RGBA re-encoding, nearest-neighbor
+128px derivatives, existing-artist local ingest CLI and transactional pending/
+private imports. Schema v2 atomically backfills derivatives; failures preserve
+v1. Thumbnail and full-image routes both gate published/public. Gallery uses
+thumbnails; detail offers separate full and handheld PNG downloads. See
+community/README.md for strict PNG subset, 2 MiB input / 1 MiB canonical limit,
+metadata stripping and operator-only scope. Sixteen Node groups plus independent
+Pillow pixel/decode checks pass. No HTTP uploads, real authentication, approval,
+notifications or network-native integration yet. Next: account/device pairing
+and authenticated upload/moderation; verified handheld transport remains needed.
+No further commit/push requested; changes remain local after initial ca5fe19.
+
+## Internal device pairing foundation (2026-10-15)
+
+community/pairing.mjs adds SQLite-backed expiring user/device codes, explicit
+approval/denial, single-use exchange, scoped 30-day bearer grants, owner-only
+revocation, account-disable checks and durable rate limiting. Hashes only are
+stored; secrets never enter logs or artwork. Trusted account-validator injection
+is mandatory; literal true required. Module is intentionally not wired to HTTP
+until maintained web auth/session, CSRF, HTTPS and trusted limiter subjects are
+implemented. No fake login or code UI and no provider calls. Existing preview
+unchanged. Twenty-two community test groups pass. Next: choose/configure the
+maintained Discord/email auth integration, then expose protected pairing UI/API
+and verified console transport. No commit/push/native rebuild this increment.
+
+
+## Running user checklist and auth adapter (2026-10-15)
+
+User requested a persistent list of hands-on tests and setup tasks while away.
+Maintain docs/HANDS-ON-CHECKLIST.md EVERY increment; record explicit results and
+separate ready tests from blocked/unimplemented features. docs/SETUP-GUIDE.md
+covers host/domain, Cloudflare staging tunnel, Discord OAuth, transactional
+email, and separate private moderation webhook with official reference links.
+Do not ask user for secrets in chat or publish staging without authorization.
+
+Pinned Better Auth 1.7.10 plus package-lock added via npm --ignore-scripts.
+community/auth.mjs provides HTTPS-only configured factory and explicit migration,
+secure sessions, hashed email OTP, minimal Discord scopes, no implicit account
+linking. Not mounted on preview and not connected to pairing module yet. Real
+library handler tests use in-memory delivery and synthetic credentials, send no
+external messages. All 25 community tests pass; npm audit currently reports zero
+known vulnerabilities. Tailscale preview untouched. Native version unchanged;
+no GitHub push or production action this increment.
+
+## Account UI and protected HTTP integration (2026-10-15)
+
+Account page now supports configured email/Discord sign-in, sign-out, device
+inspection with explicit approval/denial, and owner device revocation. The default
+preview reports sign-in unavailable and exposes no mutation routes. The bridge
+requires canonical Host, exact Origin for JSON POSTs, 8 KiB bodies, real verified
+session users and a narrow auth endpoint allowlist. User IDs in request bodies
+are ignored; account ownership comes from the session. Incoming proxy IP headers
+are discarded; current limit subjects use the direct peer (conservative shared
+limits behind a proxy). Trusted proxy attribution remains a deployment follow-up.
+
+For configured staging, community/serve-auth.mjs requires AUTH_ORIGIN (HTTPS),
+AUTH_SECRET, AUTH_DATABASE (separate), GALLERY_DATABASE and Discord credentials.
+Explicit --migrate prepares auth; normal startup refuses missing tables and binds
+loopback port 4179 by default. The gallery preview on 4178 remains unauthenticated.
+Email UI/adapter exists but no production mail provider is chosen/wired. Device
+begin/poll endpoints and console transport are deliberately not exposed yet.
+27 test groups pass including real HTTP/session approval/revocation/logout flows,
+origin/host/body checks. Live providers and physical pairing remain untested.
+Update docs/HANDS-ON-CHECKLIST.md every increment. No push/native build.
+
+## Native pairing HTTP boundary (2026-10-15)
+
+Public origin confirmed by user: https://pixels.7db.pw, same host machine as
+Collab Doodle but isolated service/credentials/databases. Default staging port
+4179 remains loopback-only. No tunnel, OAuth configuration or deployment done.
+Opt-in ENABLE_DEVICE_PAIRING=true exposes POST /api/device/pair/begin and /poll.
+Default preview and staging remain disabled. JSON bodies max 1 KiB, exact Host,
+no foreign Origin, no query credentials, narrow request fields and direct-peer
+rate subjects. begin returns verificationUri with no code in its URL; poll uses
+private deviceCode in the body. Browser approval stays verified-session-only.
+29 community tests pass; physical TLS/pairing and live provider acceptance remain
+pending. No native rebuild, external messages or push. Update hands-on queue.
+
+## PHP/Apache migration and Discord bot (2026-10-15)
+
+User selected PHP/Apache at https://pixels.7db.pw, DocumentRoot F:/pixeldoodle.
+community-php/ is the Laravel 13 backend, Composer locked. Gallery read API and
+shared frontend ported with SQLite query-only access to v2/v3 gallery databases.
+41 PHP assertions cover public filters/counts, hidden metadata/media, downloads,
+frontend routes and disabled mutation endpoints. No live account data exists.
+Node code remains a tested migration reference, not the production target.
+Prior Node moderation schema v3/ledger passes 33 groups; its PHP port is pending.
+
+community-php/.env.example supersedes community/.env.example, with production
+URL, blank secrets and suggested private F:/pixeldoodle-data paths. deploy/index.php
+and .htaccess are the only public entry files; private app path defaults to
+F:/pixeldoodle-app/community-php (proposed, not deployed). PHP auth, ingestion,
+pairing, moderation and live Apache acceptance remain pending. No server edits.
+
+Discord bot plan accepted: private artwork image/title/description/uploader,
+dimensions/deadline; Approve/Reject/Hold buttons, optional rejection reason modal,
+updated/disabled action state, shared backend authorization and audit. See
+ docs/DISCORD-REVIEW-BOT.md. No Discord messages or credential setup performed.
+
+Apache origin port confirmed by user: 8086 (supersedes proposed 8083). Saved deploy/apache.conf and setup notes now use 127.0.0.1:8086. This confirms the port choice, not end-to-end deployment acceptance.
+
+## PHP baseline parity and packaging hold (2026-10-15)
+
+User stopped preview packaging and asked to finish porting first. No ZIP created.
+The ignored build/web-package-20261015 directory is an obsolete incomplete staging
+copy; never deploy it. PHP baseline now includes gallery, Socialite Discord auth,
+SMTP email codes, session/Origin/CSRF boundaries, device pairing HTTP + account
+ownership, strict PNG ingestion/derivatives, explicit gallery schema migration,
+operator ingest command and internal moderation ledger/timer. 17 PHP tests / 178
+assertions pass; 25 Node-derived color/filter fixtures compare exact RGBA output.
+No raw provider tokens persisted; no implicit account merge. APP auth DB remains
+separate from gallery. SQLite IMMEDIATE transactions protect decisions/exchanges.
+
+Email/Discord provider acceptance, real Apache acceptance, HTTP uploads/profile
+creation, account linking and native TLS/transport remain pending. Dedicated bot
+buttons and sender/role integration are new next work, not yet implemented. No
+live messages, deployments, GitHub pushes or native builds. Example env and current
+commands documented atop community-php/README.md; old paragraphs are history.
+
+Setup guide rewritten for current PHP/Apache deployment (2026-10-15): domain,
+8086, public/private paths, PHP migrations, SMTP, OAuth callback vs authorization
+URL, and pending interactive bot setup. User-supplied public Discord client ID
+1560340963728294011 is now in the example env; client secret remains blank.
+Screenshot shows correct callback/Public Client off; live sign-in not accepted.
+
+## Protected PHP moderation API (2026-10-15)
+
+Added is_moderator migration, explicit community:moderator email [--revoke] CLI,
+and verified-session review queue/private image/decision endpoints. Roles are
+re-read for each request; only existing active verified accounts can be promoted.
+Decision authority remains Moderation service with revision checks and audit.
+Notification attempt values omitted from queue responses. 19 PHP tests / 197
+assertions pass including live role revoke, public/private media separation,
+stale decisions and session actor instead of body-supplied actor. UI and bot
+transport still pending. Updated setup guide and hands-on list. No server changes,
+external messages, native builds, ZIP creation or GitHub writes.
+
+SMTP configuration reported by user (2026-10-15): mail.7db.pw:587 with
+pixeladmin@7db.pw username/from and Pixel Doodle Admin display name. Recorded
+non-secret defaults in PHP .env.example and setup guide; password remains blank.
+SESSION_LIFETIME stays 10080. Live mail acceptance remains pending; no mail sent.
+
+
+## PHP community 0.1.0 deployable slice (2026-10-15)
+
+Studio supports verified accounts, display profile editing, PNG submissions up to
+2 MiB/512 square, descriptions/tags, stable request-ID retries, maximum 20
+pending/held items per artist and private owner history. Gallery schema 4 adds
+artist-account ownership, description/submission/idempotency metadata and bounded
+notification retry bookkeeping; tested upgrade from copy of v3 retained all 16
+fixture rows. Pending artwork remains private on all public browse/media routes.
+
+The moderator screen is `#review`, owner view `#studio`. Website actions and Discord
+interactions share revision-checked/audited policy. Discord interactions endpoint
+`/api/discord/interactions` verifies Ed25519 signature/timestamp, configured app,
+guild/channel, linked active site moderator and configured role. Reject has optional
+reason modal. Worker `community:review-tick` sends at most 10 new cards/tick and syncs
+20 edits, bounded 429 backoff and no automatic replay on uncertain outcome. A
+confirmed message receipt alone begins the eight-hour timer. Schedule it every
+minute with Task Scheduler running `php artisan schedule:run`. See setup-guide for
+private bot values and permissions.
+
+New admin commands: `community:link-discord {email} {discordId} {--unlink}` and
+`community:moderator {email} {--revoke}`. Both require an existing active verified
+account. Discord ID linking is unique; no automatic email-based account merge.
+SMTP non-secrets and user-supplied sender defaults remain in `.env.example`; the
+password is blank and no test mail is sent.
+
+PHP 26 tests/256 assertions pass (test HTTP is mocked); Node reference 33 groups
+pass. Browser checks used only a disposable loopback synthetic account and image.
+Production staging passes provider discovery and displays auth routes, DB migrations
+and one-minute review schedule; v3 gallery copy migration retained existing art.
+Local archives: `build/PixelDoodle-Community-0.1.0-public.zip` and
+`build/PixelDoodle-Community-0.1.0-app-private.zip`; extracted to F:/pixeldoodle
+and F:/pixeldoodle-app respectively. The private archive contains Laravel app and
+production vendor plus sibling frontend/docs. Scanned for live .env, SQLite DBs,
+logs and test fixtures. No live Apache, email, Discord message, server deployment,
+GitHub push or native build performed; user must do live setup from checklist.
