@@ -1,4 +1,11 @@
 # Pixel Doodle Community 0.4.0 — local gallery prototype
+## Native community continuation (2026-10-16)
+
+The PHP device API is implemented in the separate `community-php` application.
+Native clients support paired Recent, Favorites and My Uploads views, bounded
+thumbnail caching and confirmed import of the device-sized derivative. Native
+submission metadata, preview and chunked upload UI remain incomplete; device and
+hardware acceptance is pending. Older sections below describe earlier milestones.
 
 Run from this folder with Node 24+:
 

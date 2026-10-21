@@ -25,6 +25,10 @@ recovery*
 seed.bin
 consuming.bin
 next.bin
+discord-webhook.txt
+private_webhook.h
+grant*.bin
+grant.new
 *.pxp
 *.pxr
 *.pdd

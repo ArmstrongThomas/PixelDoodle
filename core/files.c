@@ -216,9 +216,9 @@ static unsigned char *ase_encode(PdDocument *d,size_t *n){
     if(d->palette_count){unsigned char *p=b+at;w32(p,26+d->palette_count*6);w16(p+4,0x2019);w32(p+6,d->palette_count);w32(p+14,d->palette_count-1);for(unsigned i=0;i<d->palette_count;i++){uint32_t c=d->palette[i];p[28+i*6]=(unsigned char)(c>>16);p[29+i*6]=(unsigned char)(c>>8);p[30+i*6]=(unsigned char)c;p[31+i*6]=(unsigned char)(c>>24);}}return b;
 }
 static void png_chunk(unsigned char *b,const char *type,const unsigned char *data,unsigned n){be32(b,n);memcpy(b+4,type,4);if(n)memcpy(b+8,data,n);be32(b+8+n,(uint32_t)crc32(0,b+4,n+4));}
-static unsigned char *png_encode(PdDocument *d,size_t *n){
-    unsigned stride=1+d->width*4,raw_n=d->height*stride;unsigned char *raw=malloc(raw_n);if(!raw)return NULL;pd_composite(d);
-    for(unsigned y=0;y<d->height;y++){raw[y*stride]=0;for(unsigned x=0;x<d->width;x++){uint32_t c=pd_image(d)[y*d->stride+x];unsigned char *p=raw+y*stride+1+x*4;p[0]=(unsigned char)(c>>16);p[1]=(unsigned char)(c>>8);p[2]=(unsigned char)c;p[3]=(unsigned char)(c>>24);}}
+static unsigned char *png_encode(PdDocument *d,size_t *n,bool visible){
+    unsigned stride=1+d->width*4,raw_n=d->height*stride;unsigned char *raw=malloc(raw_n);if(!raw)return NULL;if(visible)pd_composite(d);const uint32_t *pixels=visible?pd_image(d):pd_pixels(&d->layer[d->active]);unsigned opacity=visible?255:d->layer[d->active].opacity;
+    for(unsigned y=0;y<d->height;y++){raw[y*stride]=0;for(unsigned x=0;x<d->width;x++){uint32_t c=pixels[y*d->stride+x];if(!visible)c=(c&0x00ffffffu)|((((c>>24)*opacity+127)/255)<<24);unsigned char *p=raw+y*stride+1+x*4;p[0]=(unsigned char)(c>>16);p[1]=(unsigned char)(c>>8);p[2]=(unsigned char)c;p[3]=(unsigned char)(c>>24);}}
     /* Two uncompressed DEFLATE blocks: no compression workspace on DS. */
     unsigned zlen=2+raw_n+5*((raw_n+65534)/65535)+4;unsigned char *z=malloc(zlen);if(!z){free(raw);return NULL;}z[0]=0x78;z[1]=1;unsigned at=2,off=0;
     while(off<raw_n){unsigned len=raw_n-off;if(len>65535)len=65535;z[at++]=(off+len==raw_n)?1:0;w16(z+at,len);w16(z+at+2,len^65535);at+=4;memcpy(z+at,raw+off,len);at+=len;off+=len;}be32(z+at,(uint32_t)adler32(1,raw,raw_n));free(raw);
@@ -241,7 +241,7 @@ static bool write_bytes(const char *path,unsigned char *b,size_t n,bool overwrit
 }
 
 bool pd_write_file(PdDocument *d,const char *path,unsigned kind,bool overwrite,char error[64]){
-    if(d->editing||!pd_capacity(d->width,d->height,d->profile)||kind>2||d->palette_count>256)return fail(error,"Invalid save operation");size_t n=0;unsigned char *b=kind==0?native_encode(d,&n):kind==1?ase_encode(d,&n):png_encode(d,&n);if(!b)return fail(error,"Not enough memory");bool ok=write_bytes(path,b,n,overwrite,error);free(b);if(ok&&kind==0){d->saved_revision=d->revision;d->saved_palette_count=d->palette_count;memcpy(d->saved_palette,d->palette,sizeof(d->palette));}return ok;
+    if(d->editing||!pd_capacity(d->width,d->height,d->profile)||kind>3||d->palette_count>256)return fail(error,"Invalid save operation");size_t n=0;unsigned char *b=kind==0?native_encode(d,&n):kind==1?ase_encode(d,&n):png_encode(d,&n,kind==2);if(!b)return fail(error,"Not enough memory");bool ok=write_bytes(path,b,n,overwrite,error);free(b);if(ok&&kind==0){d->saved_revision=d->revision;d->saved_palette_count=d->palette_count;memcpy(d->saved_palette,d->palette,sizeof(d->palette));}return ok;
 }
 
 bool pd_write_recovery(PdDocument *d,const char *path,char error[64]){

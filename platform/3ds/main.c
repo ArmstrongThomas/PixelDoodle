@@ -18,6 +18,7 @@ int main(void){
     mkdir("sdmc:/3ds",0777);mkdir("sdmc:/3ds/PixelDoodle",0777);
     bool newer=false;bool expanded=R_SUCCEEDED(APT_CheckNew3DS(&newer))&&newer&&osGetMemRegionSize(MEMREGION_APPLICATION)>=96u*1024u*1024u;
     app_init(a,320,240,"sdmc:/3ds/PixelDoodle",newer?(expanded?"New 3DS":"New 3DS (STD RAM)"):"3DS");a->doc.profile=expanded?4:3;
+    pd_pairing_init(a);
     u64 previous=0;bool was_drawing=false;
     while(aptMainLoop()&&!a->exit_requested){
         gspWaitForVBlank();u64 start=svcGetSystemTick();hidScanInput();u32 down=hidKeysDown(),held=hidKeysHeld();touchPosition t={0};hidTouchRead(&t);
@@ -37,5 +38,5 @@ int main(void){
         }
         previous=start;was_drawing=drawing;
     }
-    pd_dispose(&a->doc);free(a);free(bottom);free(top);gfxExit();return 0;
+    pd_pairing_exit();pd_dispose(&a->doc);free(a);free(bottom);free(top);gfxExit();return 0;
 }

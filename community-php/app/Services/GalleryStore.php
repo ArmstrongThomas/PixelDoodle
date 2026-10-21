@@ -3,7 +3,7 @@ namespace App\Services;
 use PDO;use Illuminate\Support\Str;
 final class GalleryStore {
  public readonly PDO $db;
- public function __construct(string $path){if(!is_file($path))throw new \RuntimeException('Initialize the gallery database first');$this->db=new PDO('sqlite:'.$path,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);$this->db->exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000');if((int)$this->db->query('PRAGMA user_version')->fetchColumn()!==4)throw new \RuntimeException('Gallery schema 4 required; run gallery:migrate');}
+ public function __construct(string $path){if(!is_file($path))throw new \RuntimeException('Initialize the gallery database first');$this->db=new PDO('sqlite:'.$path,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);$this->db->exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000');if((int)$this->db->query('PRAGMA user_version')->fetchColumn()!==5)throw new \RuntimeException('Gallery schema 5 required; run gallery:migrate');}
  public function transaction(callable $fn):mixed {$this->db->exec('BEGIN IMMEDIATE');try{$r=$fn();$this->db->exec('COMMIT');return $r;}catch(\Throwable $e){$this->db->exec('ROLLBACK');throw $e;}}
  public function run(string $sql,array $args=[]):\PDOStatement {$q=$this->db->prepare($sql);$q->execute($args);return $q;}
  public function ingest(string $bytes,string $artist,string $title,array $tags=[],string $description="",?string $requestId=null):array {

@@ -45,7 +45,13 @@ and backups. The PHP auth database (`DB_DATABASE`) is separate from the gallery
 service identity write access only to that folder, Laravel `storage` and
 `bootstrap/cache`. Do not make the app or webroot writable by visitors.
 
-From `F:\pixeldoodle-app\community-php` run:
+Once the private ZIP is extracted and `community-php\.env` is configured, you can
+double-click `Update-Community.bat` at the root of the extracted private package.
+It checks for PHP CLI, the Laravel app and `.env`, asks before proceeding, clears
+the configuration cache, runs the auth and gallery migrations, and clears the
+cache again. It never creates or replaces `.env` or `APP_KEY`. Back up
+`F:\pixeldoodle-data` before accepting the migration prompt. If you prefer to run
+the commands manually, use `F:\pixeldoodle-app\community-php`:
 
 ```powershell
 php artisan package:discover
@@ -56,9 +62,14 @@ php artisan config:clear
 ```
 
 Only run `key:generate` for the initial blank key. The gallery migrator supports
-schema versions 0 through 3 and upgrades them transactionally to version 4. It
+schema versions 0 through 4 and upgrades them transactionally to version 5. It
 refuses a nonempty unversioned database and inserts no synthetic artworks.
 Schedule a consistent SQLite backup before migrating an existing gallery.
+Schema 5 adds device favorites and resumable console-upload sessions/chunks.
+It does not enable website uploads or change the authentication database.
+Keep the installed version's current pairing setting until the independent
+hardware queue is complete; no deployment or production setting change was
+performed by preparing this package.
 
 ## 3. Apache and HTTPS
 
@@ -99,6 +110,12 @@ Port 587 uses SMTP with STARTTLS; leave `MAIL_SCHEME` unset unless the host
 requires a different scheme. Enable `EMAIL_ENABLED=true` after setting the private
 password and verify the sender domain/delivery. No live email has been sent by the
 build. Codes are hashed, expire after five minutes and allow three attempts.
+The browser sign-in form also asks a one-time arithmetic verification question
+before requesting a code; it is bound to the current browser session and expires
+after five minutes. No third-party CAPTCHA service is used. OTP sends are capped
+at ten per address and ten per client IP per ten minutes, while failed mail
+delivery still consumes a request. Keep the browser open and its cookies enabled
+through the challenge and send steps.
 
 ## 6. Artist profiles, uploads and the gallery
 

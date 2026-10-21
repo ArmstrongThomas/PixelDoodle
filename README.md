@@ -3,21 +3,39 @@
 Running queue: [docs/HANDS-ON-CHECKLIST.md](docs/HANDS-ON-CHECKLIST.md).
 Provider/hosting walkthrough: [docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md).
 
-# Pixel Doodle 0.12.0
+# Community implementation status (2026-10-16)
+
+Local PHP work includes schema-5 scoped favorites and resumable PNG upload APIs. Previously prepared 0.3.5 server archives remain local under `build/`; this increment produced no new server package. Fresh native build and verification results are recorded in `docs/HANDS-ON-CHECKLIST.md`.
+
+The native Community page now has Cached, Recent, Favorites and My Uploads modes on both handhelds, with a reusable touch-scroll dropdown, bounded remote thumbnails, favorite toggles, moderation status/reason and confirmed import of the device-sized PNG derivative. Grant errors distinguish invalid/revoked grants (401, clear and re-pair) from missing scopes (403, preserve and explicitly re-pair). NDS DNS resolution is nonblocking and bounded. Console submission metadata, immutable preview and resumable chunk upload are still unimplemented. Host and PHP checks pass; 3DSX/CIA and NDS builds pass. On 2026-10-21, Docker Desktop 4.82's stale runtime sockets were quarantined without deleting them, then Docker Desktop was updated in place to 4.96.0; Linux Engine 29.9.1 is running. DSi pairing and online-gallery hardware acceptance are the next tests. No device transfer or card write occurred.
+# Pixel Doodle 0.13.0 candidate
 
 Offline solo pixel art for Nintendo DS/DSi and Nintendo 3DS. **One repository, one shared C engine and UI, three outputs: NDS, 3DSX and CIA.**
 
-Current priorities: [agreed roadmap](docs/ROADMAP.md). Slice 1 is accepted on physical 3DS. User accepted the 0.2.0 file/Aseprite flows on physical 3DS and R2 drawing responsiveness on DS Lite. Recent palette scrolling/editing was accepted locally, with residual melonDS sluggishness motivating the latest optimization. Paired-control remapping is accepted on 3DS; slice 2 covers remaining color/palette features.
+## Current build profiles
+
+Community pages are disabled in standard builds while that feature is postponed. The separate private builds add **Send Sprite** to Menu, with **Send Active Layer** and **Send Visible Composite** choices. The first sends only the selected layer, preserving its transparency and opacity; the second flattens all visible layers. Build both private console packages with `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Target all -Private`. Outputs are `build/private/nds/PixelDoodle-Private.nds` and `build/private/3ds/PixelDoodle-Private.3dsx` (homebrew 3DSX; no CIA is produced).
+
+Private builds embed the webhook URL from the ignored, one-line `discord-webhook.txt` in the repository root at build time. The URL supplied for this candidate is already in that local build input; no webhook file needs to be copied to either console. A one-line `sdmc:/3ds/PixelDoodle/private/discord-webhook.txt` on 3DS or `fat:/PixelDoodle/private/discord-webhook.txt` on DSi overrides the embedded URL when present. An invalid override stops the send. Treat the private binaries and any override file as credentials. The app temporarily writes `share.png` in its private app folder and removes it after the upload finishes. A connection error is shown in the app and does not trigger a second upload automatically.
+
+The 2026-10-21 private NDS diagnostic image fixes the Wi-Fi ARM7 core selection
+that caused a lockup immediately after `share.png` was written. The upload now
+reports Wi-Fi initialization, association/DHCP, DNS, certificate verification,
+upload, and response stages in the app's notice line. Load
+`build/private/nds/PixelDoodle-Private.nds` with melonDS DLDI enabled; folder
+sync makes the virtual SD card writable and exposes `PixelDoodle/private`.
+
+Current priorities: [agreed roadmap](docs/ROADMAP.md). On physical New 3DS XL, the user has accepted symmetry/tile, selection tools, brush options, layers and file/Aseprite flows. A combined 512x canvas + both symmetry/tile axes + large brush + six layers is slow. The replacement 3DS software TLS passes live host begin/pending-poll checks; new emulator and hardware acceptance remain pending. Native Online/Cached gallery browsing, favorites and My Uploads are implemented but awaiting live-device acceptance.
 
 ## Local community website prototype
 
-The [community website/service](community/README.md) now runs locally at http://127.0.0.1:4178 when started with `node community/server.mjs`. Explore synthetic artwork, search/filter, visit artist pages, inspect integer zoom/tile previews and download PNGs for the handheld cache. Public read boundaries are tested. Accounts, uploads, moderation and direct handheld networking remain future work; nothing is published online. Native build version remains 0.12.0.
+The [community website/service](community/README.md) is deployed separately as PHP/Apache at `https://pixels.7db.pw/`. Website uploads remain hidden/disabled. Verified account pairing is opt-in through `ENABLE_DEVICE_PAIRING`; explicit pair/re-pair requests the gallery, favorites and upload scopes, while existing grants are not silently upgraded. NDS TLS requires a fresh unique seed in each card's app-private folder; use `scripts/provision-nds-seed.ps1` and do not clone or reuse Collab Doodle's seed. The 3DS client now reuses Collab Doodle software TLS. Run `scripts/test-https-live.ps1` explicitly to test the crypto configuration and POST parser using host adapters against the live site (creates an unapproved, expiring request). NDS hardware pairing remains untested.
 
 ## 0.12.0 Community: offline cache viewer
 
 **Menu > Community** opens a six-thumbnail gallery with top-screen preview, pages, Refresh and **Open Copy**. Opening confirms before replacing current art, then creates an unsaved imported project. Browsing never changes your artwork.
 
-For this first stage, manually place PNGs up to 128x128 in `PixelDoodle/community` on DS/DSi, or `3ds/PixelDoodle/community` on the 3DS SD card. No folder or storage shows an empty-state explanation. Invalid images remain unreadable instead of replacing your art. This is a local cache viewer; website downloads, accounts, favorites and uploads are not connected yet.
+For this first stage, manually place PNGs up to 128x128 in `PixelDoodle/community` on DS/DSi, or `3ds/PixelDoodle/community` on the 3DS SD card. No folder or storage shows an empty-state explanation. Invalid images remain unreadable instead of replacing your art. This is also the local cache mode. Online modes use the paired account and cache one page of device-sized thumbnails. Import requires confirmation and creates an unsaved project; full-resolution media download and native submission are not implemented yet.
 
 Host checks, native layout inspection and all three builds pass. User testing remains deferred. [NDS candidate](build/test-0.12.0/PixelDoodle.nds) / [3DSX candidate](build/test-0.12.0/PixelDoodle.3dsx).
 
@@ -223,3 +241,7 @@ Tool slots now write PDB4, still 20 bytes with CRC/readback and PDB1–3 compati
 ### App identity assets
 
 The community five-square logo is used for the NDS banner icon, 3DSX SMDH, CIA icon and HOME Menu banner. Sources and generated rasters live in assets/. To regenerate icons run `python scripts/generate-icons.py` (Pillow required). `python scripts/verify-icons.py` verifies packed NDS/3DSX icon pixels after building. The CIA banner generator also uses Pillow. Icon-update candidates are in build/test-0.12.0-icons; native version remains 0.12.0.
+
+
+
+

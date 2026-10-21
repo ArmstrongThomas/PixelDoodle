@@ -3,6 +3,7 @@ use Illuminate\Support\Facades\Route;use App\Http\Controllers\AccountController;
 Route::get('/api/account/status',[AccountController::class,'status']);
 Route::post('/api/auth/sign-in/social',[AccountController::class,'discord']);
 Route::get('/api/auth/callback/discord',[AccountController::class,'callback']);
+Route::get('/api/auth/email-otp/challenge',[AccountController::class,'emailCodeChallenge']);
 Route::post('/api/auth/email-otp/send-verification-otp',[AccountController::class,'sendCode']);
 Route::post('/api/auth/sign-in/email-otp',[AccountController::class,'verifyCode']);
 Route::post('/api/auth/sign-out',[AccountController::class,'logout']);

@@ -2,8 +2,11 @@
 #define PD_APP_H
 #include "pixel.h"
 #include "files.h"
+#include "community.h"
+#include "dropdown.h"
 enum { PD_TOOLS=1,PD_PAN=2,PD_SAMPLE=4,PD_ZOOM=8,PD_ERASE=16,PD_SAVE=32,PD_MENU=64,PD_SHOULDER_L=128,PD_SHOULDER_R=256 };
-typedef struct {
+typedef struct PdApp PdApp;
+struct PdApp {
     PdDocument doc;
     int width,height,zoom,ox,oy,page,confirm;
     int lastx,lasty,panx,pany,subx,suby;
@@ -43,6 +46,16 @@ typedef struct {
     unsigned recent_project_count;
     int recent_project_selected;
     PdListing listing;
+    PdCommunityPage community_page;
+    PdDropdown community_dropdown;
+    char upload_title[121],upload_description[2001],upload_tags[257];
+    char upload_snapshot[PD_PATH],upload_request_id[37];
+    unsigned upload_size,upload_stage;
+    bool upload_snapshot_ready,upload_busy;
+    unsigned community_mode;
+    bool community_loading,community_loaded;
+    bool community_action_busy;
+    char community_status[64];
     uint32_t gallery_thumbs[6][32*32];
     unsigned gallery_page,gallery_count;
     bool gallery_ready[6];
@@ -87,7 +100,21 @@ typedef struct {
     bool layer_scrolling;
     bool layer_popup,layer_delete,layer_drag,opacity_drag;
     const char *platform;
-} PdApp;
+    void (*online_begin)(PdApp *app);
+    void (*online_list)(PdApp *app,unsigned mode,unsigned offset);
+    void (*online_favorite)(PdApp *app,unsigned item,bool favorite);
+    bool (*online_submit)(PdApp *app,const char *path,const char *request_id,
+                          const char *title,const char *description,
+                          const char *tags,unsigned size);
+    void (*online_tick)(PdApp *app);
+#ifdef PD_PRIVATE_BUILD
+    void (*share_current)(PdApp *app,bool visible);
+    void (*share_tick)(PdApp *app);
+#endif
+    unsigned pairing_state;
+    uint32_t pairing_poll_at;
+    char pairing_user_code[10], pairing_message[64];
+};
 void app_init(PdApp *a,int w,int h,const char *directory,const char *platform);
 void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held);
 unsigned app_bindings(const PdApp *a,unsigned actions);
@@ -95,4 +122,9 @@ void app_text_result(PdApp *a,const char *text,bool accepted);
 void app_pan_pixels(PdApp *a,int dx,int dy);
 void app_pan(PdApp *a,int dx,int dy);
 void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int topw,int toph);
+void pd_pairing_init(PdApp *a);
+void pd_pairing_exit(void);
+void pd_pairing_begin(PdApp *a);
+void pd_pairing_tick(PdApp *a);
+const char *pd_pairing_access_token(void);
 #endif

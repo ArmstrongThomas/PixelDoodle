@@ -1,5 +1,9 @@
 # Pixel Doodle agreed roadmap
 
+## Community milestone status (2026-10-16)
+
+The latest local increment adds schema-5 favorites and resumable console-upload APIs, expands bearer HTTP transport, moves 3DS pairing onto a worker, and fixes the NDS begin-response scope check. Automated PHP (35 tests / 312 assertions) and host checks, plus NDS/3DSX/CIA builds pass. Local 0.3.5 server packages extract and pass content checks; hashes are in build/PixelDoodle-Community-0.3.5-SHA256SUMS.txt. Handheld online gallery/favorites/My uploads/submission UI and chunk-stream integration remain unfinished; this is not an end-to-end completed community milestone. No deployment or hardware transfer was performed.
+
 2026-10-14. This roadmap supersedes conflicting priorities and account defaults in PLAN.md, GALLERY.md and FORMATS-AND-REPLAY.md. Those documents retain useful engineering detail, not implementation or acceptance claims.
 
 ## Baseline and workflow
@@ -210,3 +214,29 @@ SMTP, Discord portal, worker timer and final first-user acceptance remain in
 HANDS-ON-CHECKLIST.md. Direct handheld uploads, Aseprite website uploads, account
 link UI and timelapse playback remain later work. No production deployment or
 GitHub publication was performed.
+
+## Device pairing and 3DS transport candidate (2026-10-15)
+
+PHP pairing is wired to the auth-database migrations and opt-in native routes.
+Short-lived one-time codes, explicit website owner approval, hashed private
+polling/access credentials, backoff, bounded scopes, 30-day device grants,
+owner-scoped revocation and disabled-account checks are covered by the local
+suite. `ENABLE_DEVICE_PAIRING` remains false by default and was not changed in
+production configuration. The 3DS Community screen uses libctru httpc against
+the fixed HTTPS origin, keeps certificate verification enabled, rejects
+redirects, polls only on that screen, validates returned scope/code fields, and
+stores a CRC-checked scoped bearer in alternating app-owned SD slots. The
+offline cache and stylus path remain independent. Local PHP tests and 3DSX/CIA
+builds pass; physical certificate-chain, failure-path and pairing checks remain
+pending.
+
+NDS/DSi account pairing is unavailable in this candidate. The installed
+BlocksDS/libnds toolchain and NDS portlibs expose no verified HTTPS client or
+reviewed TLS dependency, and the client has no validated cryptographic entropy
+source. Do not use plaintext HTTP, `rand()`, or another application's seed. A
+TLS library/license review, entropy plan and physical resource/handshake tests
+are required before implementing that transport. The SD bearer is not encrypted
+at rest; see `docs/GALLERY.md` and `docs/HANDS-ON-CHECKLIST.md`.
+
+
+

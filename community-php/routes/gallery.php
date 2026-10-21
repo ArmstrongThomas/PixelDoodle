@@ -11,5 +11,6 @@ foreach(['media'=>false,'thumbs'=>true] as $prefix=>$thumb) Route::get('/'.$pref
 if(config('pixels.auth_enabled'))Route::middleware([\App\Http\Middleware\AccountBoundary::class,'web'])->group(base_path('routes/accounts.php'));
 else Route::get('/api/account/status',fn()=>['enabled'=>false,'providers'=>[]]);
 require __DIR__.'/devices.php';
+require __DIR__.'/device-community.php';
 Route::post('/api/discord/interactions', \App\Http\Controllers\DiscordInteractionController::class);
 Route::any('/api/{path}',fn()=>response()->json(['error'=>'This feature is not enabled during the PHP migration.'],503))->where('path','(?:auth|account|device)/.*');

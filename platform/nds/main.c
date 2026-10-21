@@ -2,6 +2,7 @@
 #include <fat.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include "app.h"
 static unsigned actions(unsigned k){unsigned a=0;
@@ -20,6 +21,8 @@ int main(void){
     if(mounted&&readable("fat:/")){mkdir("fat:/PixelDoodle",0777);if(readable("fat:/PixelDoodle"))dir="fat:/PixelDoodle";}
     else if(mounted&&twl&&readable("sd:/")){mkdir("sd:/PixelDoodle",0777);if(readable("sd:/PixelDoodle"))dir="sd:/PixelDoodle";}
     app_init(a,256,192,dir,twl?"DSi TWL":"DS NTR");a->doc.profile=twl?2:1;
+    if(dir[0]){char private_dir[300];snprintf(private_dir,sizeof(private_dir),"%s/private",dir);mkdir(private_dir,0777);}
+    pd_pairing_init(a);
     cpuStartTiming(0);uint32_t previous=0,clock_previous=0;uint64_t elapsed_us=0;bool was_drawing=false;
     while(!a->exit_requested){
         cothread_yield_irq(IRQ_VBLANK);uint32_t start=cpuGetTiming();scanKeys();unsigned down=keysDown(),held=keysHeld();touchPosition t={0};touchRead(&t);
@@ -36,5 +39,5 @@ int main(void){
         }
         previous=start;was_drawing=drawing;
     }
-    cpuEndTiming();pd_dispose(&a->doc);free(a);free(bottom);free(top);return 0;
+    pd_pairing_exit();cpuEndTiming();pd_dispose(&a->doc);free(a);free(bottom);free(top);return 0;
 }

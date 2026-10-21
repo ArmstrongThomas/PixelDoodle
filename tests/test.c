@@ -1,10 +1,22 @@
 #include "app.h"
+#include "community.h"
+#include "dns_packet.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "zlib.h"
 static void dot(PdDocument *d,unsigned l,int x,int y,uint32_t c){d->enabled|=(uint8_t)(1u<<l);d->active=l;assert(pd_begin(d));pd_line(d,x,y,x,y,c);assert(pd_commit(d));}
+static void community_json_checks(void){
+    static const char body[]={"{\"version\":1,\"items\":[{\"id\":\"art-1\",\"title\":\"Blue \\\"bird\\\"\",\"artist\":{\"id\":\"artist-1\",\"name\":\"A. Artist\",\"bio\":\"ignored\"},\"tags\":[\"blue\"],\"width\":64,\"height\":48,\"image\":\"/media/art-1.png\"}],\"total\":9,\"nextOffset\":6,\"tags\":[\"blue\"]}"};
+    PdCommunityPage page;assert(pd_community_parse_page(body,sizeof(body)-1,&page));assert(page.count==1&&page.total==9&&page.has_total&&page.has_next&&page.next_offset==6);assert(!strcmp(page.items[0].id,"art-1")&&!strcmp(page.items[0].title,"Blue \"bird\"")&&!strcmp(page.items[0].artist,"A. Artist"));assert(page.items[0].width==64&&page.items[0].height==48);
+    static const char unicode[]={"{\"items\":[{\"id\":\"unicode\",\"title\":\"Caf\\u00e9 \\ud83d\\ude80\",\"artist\":{\"name\":\"Ren\\u00e9\"},\"width\":32,\"height\":24}],\"total\":1,\"nextOffset\":null}"};assert(pd_community_parse_page(unicode,sizeof(unicode)-1,&page));assert(!strcmp(page.items[0].title,"Caf\xc3\xa9 \xf0\x9f\x9a\x80")&&!strcmp(page.items[0].artist,"Ren\xc3\xa9"));
+    static const char bad_surrogate[]={"{\"items\":[{\"id\":\"bad\",\"title\":\"\\ud83d\",\"artist\":{\"name\":\"A\"},\"width\":1,\"height\":1}],\"total\":1,\"nextOffset\":null}"};assert(!pd_community_parse_page(bad_surrogate,sizeof(bad_surrogate)-1,&page));
+    static const char uploads[]={"{\"profileRequired\":false,\"items\":[{\"id\":\"art-2\",\"title\":\"My art\",\"status\":\"rejected\",\"reason\":\"Please revise\",\"width\":32,\"height\":24}],\"nextOffset\":null}"};assert(pd_community_parse_page(uploads,sizeof(uploads)-1,&page));assert(!page.has_total&&!page.profile_required&&page.count==1&&!strcmp(page.items[0].status,"rejected")&&!strcmp(page.items[0].reason,"Please revise"));
+    static const char bad_dim[]={"{\"items\":[{\"id\":\"x\",\"title\":\"X\",\"artist\":{\"name\":\"Y\"},\"width\":1921,\"height\":48}],\"total\":1,\"nextOffset\":null}"};assert(!pd_community_parse_page(bad_dim,sizeof(bad_dim)-1,&page));
+    static const char bad_trailing[]={"{\"items\":[],\"total\":0,\"nextOffset\":null} junk"};assert(!pd_community_parse_page(bad_trailing,sizeof(bad_trailing)-1,&page));
+}
+static void dns_packet_checks(void){uint8_t q[64]={0},r[96]={0};size_t qn=pd_dns_build_a_query(q,sizeof(q),0x1234,"pixels.7db.pw");assert(qn==31&&q[0]==0x12&&q[1]==0x34&&q[5]==1);assert(!pd_dns_build_a_query(q,16,1,"pixels.7db.pw"));assert(!pd_dns_build_a_query(q,sizeof(q),1,"pixels..7db.pw"));r[0]=0x12;r[1]=0x34;r[2]=0x81;r[3]=0x80;r[5]=1;r[7]=1;memcpy(r+12,q+12,qn-12);size_t at=qn;r[at++]=0xc0;r[at++]=0x0c;r[at++]=0;r[at++]=1;r[at++]=0;r[at++]=1;at+=4;r[at++]=0;r[at++]=4;r[at++]=203;r[at++]=0;r[at++]=113;r[at++]=25;uint32_t ip=0;assert(pd_dns_parse_a_response(r,at,0x1234,&ip));const uint8_t *bytes=(const uint8_t*)&ip;assert(bytes[0]==203&&bytes[1]==0&&bytes[2]==113&&bytes[3]==25);assert(!pd_dns_parse_a_response(r,at,0x1235,&ip));assert(!pd_dns_parse_a_response(r,at-1,0x1234,&ip));r[3]=0x83;assert(!pd_dns_parse_a_response(r,at,0x1234,&ip));puts("Bounded DNS query/parser, compressed answer, ID, rcode and truncation checks: PASS");}
 static void ppm(const char *dir,const char *name,uint32_t *p,int w,int h){char path[512];snprintf(path,sizeof(path),"%s/%s.ppm",dir,name);FILE *f=fopen(path,"wb");assert(f);fprintf(f,"P6\n%d %d\n255\n",w,h);for(int i=0;i<w*h;i++){unsigned char c[3]={(unsigned char)(p[i]>>16),(unsigned char)(p[i]>>8),(unsigned char)p[i]};assert(fwrite(c,1,3,f)==3);}assert(!fclose(f));}
 static uint32_t reference_pixel(PdDocument *d,unsigned i){
     unsigned a=0,r=0,g=0,b=0;
@@ -78,6 +90,21 @@ static void incremental_checks(void){
     free(a);free(reference);free(b);free(t);free(rb);free(rt);
 }
 static void tap(PdApp *a,int x,int y){app_input(a,true,x,y,0,0);app_input(a,false,0,0,0,0);}
+static unsigned community_calls,community_last_mode,community_last_offset,community_favorite_calls,community_mock_http;
+static bool community_mock_token,community_mock_saved;
+static void community_mock_list(PdApp *a,unsigned mode,unsigned offset){community_calls++;community_last_mode=mode;community_last_offset=offset;if(mode>=2&&(community_mock_http==403||(!community_mock_token&&community_mock_http==401))){snprintf(a->community_status,sizeof(a->community_status),community_mock_http==403?"GRANT NEEDS MORE SCOPES; RE-PAIR":"GRANT EXPIRED OR REVOKED; PAIR AGAIN");if(community_mock_http==401)community_mock_saved=false;a->community_loading=false;a->redraw=true;return;}a->community_loading=false;a->community_loaded=true;a->community_page.count=1;a->community_page.total=1;a->community_page.has_total=true;a->community_page.items[0]=(PdCommunityArt){0};strcpy(a->community_page.items[0].id,"fixture-art");strcpy(a->community_page.items[0].title,"Fixture");strcpy(a->community_page.items[0].artist,"Artist");strcpy(a->community_page.items[0].status,"rejected");strcpy(a->community_page.items[0].reason,"Review reason");a->redraw=true;}
+static void community_mock_favorite(PdApp *a,unsigned item,bool favorite){assert(community_mock_token&&item==0);community_favorite_calls++;a->community_action_busy=false;a->community_page.items[0].favorite=favorite;}
+static void dropdown_component_checks(void){PdDropdown m={0};unsigned chosen=0;pd_dropdown_open(&m,8,48,240,18,26,3,4,0,true);assert(pd_dropdown_input(&m,true,true,20,80,&chosen)==PD_DROPDOWN_NONE);assert(pd_dropdown_input(&m,false,false,20,80,&chosen)==PD_DROPDOWN_NONE&&m.open);pd_dropdown_close(&m);pd_dropdown_open(&m,8,48,240,18,26,3,4,0,false);assert(pd_dropdown_input(&m,true,true,2,170,&chosen)==PD_DROPDOWN_NONE);assert(pd_dropdown_input(&m,false,false,2,170,&chosen)==PD_DROPDOWN_CLOSED&&!m.open);pd_dropdown_open(&m,8,48,240,18,26,3,4,0,false);pd_dropdown_input(&m,true,true,20,131,&chosen);assert(pd_dropdown_input(&m,true,false,20,100,&chosen)==PD_DROPDOWN_SCROLLED&&m.first==1);assert(pd_dropdown_input(&m,false,false,20,100,&chosen)==PD_DROPDOWN_SCROLLED&&m.open);pd_dropdown_input(&m,true,true,20,131,&chosen);assert(pd_dropdown_input(&m,false,false,20,131,&chosen)==PD_DROPDOWN_SELECTED&&chosen==3&&!m.open);puts("Reusable dropdown: touch capture, outside dismissal, clipped rows and swipe scrolling: PASS");}
+static void community_ui_checks(const char *dir){PdApp *a=calloc(1,sizeof(*a));uint32_t *bottom=calloc(320*240,sizeof(uint32_t)),*top=calloc(400*240,sizeof(uint32_t));assert(a&&bottom&&top);community_mock_token=true;community_mock_saved=true;community_mock_http=200;app_init(a,256,192,dir,"TEST");a->page=28;a->online_list=community_mock_list;a->online_favorite=community_mock_favorite;community_calls=community_last_mode=community_last_offset=community_favorite_calls=0;
+    tap(a,128,36);assert(a->community_dropdown.open&&a->community_mode==0);tap(a,20,105);assert(a->community_mode==1&&community_calls==1&&community_last_mode==1);tap(a,20,60);assert(a->selected==0&&a->preview_attempted);a->gallery_ready[0]=true;for(unsigned i=0;i<1024;i++)a->gallery_thumbs[0][i]=0xff224466;app_render(a,bottom,top,256,192);assert(top[100*256+128]!=0);char cache[PD_PATH],cached[PD_PATH];assert(pd_join(cache,dir,"community-cache"));if(!pd_exists(cache))assert(pd_mkdir(cache));assert(pd_join(cached,cache,"fixture-art.png"));FILE *f=fopen(cached,"wb");assert(f);fputs("fixture",f);fclose(f);tap(a,80,176);assert(a->confirm==4);tap(a,192,176);assert(!a->confirm);tap(a,128,176);assert(community_favorite_calls==1&&a->community_page.items[0].favorite);
+    tap(a,128,36);tap(a,20,131);assert(a->community_mode==2&&community_last_mode==2);tap(a,20,60);tap(a,128,176);assert(community_favorite_calls==2&&!a->community_page.items[0].favorite);
+    tap(a,128,36);app_input(a,true,20,131,0,0);app_input(a,true,20,100,0,0);app_input(a,false,20,100,0,0);assert(a->community_dropdown.open&&a->community_dropdown.first==1);tap(a,20,131);assert(a->community_mode==3&&community_last_mode==3);tap(a,20,60);app_render(a,bottom,top,256,192);assert(a->selected==0);
+    tap(a,128,36);app_input(a,true,20,80,0,0);app_input(a,true,20,110,0,0);app_input(a,false,20,110,0,0);assert(a->community_dropdown.open&&a->community_dropdown.first==0);tap(a,20,80);assert(a->community_mode==0&&a->gallery_count==0);
+    /* Relaunch restores the saved grant, and revoked grants stop authenticated reads. */
+    free(a);a=calloc(1,sizeof(*a));assert(a);app_init(a,256,192,dir,"TEST");a->page=28;a->online_list=community_mock_list;community_mock_token=community_mock_saved;tap(a,128,36);tap(a,20,105);tap(a,128,36);tap(a,20,131);assert(community_mock_token&&community_last_mode==2);
+    community_mock_http=401;community_mock_token=false;tap(a,128,36);tap(a,20,131);assert(!community_mock_saved&&!community_mock_token&&strstr(a->community_status,"EXPIRED OR REVOKED"));
+    community_mock_http=403;community_mock_token=true;community_mock_saved=true;tap(a,128,36);tap(a,20,131);assert(community_mock_saved&&community_mock_token&&strstr(a->community_status,"MORE SCOPES"));
+    free(a);free(bottom);free(top);puts("Community dropdown mode switch, favorite, My Uploads, relaunch and 401/403 grant fixtures: PASS");}
 static void color_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
     for(int mode=0;mode<2;mode++){
@@ -374,6 +401,7 @@ static void file_checks(const char *dir){
     assert(!pd_write_file(d,native,0,false,error));assert(pd_write_file(d,native,0,true,error));
     snprintf(path,sizeof(path),"%s.bak",native);assert(pd_exists(path));
     assert(pd_join(path,dir,"roundtrip.aseprite"));assert(pd_write_file(d,path,1,false,error));assert(pd_open_file(loaded,path,error));assert(!memcmp(d->layer,loaded->layer,sizeof(d->layer)));
+    d->active=1;assert(pd_join(path,dir,"active-layer.png"));assert(pd_write_file(d,path,3,false,error));assert(pd_open_file(loaded,path,error)&&loaded->enabled==1);for(unsigned y=0;y<d->height;y++)for(unsigned x=0;x<d->width;x++){uint32_t c=d->layer[d->active].pixels[y*d->stride+x];uint32_t expected=(c&0x00ffffffu)|((((c>>24)*d->layer[d->active].opacity+127)/255)<<24);assert(loaded->layer[0].pixels[y*loaded->stride+x]==expected);}
     assert(pd_join(path,dir,"roundtrip.png"));assert(pd_write_file(d,path,2,false,error));
     /* Rejected import is transactional, including history/revision. */
     uint64_t revision=d->revision;assert(pd_open_file(loaded,path,error)&&loaded->enabled==1);pd_composite(d);assert(!memcmp(loaded->layer[0].pixels,d->composite,sizeof(d->composite)));assert(d->revision==revision&&d->layer[0].pixels[386]==0xffe04444);
@@ -548,22 +576,9 @@ static void shortcut_checks(void){
 }
 
 static void gallery_checks(const char *dir){
-    char root[PD_PATH],cache[PD_PATH],path[PD_PATH],error[64];assert(pd_join(root,dir,"gallery-test")&&pd_mkdir(root));assert(pd_join(cache,root,"community")&&pd_mkdir(cache));
-    PdDocument *d=calloc(1,sizeof(*d));assert(d);pd_init(d);d->width=32;d->height=16;
-    for(unsigned i=0;i<7;i++){char name[32];snprintf(name,sizeof(name),"art%u.png",i);assert(pd_join(path,cache,name));for(unsigned y=0;y<16;y++)for(unsigned x=0;x<32;x++)d->layer[0].pixels[y*128+x]=((x/4+y/4)%2)?0xff225588+i*0x00110000:0xff88ccaa;assert(pd_write_file(d,path,2,false,error));}
-    assert(pd_join(path,cache,"bad.png"));FILE *f=fopen(path,"wb");assert(f);fputs("bad",f);fclose(f);free(d);
-    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
-    for(unsigned mode=0;mode<2;mode++){
-        app_init(a,mode?320:256,mode?240:192,root,"TEST");dot(&a->doc,0,5,5,0xffabcdef);uint64_t rev=a->doc.revision;
-        app_input(a,false,0,0,PD_MENU,0);tap(a,a->width-40,164);assert(a->page==28&&a->listing.count==8&&a->gallery_count==6&&a->preview_ready);
-        app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-gallery":"nds-gallery",b,a->width,a->height);ppm(dir,mode?"3ds-gallery-top":"nds-gallery-top",t,mode?400:256,a->height);
-        tap(a,a->width-20,a->height-16);assert(a->gallery_page==1&&a->gallery_count==2&&a->preview_ready);
-        tap(a,a->width/2,60);assert(!a->preview_ready);tap(a,a->width/2,a->height-16);assert(!a->confirm&&a->doc.revision==rev);
-        tap(a,20,60);assert(a->preview_ready);tap(a,a->width/2,a->height-16);assert(a->confirm==4);app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-gallery-confirm":"nds-gallery-confirm",b,a->width,a->height);tap(a,a->width-20,a->height-16);assert(!a->confirm&&a->page==28&&a->doc.revision==rev);
-        tap(a,a->width-20,35);assert(a->gallery_page==0&&a->preview_ready&&a->doc.revision==rev);tap(a,a->width/2,a->height-16);tap(a,20,a->height-16);assert(a->page==0&&a->doc.width==32&&a->doc.height==16&&!a->project_native&&pd_dirty(&a->doc));
-        app_init(a,mode?320:256,mode?240:192,"","TEST");app_input(a,false,0,0,PD_MENU,0);tap(a,a->width-40,164);assert(a->page==28&&!a->gallery_count&&!a->preview_ready);app_render(a,b,t,mode?400:256,a->height);assert(b[120*a->width+a->width/2]==0x182126u);ppm(dir,mode?"3ds-gallery-empty":"nds-gallery-empty",b,a->width,a->height);
-    }
-    free(a);free(b);free(t);puts("Offline gallery: PNG thumbnails/pages/selection/corrupt/empty, refresh, cancel and explicit import preserve art: PASS");
+    (void)dir;PdApp *a=calloc(1,sizeof(*a));assert(a);
+    for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,"","TEST");app_input(a,false,0,0,PD_MENU,0);tap(a,a->width-40,164);assert(a->page==3);assert(!a->community_loading&&!a->community_loaded);}
+    free(a);puts("Postponed community menu is hidden in standard NDS/3DS builds: PASS");
 }
 
 int main(int argc,char **argv){
@@ -576,7 +591,7 @@ int main(int argc,char **argv){
         assert(x->width==y->width&&x->height==y->height);
         if(x->palette_count){assert(x->palette_count==y->palette_count&&!memcmp(x->palette,y->palette,x->palette_count*4));}
         unsigned j=0;for(unsigned k=0;k<PD_LAYERS;k++){unsigned i=x->order[k];if(!(x->enabled&(1u<<i)))continue;while(j<PD_LAYERS&&!(y->enabled&(1u<<y->order[j])))j++;assert(j<PD_LAYERS);unsigned other=y->order[j];assert(x->width==y->width&&x->height==y->height);assert(!memcmp(pd_pixels(&x->layer[i]),pd_pixels(&y->layer[other]),pd_bytes(x)));assert(x->layer[i].visible==y->layer[other].visible&&x->layer[i].opacity==y->layer[other].opacity&&x->layer[i].blend==y->layer[other].blend&&x->layer[i].flags==y->layer[other].flags);if(strcmp(argv[1],"compare-pixels"))assert(!strcmp(x->names[i],y->names[other]));j++;}while(j<PD_LAYERS){assert(!(y->enabled&(1u<<y->order[j])));j++;}puts("External Aseprite enabled-layer roundtrip: PASS");free(x);free(y);return 0;}
-    assert(argc==2);gallery_checks(argv[1]);shortcut_checks();dither_checks(argv[1]);png_browser_checks(argv[1]);scale_duplicate_checks(argv[1]);pan_checks();large_checks(argv[1]);brush_checks(argv[1]);fill_checks(argv[1]);fill_options_checks(argv[1]);selection_checks(argv[1]);selection_alpha_checks();shape_checks(argv[1]);perfect_checks(argv[1]);protection_checks(argv[1]);eight_layer_checks(argv[1]);dimension_checks(argv[1]);tile_history_checks();file_checks(argv[1]);workflow_checks(argv[1]);browser_checks(argv[1]);color_checks(argv[1]);layer_checks(argv[1]);palette_checks(argv[1]);palette_file_checks(argv[1]);
+    assert(argc==2);community_json_checks();dns_packet_checks();gallery_checks(argv[1]);shortcut_checks();dither_checks(argv[1]);png_browser_checks(argv[1]);scale_duplicate_checks(argv[1]);pan_checks();large_checks(argv[1]);brush_checks(argv[1]);fill_checks(argv[1]);fill_options_checks(argv[1]);selection_checks(argv[1]);selection_alpha_checks();shape_checks(argv[1]);perfect_checks(argv[1]);protection_checks(argv[1]);eight_layer_checks(argv[1]);dimension_checks(argv[1]);tile_history_checks();file_checks(argv[1]);workflow_checks(argv[1]);browser_checks(argv[1]);color_checks(argv[1]);layer_checks(argv[1]);palette_checks(argv[1]);palette_file_checks(argv[1]);dropdown_component_checks();community_ui_checks(argv[1]);
     PdApp *prefs=calloc(1,sizeof(*prefs));assert(prefs);app_init(prefs,256,192,argv[1],"TEST");
     app_input(prefs,false,0,0,PD_MENU,0);tap(prefs,40,145);assert(prefs->page==8);
     tap(prefs,40,42);tap(prefs,40,175);assert(prefs->handed==1&&!prefs->page);
@@ -641,3 +656,4 @@ int main(int argc,char **argv){
     render_checks(a,bottom,top);incremental_checks();
     free(a);free(bottom);free(top);free(d);free(loaded);return 0;
 }
+

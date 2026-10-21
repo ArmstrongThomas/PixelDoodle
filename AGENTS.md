@@ -1,4 +1,293 @@
+## Complete local build set (2026-10-21)
+
+The standard packages were rebuilt after the private candidate: root
+`PixelDoodle.nds` (SHA-256
+`C3F17B34103CEA6AFC9587F2AFF3FC01E8A62D36D2A94752E633B941B3963F34`),
+`build/3ds/PixelDoodle.3dsx` (SHA-256
+`28A0EE20C5A96A871769FE67953E80D4BF8136E8EAE589EB726AFC77343CA903`),
+and `build/3ds/PixelDoodle.cia` (SHA-256
+`AEDF62661EAEFD870DCEBEA9B34D71E8191E5D7F949F1329F19AE38ED01AAC54`).
+The standard NDS header, ARM bounds and DLDI checks and CIA metadata check
+pass. The private NDS and 3DSX hashes below remain current. This makes five
+local packages in total; no private CIA was requested or produced.
+
+## DSi upload lockup diagnosis (2026-10-21)
+
+The first private NDS image exported `share.png` and then froze as soon as it
+started Wi-Fi. The ROM linked DSWiFi on ARM9 but used BlocksDS's default
+Maxmod-only ARM7 core. BlocksDS documents that this pairing hangs when ARM9
+initializes Wi-Fi. `Makefile.nds` now selects
+`sys/arm7/main_core/arm7_dswifi.elf`.
+
+The share path also moves `Wifi_InitDefault()` out of the touch event and into
+the cooperative network state machine. It requests DSi Wi-Fi mode so the
+library can load Advanced Setup entries, and the status line exposes Wi-Fi
+initialization, association/DHCP, DNS, certificate verification, upload, and
+response stages.
+Physical DSi 0.13.1 reached `WAITING FOR WI-FI / DHCP` without freezing, then
+raised a Data Abort when association completed and DNS setup began. The cause
+was `Wifi_GetIPInfo(NULL, NULL, ...)`: the DSWiFi API writes through the gateway
+and subnet pointers. `start_dns()` now passes separate writable `struct in_addr`
+objects for both.
+
+The first corrected hardware image then reported `SAVED WI-FI CONNECTION
+FAILED` with the working network in DSi Advanced Setup slot 4. The share path
+was only passing `WIFI_ATTEMPT_DSI_MODE` when `isDSiMode()` was already true.
+BlocksDS's DSWiFi examples pass that flag unconditionally so the library can
+switch a DSi into TWL Wi-Fi mode and load the additional Advanced Setup APs;
+it falls back safely on DS hardware. The share path now does the same.
+
+The corrected private NDS candidate is
+`build/private/nds/PixelDoodle-Private.nds` (SHA-256
+`245BBB5FB5E0B43DDDF4FBB90F459B60964D544CC689732A234C6875F20895BC`).
+The association notice reports the number of saved APs DSWiFi loaded so a
+hardware retest can distinguish a missing Advanced Setup entry from an
+association failure. Conditional DSi-mode initialization then reached TLS
+setup but reported the combined seed/certificate error. TLS setup now reports
+`TLS SEED MISSING OR INVALID`, `TLS CERTIFICATE LOAD FAILED`, and
+`TLS CONFIGURATION FAILED` separately. NDS header, ARM bounds and DLDI checks
+pass. The user provisioned a fresh host-generated seed after confirming the
+card had none, then confirmed a successful webhook upload from physical DSi
+hardware.
+
+## Private Discord share candidate (2026-10-21)
+
+Standard builds omit the postponed Community menu entry. Private NDS/DSi and
+3DSX builds add Menu > Send Sprite, then let the user choose Send Active Layer
+or Send Visible Composite. Active-layer PNG export preserves that layer's
+opacity and alpha; visible export flattens all visible layers. Host fixtures
+and both private builds pass. Artifacts:
+`build/private/nds/PixelDoodle-Private.nds` (diagnostic NDS hashes and status
+are in the DSi lockup section above) and
+`build/private/3ds/PixelDoodle-Private.3dsx` (SHA-256
+`7E1D69E3E74BE413D7AC9B606A5454F5478679F386013B72A6139BBB2FB68639`).
+NDS header, ARM bounds and DLDI checks pass. Azahar booted an earlier private
+3DSX. Both share choices reached the configured Discord webhook and the app
+displayed their respective success notices. The first Azahar send reached
+Discord but showed an HTTPS chunk error because the reply exceeded a 511-byte
+response buffer; the 3DS client now discards the bounded reply body after
+validating it. NDS accepts the validated response headers without requiring a
+Content-Length on Discord's reply. The final embedded-webhook artifacts were
+built and structurally checked; the exact final 3DSX was not reloaded in Azahar
+because the user's open emulator session contains unsaved artwork.
+melonDS 1.1 was found in `.tool-cache` and booted an earlier private NDS image
+in NTR mode. Its menu shows both share choices; this emulator profile reports
+unavailable storage, so a send stops at `SAVED SD CARD REQUIRED`. Physical DSi
+webhook transfer is accepted after provisioning its private TLS seed. Private
+builds embed the user's supplied webhook from ignored root `discord-webhook.txt`.
+An optional console text file at `fat:/PixelDoodle/private/discord-webhook.txt`
+or `sdmc:/3ds/PixelDoodle/private/discord-webhook.txt` overrides it when present;
+an invalid override stops the send. Both final binaries were checked for the
+embedded path. Treat the private binaries, text file, and per-card seed as
+credentials; never copy them into tracked source or handoff notes. The user
+copied and tested the DSi image on physical hardware.
+
+## DSi online candidate and Docker recovery (2026-10-21)
+
+The current PixelDoodle.nds was rebuilt through the pinned BlocksDS v1.24.0
+Docker image on 2026-10-21. Host fixtures pass; NDS header, ARM bounds and
+DLDI checks pass. SHA-256 is FD14F6B430EAE0F5A3D721D3EF89F04AFCF6F726594ED041D698CEF7E8BB76FA.
+Physical DSi pairing and gallery acceptance are now the user's next test; no
+device transfer was performed by Codex.
+
+Docker Desktop 4.82.0 was failing at startup because stale Windows AF_UNIX
+reparse-point sockets remained in `%LOCALAPPDATA%\Docker\run` and
+`%LOCALAPPDATA%\docker-secrets-engine`. Both runtime directories were renamed
+to `run.codex-quarantine.20261021` and
+`docker-secrets-engine.codex-quarantine.20261021`; contents were preserved.
+Docker Desktop was updated in place to 4.96.0, and the Linux engine now reports
+29.9.1. No Docker data reset, WSL unregister, or volume/image pruning occurred.
+
+## Community continuation status (2026-10-16, local)
+
+The local implementation adds a schema-5 PHP device API for scoped favorites
+and resumable console uploads, with digest/idempotence/owner checks and the
+existing moderation ingestion path. Both native clients now have Cached, Recent,
+Favorites and My Uploads modes, bounded page parsing and thumbnail caching,
+favorite toggles, upload status/review reasons, and confirmed import of the
+device-sized PNG derivative. Pair/re-pair explicitly requests gallery,
+favorites and submit scopes; existing grants are not upgraded silently.
+
+Native submission metadata/preview and resumable chunk upload UI remain
+unimplemented, and live-device acceptance is pending. 3DS online work shares the
+owned pairing worker; NDS networking remains cooperative. Host renderer and
+HTTPS suites passed, including 131,072 composite comparisons and 16,316 drawing
+frames. Dropdown touch capture/scrolling and grant behavior also pass host
+fixtures. Invalid/expired/revoked grants now return 401; valid grants without
+the requested scope return 403, and both clients preserve the grant for 403
+while clearing it for 401. NDS hostname lookup is now bounded, nonblocking DNS
+UDP across frame updates. The pinned BlocksDS v1.24.0 build passes on 2026-10-21
+after Docker Desktop recovery. Fresh 3DSX/CIA build and CIA metadata checks pass.
+PHP passes 36 tests / 318 assertions. Keep existing
+account grants and live configuration unchanged. No deployment, public write,
+hardware transfer or card write occurred in this increment.
 # Pixel Doodle operating guide
+
+## 0.13.1 pairing main-stack crash fix (2026-10-16)
+
+Physical 3DS photo 143059: PC 0x0014FE40 maps to threadFree push {lr},
+LR 0x00126FA0 to request_take. SP 0x07FFF258 and write FAR 0x07FFF254
+point below main stack mapping. Community expansion had added a 32768-byte
+automatic response array in pd_pairing_tick. Moved this to separate static
+main-thread storage, wiped after each tick. Worker response remains separate;
+worker still owns its larger explicit stack. GCC stack-usage now reports
+pairing_tick_impl 1776 bytes and wrapper 8 bytes. Build rejects a tick frame
+above 4096 bytes. Version bumped to 0.13.1 to distinguish this candidate.
+Physical retest pending. No server changes required.
+
+
+## 3DS software TLS replacement (2026-10-15)
+
+Supersedes the HTTPc state diagnostics: hardware again returned S10/D8A0A03C.
+Reused Collab Doodle tls_stream and bounded https_client, adapting JSON POST
+with Content-Length and no redirects. Required chain/hostname verification,
+SNI, TLS1.2 AEAD and system RNG remain enabled. SOC initializes lazily (1 MiB).
+The build embeds data/cacert.pem and compiles vendored Mbed TLS and C++ sources.
+No server deployment, credential reset or NDS changes are required.
+
+Editor host suite and POST framing/fragmentation/chunking/bounds/error tests
+pass. scripts/test-https-live.ps1 explicitly tests the production HTTP parser
+and crypto configuration with Windows socket/RNG adapters: live begin/pending
+poll pass and wrong-hostname verification fails closed. No grant approved or
+saved. This does not validate the actual 3DS socket/RNG services.
+
+Azahar automation failed twice with `failed to activate captured window` at
+its load dialog. New emulator pairing acceptance and physical pairing remain
+pending. Earlier HTTPc Azahar passes do not validate this replacement. User
+requested no hardware transmission tonight; none performed. Requests remain
+synchronous, so TLS verification can pause the UI; worker migration is follow-up.
+
+
+## Pairing HTTP-service state diagnostic (2026-10-15)
+
+The user tested the Root YE build on hardware and reported `HTTP WAIT TIMEOUT
+S10`. libctru publicly documents only request states 0x5 (in progress) and 0x7
+(download ready); S10 is an undocumented state returned successfully by the
+HTTP service. The 3DS pairing request now makes one bounded 1.5-second response
+status probe after timing out in an unknown state, reporting either the HTTP
+status or the low-level Result without credentials. Host tests pass, the 3DSX
+build passes, and the exact candidate boots to the app recovery screen in
+Azahar. Azahar HTTP/TLS acceptance is not authoritative. The candidate
+`build/3ds/PixelDoodle.3dsx` (SHA-256
+`3FB7DDD2C9CEE7C926B31068A392AA771AAC127EAF35D913657FF7F4FE01FBE7`) was sent
+to the user's ready 3DS at `192.168.1.225:17491` via 3dslink (exit 0, 316444
+bytes). Physical diagnostic result is pending; ask for the new message and
+continue assuming the user returns to netloader after each error.
+
+## 3DS hardware acceptance and live pairing response fix (2026-10-15)
+
+User tested the 0.13.0 editor on a New 3DS XL: symmetry/tile, selection and
+selection tools, brush options, layers, Aseprite and other file flows all pass.
+The only reported performance limit is a 512x canvas with both symmetry axes,
+both tile axes, a large brush and about six layers; this combination is slow.
+Do not infer extra application memory from the console's total physical RAM;
+the platform adapter currently selects its expanded profile based on the
+application memory region actually granted by the system.
+
+- [x] Symmetry X/Y and Tile X/Y drawing.
+- [x] Selection and selection actions/tools.
+- [x] Brush size/shape/options.
+- [x] Project dimensions, layers and file/Aseprite flows.
+- [x] Typical drawing performance on this New 3DS XL.
+- [ ] Extreme 512x + both symmetry axes + both tile axes + large brush + six
+  layers: works but is noticeably slow; retain as a known resource limit.
+
+The same test found pairing failed on hardware. The build does target the live
+`https://pixels.7db.pw` endpoint. A direct begin request to the live PHP API
+returned HTTP 200 with the expected URI/expiry/interval fields. The 3DS client
+incorrectly required a `scopes` field in the begin response even though the PHP
+API returns requested scopes in the post-approval token response. The client
+now accepts the begin response and continues to require the exact
+`gallery:read` scope before persisting an approved token. Rebuild and retry on
+Azahar passed: the exact 3DSX now obtains a code from the live site and polls
+successfully to “waiting for website approval.” No grant was approved, so
+approval/storage/revocation are still pending on hardware. This exact build had
+already been sent to the user's 3DS netloader (3dslink exit 0) before the
+requested Azahar-first order was corrected; Azahar has now verified the same
+artifact. Physical confirmation is pending. Candidate SHA-256:
+`E1D3B6DE6FDCFC71D52A2AB063B2AE2EB49DF580331C5F9F458FD36C6F6AD4BA`.
+Online gallery browsing is still not connected: Community > Gallery remains
+the offline PNG cache and is the next community client milestone.
+
+The user reported the Azahar-tested candidate still showed the generic pairing
+failure on physical 3DS. Investigation found the production certificate chain
+terminates through Let's Encrypt Root YE / ISRG Root X2, absent from the listed
+3DS trust anchors. The next candidate embeds the official ISRG Root X1 DER
+certificate (SHA-256 `96BCEC06264976F37460779ACF28C5A7CFE8A3C0AAE11A8FFCEE05C0BDDF08C6`)
+and reports bounded request-stage errors without exposing secrets. Its build
+passes in Azahar: pairing obtains a code and polling reaches “waiting for
+website approval”; no grant was approved. Exact candidate
+`build/3ds/PixelDoodle.3dsx` SHA-256
+`CFC2ACE1F331B3C13E285F7EB3100F363B4D7EE9B591969EC60DBCE5D087134D` was then
+sent via 3dslink to `192.168.1.225` after Azahar validation. Physical result is
+pending; record the displayed stage-specific diagnostic before changing TLS
+or request handling again.
+
+Physical test of the embedded-root candidate displayed `HTTP STATUS READ
+FAILED` even though `httpcBeginRequest` succeeded. The follow-up now uses
+libctru's timeout-aware status read (15 seconds) and shows its numeric Result
+as `HTTP STATUS ERR XXXXXXXX` on failure. Host suite and 3DS build pass; the
+exact updated candidate was loaded in Azahar and again obtained a code and
+reached “WAITING FOR WEBSITE APPROVAL” after its poll. No grant was approved.
+Current candidate SHA-256:
+`8B4C0590251015BF7BD1A1F3C7F8075FFD4320A95AED89098CA318003A8BDF2B`.
+
+The user returned the physical 3DS to netloader and tested the 8B4C... build;
+it displayed `HTTP STATUS ERR D8A0A03C` (HTTP module, invalid-state result).
+Azahar reproduced the same issue with the request-state diagnostic showing
+transient state `1` immediately after `httpcBeginRequest`. The client had
+incorrectly aborted on any state other than libctru's documented in-progress
+(`0x5`) and download-ready (`0x7`) values. It now continues polling through
+transient states, bounded to 15 seconds. Host suite passes; the rebuilt exact
+candidate passed Azahar pairing through “WAITING FOR APPROVAL” without approving
+the emulator grant. It was then sent to the waiting physical 3DS via 3dslink
+(exit 0, 315888 bytes). Physical confirmation is pending. Current candidate
+SHA-256: `6018A8F83CE90BA12F25BD1C724C82FBF216DD373BE943E5B26C5437727EACCD`.
+
+The user tested that candidate and it remained in `HTTP RESPONSE WAIT TIMEOUT`.
+The production leaf certificate is issued by Let's Encrypt YE1; its published
+default chain adds the new Root YE before ISRG Root X2/X1. The previous client
+only trusted X1, so the next candidate adds the official self-signed Root YE
+alongside X1, and includes the final numeric HTTP state in timeout diagnostics.
+Host suite and build pass; the exact candidate passed Azahar through
+“WAITING FOR APPROVAL” (emulator TLS remains non-authoritative). A 3dslink
+transfer was attempted after the user's prior netloader-ready instruction but
+the console at `192.168.1.225:17491` was not reachable; the sender was stopped
+without a successful transfer. Candidate SHA-256:
+`902059B02CA046BE36252DD189C60E4D695DB88F15736C47D3663D3763F0B3DF`.
+Physical Root YE acceptance is pending.
+
+## 0.13.0 NDS/DSi pairing candidate (2026-10-15)
+
+The NDS/DSi Community Pair screen now uses the verified TLS 1.2/Mbed TLS 3.6.7
+transport, pinned Mozilla root bundle and fail-closed host-provisioned seed
+rotation pattern from the sibling Doodle-NDS client. Pixel Doodle has its own
+seed under the platform's `<app-data>/private` folder; never reuse or copy a
+Collab Doodle seed or identity. `scripts/provision-nds-seed.ps1` provisions one
+card at a time using Windows CSPRNG. Pairing requests only `gallery:read`, and
+network work is advanced only while the Pair page is open. The token is a
+revocable bearer grant stored in alternating app-private slots.
+
+The pinned BlocksDS v1.24.0 build now passes. Docker Desktop itself was healthy;
+the initial failure was this workspace's named-pipe permissions. With approved
+elevated Docker access, `scripts/build.ps1 -Target all` passed the host suite,
+rebuilt the 3DSX/CIA and compiled the NDS TLS/pairing client using the already
+cached pinned image. NDS header/ARM-bound/DLDI validation passed; CIA title ID
+and version validation passed (title 000400000CE47800, version 208). Current
+artifacts: `PixelDoodle.nds` SHA-256
+`128CF5AB40FE4FA9BA771AF5215A7F63FD881B2AEDCB54FB8EF47DF93D1B8DCA`,
+`build/3ds/PixelDoodle.3dsx` SHA-256
+`0156A78E3EE2AA7E38E8092DD97BE9EE34CCD3A986463D84E8C491581D3E8397`,
+and `build/3ds/PixelDoodle.cia` SHA-256
+`D663C012C9EC231EA89FC8BEDA94AFD8B8061FA19BCF793015111B6A4CD99CEF`.
+Azahar booted the 3DSX and reached Community/Pair, but the pairing request
+failed in emulation; Azahar logs show its `httpcAddDefaultCert` is stubbed, so
+TLS acceptance still requires hardware testing. No device grant was issued.
+Certificate rejection, HTTP framing, pairing approval/denial/expiry/revocation
+and separate DSi/DS Lite acceptance remain pending. Never use plaintext HTTP,
+`rand()` as secure entropy, or the Collab Doodle seed. Pairing was enabled by
+the user in the live server for testing; return it to the intended setting when
+testing is complete. See `docs/GALLERY.md` and the hands-on list.
 
 ## Community web 0.1.0 local prototype (2026-10-15)
 
@@ -395,3 +684,29 @@ and F:/pixeldoodle-app respectively. The private archive contains Laravel app an
 production vendor plus sibling frontend/docs. Scanned for live .env, SQLite DBs,
 logs and test fixtures. No live Apache, email, Discord message, server deployment,
 GitHub push or native build performed; user must do live setup from checklist.
+
+## Device pairing and 3DS transport candidate (2026-10-15)
+
+PHP pairing API uses authenticated owner approval, a 10-minute one-use code,
+SHA-256-only stored poll/access secrets, 5-second polling with server backoff,
+gallery-read scoped 30-day credentials, account-disable checks, and
+owner-scoped revocation. API routes require the canonical HTTPS host; browser
+writes use the existing session/CSRF/origin boundary. Pairing remains default
+off in `.env.example` and production. 3DS libctru httpc keeps SSL certificate
+verification enabled and rejects redirects. Console network activity occurs
+only on the Community pairing screen; drawing remains offline. Credential data
+is CRC-checked in two alternating app-owned SD slots, not encrypted at rest.
+
+The local PHP suite passes 30 tests / 278 assertions. Host regression groups
+pass, including 16,316 incremental/full drawing comparisons. 3DSX and CIA builds
+pass. NDS now vendors the TLS 1.2/Mbed TLS 3.6.7 client, Mozilla trust bundle,
+and a separate host-provisioned, rotating Pixel Doodle seed; pairing runs only
+from the Community screen. Build and physical NDS TLS/pairing acceptance remain
+pending. Keep `ENABLE_DEVICE_PAIRING=false` until certificate failure, approval,
+denial, expiry and revocation have passed on DSi and DS Lite. Never use plaintext
+HTTP, `rand()` as secure entropy, or the Collab Doodle seed. See `docs/GALLERY.md`
+and the hands-on list.
+
+
+
+

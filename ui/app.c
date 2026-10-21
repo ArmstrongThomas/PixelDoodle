@@ -360,10 +360,15 @@ static void gallery_page_load(PdApp *a){
     if(a->gallery_count)gallery_select(a,start);a->redraw=true;
 }
 static void gallery_open(PdApp *a){
-    a->page=28;a->gallery_page=0;a->file_mode=0;memset(&a->listing,0,sizeof(a->listing));a->folder[0]=0;
+    a->page=28;a->gallery_page=0;a->community_mode=0;a->community_loaded=false;a->community_loading=false;a->file_mode=0;memset(&a->listing,0,sizeof(a->listing));a->folder[0]=0;
     if(!pd_join(a->folder,a->directory,"community")||!pd_list(a->folder,&a->listing,a->notice)){memset(&a->listing,0,sizeof(a->listing));message(a,"Add PNGs to PixelDoodle/community");}
     unsigned count=0;for(unsigned i=0;i<a->listing.count;i++)if(!a->listing.entries[i].directory&&gallery_png(a->listing.entries[i].name))a->listing.entries[count++]=a->listing.entries[i];a->listing.count=count;
     gallery_page_load(a);
+}
+static void community_set_mode(PdApp *a,unsigned mode){
+    if(mode>3)return;pd_dropdown_close(&a->community_dropdown);a->community_mode=mode;a->gallery_page=0;a->selected=-1;a->preview_attempted=false;a->preview_ready=false;
+    if(mode){a->community_loaded=false;a->community_loading=a->online_list!=NULL;snprintf(a->community_status,sizeof(a->community_status),a->online_list?"LOADING COMMUNITY PAGE":"ONLINE BROWSING UNAVAILABLE");if(a->online_list)a->online_list(a,mode,0);}
+    else gallery_page_load(a);a->redraw=true;
 }
 static void action(PdApp *a,int index){
     if(a->page==1){
@@ -377,7 +382,9 @@ static void action(PdApp *a,int index){
         if(index==3)a->page=6;
         if(index==4){a->page=18;a->new_background=0;a->new_layers=1;a->new_current_palette=false;}
         if(index==7)a->page=19;
-        if(index==8)gallery_open(a);
+#ifdef PD_PRIVATE_BUILD
+        if(index==8)a->page=30;
+#endif
         if(index==5){a->confirm=3;message(a,"Exit - save first if needed");}
         if(index==6){a->page=8;a->draft_handed=a->handed;a->draft_zoom_side=a->zoom_side;a->draft_bindings=a->bindings;}
     }
@@ -469,6 +476,11 @@ static void shape_input(PdApp *a,int x,int y,bool pressed){
     a->shape_lastx=wx;a->shape_lasty=wy;a->partial=!a->redraw;a->redraw=true;
 }
 void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
+#ifdef PD_PRIVATE_BUILD
+    if(a->share_tick)a->share_tick(a);
+#else
+    if((a->page==28||a->page==29)&&a->online_tick)a->online_tick(a);
+#endif
     a->pan_frame=false;
     if(a->shape_drag&&(!touch||down||(held&(PD_PAN|PD_SAMPLE|PD_ZOOM|PD_ERASE))||(touch&&y<24)))shape_release(a,touch||down);
 
@@ -498,6 +510,14 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
     if(!touch&&a->touching&&!a->palette_edit&&(a->page==2||a->stroke))recent_add(a,a->color_drag!=0);
     bool pressed=touch&&!a->touching;
     if(!touch){finish(a);a->blocked=false;a->pan=false;a->color_drag=0;}
+    if(a->community_dropdown.open){
+        if(down&(PD_TOOLS|PD_MENU)){pd_dropdown_close(&a->community_dropdown);a->blocked=touch;a->touching=touch;a->redraw=true;return;}
+        if(down&PD_SAMPLE)pd_dropdown_scroll(&a->community_dropdown,-1);
+        if(down&PD_ZOOM)pd_dropdown_scroll(&a->community_dropdown,1);
+        unsigned chosen=a->community_mode;PdDropdownEvent event=pd_dropdown_input(&a->community_dropdown,touch,pressed,x,y,&chosen);
+        if(event==PD_DROPDOWN_SELECTED)community_set_mode(a,chosen);
+        a->blocked=touch;a->touching=touch;a->redraw=true;return;
+    }
     /* Edge-triggered history chords are canvas-only, with the pen fully lifted. */
     if(!touch&&!a->touching&&!a->page&&!a->confirm&&!a->toolbox&&!a->doc.editing&&(held&PD_ZOOM)&&!(down&(PD_MENU|PD_SAVE|PD_TOOLS))){
         unsigned shoulders=held&(PD_SHOULDER_L|PD_SHOULDER_R),pressed_shoulder=down&(PD_SHOULDER_L|PD_SHOULDER_R);
@@ -598,12 +618,23 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             else if(y>=160&&y<184){if(xx<112)selection_action(a,5);else a->page=0;}
             a->blocked=true;a->redraw=true;}a->touching=true;return;}
         if(a->page==28&&touch){if(pressed){
-            if(y>=28&&y<46&&x>=a->width-72)gallery_open(a);
-            else if(y>=48&&y<144){unsigned index=(unsigned)((y-48)/48*3+x*3/a->width);if(index<a->gallery_count)gallery_select(a,a->gallery_page*6+index);}
-            else if(y>=a->height-28){if(x<44){if(a->gallery_page){a->gallery_page--;gallery_page_load(a);}}
-                else if(x>=a->width-44){if((a->gallery_page+1)*6<a->listing.count){a->gallery_page++;gallery_page_load(a);}}
-                else if(a->selected>=0&&a->preview_ready&&pd_join(a->pending,a->folder,a->listing.entries[a->selected].name)){a->file_mode=0;a->confirm=4;message(a,"Open image? Unsaved art will be lost");}}
+            if(y>=28&&y<46&&x<54){a->page=29;a->pairing_state=0;snprintf(a->pairing_message,sizeof(a->pairing_message),"PAIR YOUR HANDHELD");}
+            else if(y>=28&&y<46&&x>=a->width-58){if(a->community_mode){if(a->online_list){a->community_loading=true;a->community_loaded=false;snprintf(a->community_status,sizeof(a->community_status),"LOADING COMMUNITY PAGE");a->online_list(a,a->community_mode,a->gallery_page*PD_COMMUNITY_PAGE);}}else gallery_open(a);}
+            else if(y>=28&&y<46){pd_dropdown_open(&a->community_dropdown,8,48,a->width-16,18,26,3,4,a->community_mode,true);}
+            else if(y>=48&&y<144){unsigned index=(unsigned)((y-48)/48*3+x*3/a->width);if(a->community_mode){if(index<a->community_page.count){a->selected=(int)index;a->preview_attempted=true;a->preview_ready=false;snprintf(a->preview_name,sizeof(a->preview_name),"%.63s",a->community_page.items[index].title);snprintf(a->preview_error,sizeof(a->preview_error),"BY %.42s",a->community_page.items[index].artist);}}else if(index<a->gallery_count)gallery_select(a,a->gallery_page*6+index);}
+            else if(y>=a->height-28){if(x<44){if(a->gallery_page){a->gallery_page--;if(a->community_mode){a->community_loading=true;if(a->online_list)a->online_list(a,a->community_mode,a->gallery_page*PD_COMMUNITY_PAGE);}else gallery_page_load(a);}}
+                else if(x>=a->width-44){if(a->community_mode){if(a->community_page.has_next){a->gallery_page++;a->community_loading=true;if(a->online_list)a->online_list(a,a->community_mode,a->community_page.next_offset);}}else if((a->gallery_page+1)*6<a->listing.count){a->gallery_page++;gallery_page_load(a);}}
+                else if(a->community_mode==1||a->community_mode==2){if(x<a->width/2){if(a->selected>=0&&(unsigned)a->selected<a->community_page.count&&a->gallery_ready[a->selected]){char dir[PD_PATH],name[80];snprintf(name,sizeof(name),"%s.png",a->community_page.items[a->selected].id);if(pd_join(dir,a->directory,"community-cache")&&pd_join(a->pending,dir,name)&&pd_exists(a->pending)){a->file_mode=0;a->confirm=4;message(a,"Import device-sized copy? Unsaved art will be lost");}}}
+                    else if(a->selected>=0&&(unsigned)a->selected<a->community_page.count&&!a->community_action_busy&&a->online_favorite){a->community_action_busy=true;a->online_favorite(a,(unsigned)a->selected,a->community_mode==1);}}
+                else if(!a->community_mode&&a->selected>=0&&a->preview_ready&&pd_join(a->pending,a->folder,a->listing.entries[a->selected].name)){a->file_mode=0;a->confirm=4;message(a,"Open image? Unsaved art will be lost");}}
             a->blocked=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==29&&touch){if(pressed){
+            if(y>=a->height-32){a->page=28;}
+            else if(y>=78&&y<110&&a->pairing_state!=1&&a->pairing_state!=6){if(a->online_begin)a->online_begin(a);else{a->pairing_state=4;snprintf(a->pairing_message,sizeof(a->pairing_message),"VERIFIED PAIRING UNAVAILABLE HERE");}}
+            a->blocked=true;a->redraw=true;}a->touching=true;return;}
+#ifdef PD_PRIVATE_BUILD
+        if(a->page==30&&touch){if(pressed){if(y>=a->height-32){a->page=0;}else if(y>=52&&y<92){a->page=0;if(a->share_current)a->share_current(a,false);else message(a,"Sprite sharing is unavailable");}else if(y>=100&&y<140){a->page=0;if(a->share_current)a->share_current(a,true);else message(a,"Sprite sharing is unavailable");}a->blocked=true;a->redraw=true;}a->touching=true;return;}
+#endif
         if(a->page==27&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;
             if(xx<0||xx>=224||y>=190)a->page=0;
             else if(y>=48&&y<72&&xx>=4&&xx<220){a->brush_pattern=(unsigned)((xx-4)/55);a->presets_dirty=true;}
@@ -723,6 +754,14 @@ static void text(uint32_t *p,int w,int h,int x,int y,const char *s,uint32_t c){
 static void button(uint32_t *p,int w,int h,int x,int y,int bw,int bh,const char *label,bool primary){
     rect(p,w,h,x,y,bw,bh,UI_EDGE);rect(p,w,h,x+1,y+1,bw-2,bh-2,primary?UI_SELECTED:UI_PANEL);
     text(p,w,h,x+6,y+(bh-7)/2,label,UI_TEXT);
+}
+static void community_dropdown_draw(PdApp *a,uint32_t *p,int w,int h){
+    PdDropdown *m=&a->community_dropdown;if(!m->open)return;static const char *names[]={"CACHED","RECENT","FAVORITES","MY UPLOADS"};
+    int total=m->header_h+m->row_h*m->visible_rows;rect(p,w,h,m->x+2,m->y+3,m->w,total,0x111820);rect(p,w,h,m->x,m->y,m->w,total,UI_ACCENT);rect(p,w,h,m->x+1,m->y+1,m->w-2,total-2,UI_BG);
+    char header[40];unsigned pages=m->count>(unsigned)m->visible_rows?m->count-(unsigned)m->visible_rows+1:1;snprintf(header,sizeof(header),"CHOOSE VIEW  %u/%u",m->first+1,pages);text(p,w,h,m->x+7,m->y+5,header,UI_ACCENT);
+    int max_chars=(m->w-22)/6;if(max_chars<1)max_chars=1;if(max_chars>31)max_chars=31;
+    for(int row=0;row<m->visible_rows;row++){unsigned i=m->first+(unsigned)row;if(i>=m->count)break;int yy=m->y+m->header_h+row*m->row_h;rect(p,w,h,m->x+2,yy,m->w-4,m->row_h-1,i==m->selected?UI_SELECTED:UI_PANEL);char label[32];snprintf(label,sizeof(label),"%.*s",max_chars,names[i]);text(p,w,h,m->x+8,yy+(m->row_h-7)/2,label,i==m->selected?UI_TEXT:UI_MUTED);if(i==m->selected)text(p,w,h,m->x+m->w-16,yy+(m->row_h-7)/2,">",UI_ACCENT);}
+    if(m->first)text(p,w,h,m->x+m->w-13,m->y+5,"^",UI_TEXT);if(m->first+(unsigned)m->visible_rows<m->count)text(p,w,h,m->x+m->w-13,m->y+total-9,"v",UI_TEXT);
 }
 static uint32_t grid_color(uint32_t c){return ((c>>1)&0x7f7f7f)+((((c>>16)&255)+((c>>8)&255)+(c&255)<384)?0x808080:0);}
 static uint32_t displayed(uint32_t p,int x,int y){unsigned a=p>>24,bg=((x/8+y/8)&1)?205:238;
@@ -942,9 +981,18 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
             for(int xx=48;xx<w-8;xx++){uint32_t c=(a->color&0xffffff)|((unsigned)((xx-48)*255/(w-57))<<24),shades[2]={displayed(c,0,0),displayed(c,8,0)};for(int yy=h-20;yy<h-4;yy++)bottom[yy*w+xx]=shades[((xx/8)+(yy/8))&1];}
             int ax=48+(int)(a->color>>24)*(w-57)/255;rect(bottom,w,h,ax-1,h-22,3,20,0);rect(bottom,w,h,ax,h-22,1,20,UI_TEXT);
         }
+    }else if(a->page==30){
+        text(bottom,w,h,8,30,"SEND SPRITE TO DISCORD",UI_ACCENT);
+        text(bottom,w,h,8,44,"CHOOSE WHICH LAYERS TO INCLUDE",UI_MUTED);
+        button(bottom,w,h,8,52,w-16,36,"SEND ACTIVE LAYER",false);
+        button(bottom,w,h,8,100,w-16,36,"SEND VISIBLE COMPOSITE",false);
+        button(bottom,w,h,4,h-32,w-8,26,"BACK",false);
     }else if(a->page==3){
         const char *items[]={"SAVE","SAVE AS","OPEN / FILE BROWSER","EXPORT","NEW PROJECT","EXIT","SETTINGS","RECOVERY"};
-        for(int i=0;i<7;i++)button(bottom,w,h,4,30+i*18,w-8,16,items[i],false);button(bottom,w,h,4,156,w/2-8,16,"RECOVERY",false);button(bottom,w,h,w/2+4,156,w/2-8,16,"COMMUNITY",false);
+        for(int i=0;i<7;i++)button(bottom,w,h,4,30+i*18,w-8,16,items[i],false);button(bottom,w,h,4,156,w/2-8,16,"RECOVERY",false);
+#ifdef PD_PRIVATE_BUILD
+        button(bottom,w,h,w/2+4,156,w/2-8,16,"SEND SPRITE",false);
+#endif
         const char *name=strrchr(a->project,'/');snprintf(label,sizeof(label),"%.38s",name?name+1:"UNTITLED - SAVE AS TO NAME");text(bottom,w,h,8,h-10,label,UI_ACCENT);
     }else if(a->page==4){
         const char *titles[]={"OPEN PROJECT","SAVE PDD PROJECT","EXPORT ASEPRITE","EXPORT PNG","IMPORT PALETTE","EXPORT GPL PALETTE","EXPORT HEX PALETTE","EXPORT PNG PALETTE"};
@@ -1060,16 +1108,34 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
     }
     if(a->page==28&&!a->confirm){
         rect(bottom,w,h,0,24,w,h-24,UI_BG);
-        text(bottom,w,h,8,32,"GALLERY / LOCAL CACHE",UI_ACCENT);button(bottom,w,h,w-72,28,68,18,"REFRESH",false);
-        int cw=w/3;for(unsigned i=0;i<a->gallery_count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;
+        const char *modes[]={"CACHED","RECENT","FAVORITES","MY UPLOADS"};char mode_label[32];snprintf(mode_label,sizeof(mode_label),"VIEW: %s v",modes[a->community_mode]);button(bottom,w,h,4,28,50,18,"PAIR",false);button(bottom,w,h,58,28,w-116,18,mode_label,true);button(bottom,w,h,w-58,28,54,18,"REFRESH",false);
+        int cw=w/3;if(a->community_mode){for(unsigned i=0;i<a->community_page.count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;PdCommunityArt *art=&a->community_page.items[i];rect(bottom,w,h,xx+3,yy,cw-6,46,a->selected==(int)i?UI_SELECTED:UI_PANEL);if(a->community_mode!=3&&a->gallery_ready[i])for(int ty=0;ty<32;ty++)for(int tx=0;tx<32;tx++)bottom[(yy+2+ty)*w+xx+(cw-32)/2+tx]=displayed(a->gallery_thumbs[i][ty*32+tx],tx,ty);else{const char *tag=a->community_mode==3&&art->status[0]?art->status:"LOADING";text(bottom,w,h,xx+8,yy+14,tag,UI_MUTED);}snprintf(label,sizeof(label),"%.*s",(cw-12)/6,art->title);text(bottom,w,h,xx+6,yy+36,label,UI_TEXT);}
+            if(!a->community_page.count)text(bottom,w,h,8,68,a->community_loading?"LOADING COMMUNITY PAGE...":a->community_page.profile_required?"CREATE AN ARTIST PROFILE ON WEBSITE":a->community_status[0]?a->community_status:"NO ITEMS",UI_TEXT);
+            if(a->community_page.has_total)snprintf(label,sizeof(label),"%u ITEMS / PAGE %u",a->community_page.total,a->gallery_page+1);else snprintf(label,sizeof(label),"PAGE %u - %s",a->gallery_page+1,a->community_mode==3?"YOUR SUBMISSIONS":"COMMUNITY");
+        }else{for(unsigned i=0;i<a->gallery_count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;
             rect(bottom,w,h,xx+3,yy,cw-6,46,a->selected==(int)(a->gallery_page*6+i)?UI_SELECTED:UI_PANEL);
             if(a->gallery_ready[i])for(int y=0;y<32;y++)for(int x=0;x<32;x++)bottom[(yy+2+y)*w+xx+(cw-32)/2+x]=displayed(a->gallery_thumbs[i][y*32+x],x,y);
             else text(bottom,w,h,xx+8,yy+14,"UNREADABLE",UI_MUTED);
             snprintf(label,sizeof(label),"%.*s",(cw-12)/6,a->listing.entries[a->gallery_page*6+i].name);text(bottom,w,h,xx+6,yy+36,label,UI_TEXT);
         }
-        if(!a->gallery_count){text(bottom,w,h,8,65,"NO CACHED ART YET",UI_TEXT);text(bottom,w,h,8,83,"COPY PNGS (UP TO 128 X 128) TO",UI_MUTED);text(bottom,w,h,8,97,"PIXELDOODLE/COMMUNITY",UI_TEXT);}
-        snprintf(label,sizeof(label),"%u ITEMS / PAGE %u%s",a->listing.count,a->gallery_page+1,a->listing.truncated?" (LIMIT)":"");text(bottom,w,h,8,h-40,label,UI_MUTED);
-        button(bottom,w,h,4,h-28,36,24,"<",false);button(bottom,w,h,44,h-28,w-88,24,"OPEN COPY",a->preview_ready);button(bottom,w,h,w-40,h-28,36,24,">",false);
+            if(!a->gallery_count){text(bottom,w,h,8,65,"NO CACHED ART YET",UI_TEXT);text(bottom,w,h,8,83,"COPY PNGS (UP TO 128 X 128) TO",UI_MUTED);text(bottom,w,h,8,97,"PIXELDOODLE/COMMUNITY",UI_TEXT);}
+            snprintf(label,sizeof(label),"%u ITEMS / PAGE %u%s",a->listing.count,a->gallery_page+1,a->listing.truncated?" (LIMIT)":"");
+        }text(bottom,w,h,8,h-40,label,UI_MUTED);
+        button(bottom,w,h,4,h-28,36,24,"<",false);if(a->community_mode==1||a->community_mode==2){bool selected=a->selected>=0&&(unsigned)a->selected<a->community_page.count;button(bottom,w,h,44,h-28,(w-88)/2,24,"IMPORT",selected&&a->gallery_ready[a->selected]);button(bottom,w,h,44+(w-88)/2,h-28,(w-88)/2,24,a->community_mode==1?"FAVORITE":"REMOVE FAV",selected&&!a->community_action_busy);}else button(bottom,w,h,44,h-28,w-88,24,a->community_mode==3?"DETAILS":"OPEN COPY",!a->community_mode&&a->preview_ready);button(bottom,w,h,w-40,h-28,36,24,">",false);
+        community_dropdown_draw(a,bottom,w,h);
+    }
+    if(a->page==29){
+        rect(bottom,w,h,0,24,w,h-24,UI_BG);text(bottom,w,h,8,36,"CONNECT A HANDHELD",UI_ACCENT);
+        text(bottom,w,h,8,50,"Approval requests browse, favorites and uploads",UI_TEXT);text(bottom,w,h,8,62,"Old grant stays active until approval succeeds.",UI_TEXT);
+        if(a->pairing_user_code[0]){text(bottom,w,h,8,118,"ENTER THIS CODE AT PIXELS.7DB.PW",UI_MUTED);text(bottom,w,h,8,140,a->pairing_user_code,UI_ACCENT);}
+        text(bottom,w,h,8,164,a->pairing_message,UI_TEXT);
+        if(a->pairing_state==2)button(bottom,w,h,4,78,w-8,30,"CONNECTED - RE-PAIR TO EXTEND",false);
+        else if(a->pairing_state==5)button(bottom,w,h,4,78,w-8,30,"RE-PAIR / REFRESH GRANT",false);
+        else if(a->pairing_state==1)button(bottom,w,h,4,78,w-8,30,"WAITING FOR APPROVAL",true);
+        else if(a->pairing_state==6)button(bottom,w,h,4,78,w-8,30,"CONNECTING...",true);
+        else if(a->pairing_state==4||a->pairing_state==3)button(bottom,w,h,4,78,w-8,30,"PAIRING UNAVAILABLE",false);
+        else button(bottom,w,h,4,78,w-8,30,"START PAIRING",false);
+        button(bottom,w,h,4,h-32,w-8,26,"BACK TO COMMUNITY",false);
     }
     if(a->page==27){int left=a->handed?w-224:0;rect(bottom,w,h,left,24,224,166,UI_EDGE);rect(bottom,w,h,left+2,26,220,162,UI_BG);
         text(bottom,w,h,left+8,33,"PENCIL DITHER",UI_TEXT);const char *patterns[]={"SOLID","25%","50%","75%"};
@@ -1100,6 +1166,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
         rect(bottom,w,h,zx+12,66,24,4,0xffffff);rect(bottom,w,h,zx+22,56,4,24,0xffffff);
         rect(bottom,w,h,zx+12,138,24,4,0xffffff);
     }
+    if(a->page==28&&a->community_mode&&a->preview_attempted&&a->selected>=0&&(unsigned)a->selected<a->community_page.count){PdCommunityArt *art=&a->community_page.items[a->selected];text(top,tw,th,8,6,a->community_mode==3?"MY UPLOAD / REVIEW STATUS":"ONLINE GALLERY / APPROVED ART",UI_ACCENT);text(top,tw,th,8,24,art->title,UI_TEXT);if(a->community_mode==3){snprintf(label,sizeof(label),"STATUS: %.15s",art->status);text(top,tw,th,8,44,label,UI_ACCENT);snprintf(label,sizeof(label),"%.54s",art->reason[0]?art->reason:"No review note");text(top,tw,th,8,62,label,UI_MUTED);}else{snprintf(label,sizeof(label),"BY %.35s",art->artist);text(top,tw,th,8,44,label,UI_MUTED);}snprintf(label,sizeof(label),"%u X %u PIXELS",art->width,art->height);text(top,tw,th,8,a->community_mode==3?84:60,label,UI_TEXT);if(a->community_mode!=3&&a->gallery_ready[a->selected]){int size=th-112;if(size>128)size=128;if(size<32)size=32;int left=(tw-size)/2;for(int py=0;py<size;py++)for(int px=0;px<size;px++)top[(84+py)*tw+left+px]=displayed(a->gallery_thumbs[a->selected][(py*32/size)*32+(px*32/size)],px,py);}text(top,tw,th,8,th-24,a->community_mode==3?"STATUS AND REVIEW REASON FROM SERVER":"PUBLIC PREVIEW; DOWNLOAD TO IMPORT",UI_MUTED);a->redraw=false;return;}
     if((a->page==4||a->page==17||a->page==28)&&a->preview_attempted){
         text(top,tw,th,8,6,a->page==28?"CACHED ART - OFFLINE PREVIEW":"FILE PREVIEW - CURRENT ART RETAINED",UI_ACCENT);text(top,tw,th,8,24,a->preview_name,UI_TEXT);
         int size=th-80;if(size>128)size=128;int left=(tw-size)/2;if(a->preview_ready){for(int y=0;y<size;y++)for(int x=0;x<size;x++)top[(42+y)*tw+left+x]=displayed(a->file_preview[(y*64/size)*64+x*64/size],x,y);}else text(top,tw,th,8,60,a->preview_error,UI_MUTED);
