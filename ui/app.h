@@ -36,6 +36,11 @@ struct PdApp {
     bool swatch_scrolling,palette_edit;
     unsigned palette_edit_index;
     uint32_t palette_edit_before;
+    unsigned palette_density,palette_target;
+    bool swatch_mini;
+    bool palette_picker_active;
+    uint32_t palette_picker_color,palette_picker_background;
+    unsigned palette_picker_hue,palette_picker_saturation,palette_picker_value;
     char directory[256],notice[64];
     char file_source[PD_PATH];
     char folder[PD_PATH],project[PD_PATH],pending[PD_PATH],filename[64];
@@ -47,7 +52,7 @@ struct PdApp {
     int recent_project_selected;
     PdListing listing;
     PdCommunityPage community_page;
-    PdDropdown community_dropdown;
+    PdDropdown community_dropdown,layer_blend_dropdown;
     char upload_title[121],upload_description[2001],upload_tags[257];
     char upload_snapshot[PD_PATH],upload_request_id[37];
     unsigned upload_size,upload_stage;
@@ -69,7 +74,8 @@ struct PdApp {
     uint64_t recovery_revision;
     bool recovery_clock,recovery_available,recovery_pending,recovery_enabled;
     int selected;
-    bool project_native,zoom_overlay,toolbox;
+    bool project_native,zoom_overlay,toolbox,tool_options_open;
+    unsigned tool_panel;
     unsigned help_tab;
     unsigned bindings,draft_bindings; /* four paired controls, two bits per action */
     PdClipboard clipboard;
@@ -89,6 +95,9 @@ struct PdApp {
     bool pixel_grid,brush_drag,brush_dirty,presets_dirty;
     bool fill_global,fill_visible;
     unsigned fill_tolerance;
+    int adjust_hue,adjust_saturation,adjust_brightness;
+    unsigned adjust_scope,adjust_drag;
+    bool adjust_preview_ready,adjust_preview_stale;
     bool shape_drag,shape_filled;
     int shape_x,shape_y,shape_lastx,shape_lasty;
     unsigned tool; /* 0 pencil, 1 eraser, 2 sampler, 3 fill, 4 selection, 5 line, 6 rectangle, 7 ellipse */

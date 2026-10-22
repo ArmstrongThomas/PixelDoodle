@@ -1,3 +1,82 @@
+## Palette workspace 0.14.2 (2026-10-21)
+
+Use the Color icon in the persistent shortcut rail on DSi and 3DS.
+
+- [ ] Confirm the upper screen stays touch-inactive, shows FOREGROUND TARGET,
+  BACKGROUND TARGET or SWATCH instead of "DISPLAY ONLY", and uses the full
+  display for active color, FG/BG, selected swatch, RGB, HSV, alpha and recent
+  colors. Confirm recent swatches stop before the screen edge.
+- [ ] Confirm the persistent shortcut rail uses the thin mockup Undo, Redo,
+  Color, Layers, Toolbox and Menu glyphs.
+- [ ] In Swatches, switch density through 8, 6 and 5 columns. Confirm every tile
+  remains square and the list scrolls without selecting while dragging.
+- [ ] Select FG and BG separately, apply swatches, and verify the swap control.
+- [ ] Hold a swatch for 150 ms and drag to reorder it.
+- [ ] Open Picker. Confirm the saturation/value field remains square and the
+  vertical hue rail, alpha strip and six-column quick palette respond quickly.
+- [ ] Scroll the quick palette without changing the current color.
+- [ ] Scroll until a row is partly hidden. Confirm it clips at the palette panel
+  boundary and never draws over FG/BG, swap or the hexadecimal field.
+- [ ] Tap the HEX field, enter six digits through the hex OSK, press Done, and
+  confirm the exact RGB value reaches only the selected FG or BG target.
+- [ ] Cancel once and confirm FG, BG, hue, saturation and value are restored.
+  Repeat with Use Color and confirm the values persist.
+- [ ] In Edit, exercise Add, Replace, Remove, Move, Load and Save. Relaunch and
+  confirm the saved palette persists.
+- [ ] Recheck Pencil size/dither/pressure and Select rectangle/lasso options,
+  plus layer blend, opacity, clipping, alpha lock and hold-drag reorder.
+
+Host tests pass on both native layouts. Package/build checks pass; emulator and
+physical acceptance remain pending.
+
+## Layer workspace 0.14.4 (2026-10-21)
+
+- [ ] On NDS, confirm six layer rows are visible at once; on 3DS confirm all
+  eight fit below the persistent rail.
+- [ ] Use the row grip, name area, visibility eye, Lock control and Options
+  control without selecting the wrong target.
+- [ ] Open Options and exercise opacity, blend, Rename, Duplicate, Merge Down,
+  Lock and Alpha Lock.
+- [ ] Open Blend and choose each of Normal, Multiply, Screen and Overlay directly
+  from the dropdown. Confirm the first touch selects immediately and tapping
+  the closed Blend button never changes mode.
+- [ ] Use the dedicated footer Delete Layer action and confirm both Cancel and
+  Delete. Confirm locked and last-layer cases explain why deletion is blocked.
+- [ ] Quick-drag to scroll, then hold 150 ms and drag to reorder. Confirm the
+  order changes only after release.
+- [ ] Confirm the top screen shows Composite and Active Layer side by side and
+  marks a hidden active layer.
+
+## Drawing tools drawer 0.14.5 (2026-10-21)
+
+- [ ] Open the toolbox from the persistent rail and confirm the single tool
+  column fits without scrolling on DSi and 3DS.
+- [ ] Select Pencil, Eraser, Fill, Select, and each shape and confirm the
+  matching settings panel opens to the right while the column stays visible.
+- [ ] Select Sample and confirm the drawer closes without opening an options
+  screen.
+- [ ] Open Guides and Close independently, then reopen the drawer from the
+  persistent rail.
+
+## Transparent Tools drawer 0.14.6 (2026-10-21)
+
+- [ ] Open Tools without selecting a tool and confirm the canvas remains
+  visible to the right of the single-column rail.
+- [ ] Select a tool and confirm only its compact settings panel covers the
+  canvas; close the settings panel or drawer and confirm the canvas returns.
+
+## Pixel grid 0.14.7 (2026-10-21)
+
+- [ ] At 4x zoom, enable Pixel Grid in Guides and confirm grid lines appear.
+- [ ] Disable Pixel Grid and confirm the artwork pixels and saved exports are
+  unchanged.
+- [ ] Open Pencil options and confirm the footprint preview changes with size,
+  tip and dither settings. Confirm the slider knob is centered in its track.
+- [ ] Open Brush Details and confirm all four presets show distinct brush
+  previews, then Load and Store them.
+- [ ] Open Brush Details from Pencil and Transform Selection from the Select
+  panel. Confirm both centered sheets can be closed without changing canvas.
+
 ## Private server test overlay 0.3.7 (2026-10-21)
 
 `build/PixelDoodle-Community-0.3.7-app-private.zip` is a private local test

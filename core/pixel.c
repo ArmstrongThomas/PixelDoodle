@@ -74,6 +74,8 @@ bool pd_commit(PdDocument *d) {
         for(unsigned i=0;i<d->count;i++)d->history[i].offset-=removed;
     }
     PdEdit *e=&d->history[d->count];e->offset=d->history_used;e->bytes=bytes;e->tiles=dense?UINT32_MAX:tiles;
+    if(d->history_group){e->group=d->history_group;e->group_active=d->history_group_active;}
+    else{if(++d->next_history_group==0)++d->next_history_group;e->group=d->next_history_group;e->group_active=(uint8_t)d->active;}
     unsigned char *out=history_data(d)+e->offset;
     if(dense){for(unsigned i=0;i<pd_plane(d);i++){uint32_t delta=pd_before(d)[i]^pd_pixels(l)[i];memcpy(out+i*4,&delta,4);}}
     else for(unsigned tile=0;tile<cols*d->rows/8;tile++){if(!(changed[tile/32]&(1u<<(tile%32))))continue;uint32_t id=tile;memcpy(out,&id,4);out+=4;
@@ -135,11 +137,76 @@ bool pd_rename_layer(PdDocument *d,const char *name){
 }
 bool pd_undo(PdDocument *d) {
     if(d->editing || !d->cursor) return false;
-    const PdEdit *e=&d->history[--d->cursor]; toggle(d,e); d->revision=e->before; return true;
+    uint32_t group=d->history[d->cursor-1].group;
+    uint8_t active=d->history[d->cursor-1].group_active;
+    do { const PdEdit *e=&d->history[--d->cursor];toggle(d,e);d->revision=e->before; } while(d->cursor&&d->history[d->cursor-1].group==group);
+    d->active=active;return true;
 }
 bool pd_redo(PdDocument *d) {
     if(d->editing || d->cursor==d->count) return false;
-    const PdEdit *e=&d->history[d->cursor++]; toggle(d,e); d->revision=e->after; return true;
+    uint32_t group=d->history[d->cursor].group;uint8_t active=d->history[d->cursor].group_active;
+    do { const PdEdit *e=&d->history[d->cursor++];toggle(d,e);d->revision=e->after; } while(d->cursor<d->count&&d->history[d->cursor].group==group);
+    d->active=active;return true;
+}
+static unsigned adjust_byte(int value){return value<0?0:value>255?255:(unsigned)value;}
+static uint32_t adjust_hsv(unsigned h,unsigned s,unsigned v){
+    unsigned c=(v*s+127)/255,m=v-c,f=h%60,x=(c*((h/60)&1?60-f:f)+30)/60,r=0,g=0,b=0;
+    switch(h/60){case 0:r=c;g=x;break;case 1:r=x;g=c;break;case 2:g=c;b=x;break;case 3:g=x;b=c;break;case 4:r=x;b=c;break;default:r=c;b=x;break;}
+    return 0xff000000u|((r+m)<<16)|((g+m)<<8)|(b+m);
+}
+uint32_t pd_adjust_color(uint32_t color,int hue_shift,int saturation_shift,int brightness_shift){
+    if(!(color>>24))return color;
+    int r=(color>>16)&255,g=(color>>8)&255,b=color&255,max=r>g?r:g;if(b>max)max=b;int min=r<g?r:g;if(b<min)min=b;int delta=max-min;
+    unsigned h=0;if(delta){int raw=max==r?60*(g-b)/delta:max==g?120+60*(b-r)/delta:240+60*(r-g)/delta;if(raw<0)raw+=360;h=(unsigned)raw;}
+    int shifted=(int)h+hue_shift;shifted%=360;if(shifted<0)shifted+=360;
+    unsigned s=max?(unsigned)((delta*255+max/2)/max):0;
+    s=adjust_byte((int)s+saturation_shift*255/100);unsigned v=adjust_byte(max+brightness_shift*255/100);
+    return (adjust_hsv((unsigned)shifted,s,v)&0xffffffu)|(color&0xff000000u);
+}
+static unsigned adjust_record_bytes(PdDocument *d,unsigned layer,const uint32_t *mask,int hue,int saturation,int brightness){
+    uint32_t *pixels=pd_pixels(&d->layer[layer]);unsigned tiles=0,cols=d->stride/8;
+    for(unsigned ty=0;ty<d->rows/8;ty++)for(unsigned tx=0;tx<cols;tx++){
+        bool changed=false;
+        for(unsigned y=0;y<8&&!changed;y++)for(unsigned x=0;x<8;x++){
+            unsigned i=(ty*8+y)*d->stride+tx*8+x;
+            if(mask&&!(mask[i/32]&(1u<<(i%32))))continue;
+            if(pd_adjust_color(pixels[i],hue,saturation,brightness)!=pixels[i]){changed=true;break;}
+        }
+        if(changed)tiles++;
+    }
+    unsigned bytes=tiles*260u;unsigned plane=pd_bytes(d);return bytes>=plane?plane:bytes;
+}
+bool pd_adjust_layers(PdDocument *d,unsigned scope,const uint32_t *mask,int hue_shift,int saturation_shift,int brightness_shift){
+    if(!d||d->editing||scope>2||abs(hue_shift)>180||abs(saturation_shift)>100||abs(brightness_shift)>100)return false;
+    if(!hue_shift&&!saturation_shift&&!brightness_shift)return false;
+    bool target[PD_LAYERS]={0};unsigned original=d->active,count=0;
+    if(scope<2){
+        if(!(d->enabled&(1u<<original))||!d->layer[original].visible||(d->layer[original].flags&PD_LAYER_LOCK)||(scope==0&&!mask))return false;
+        target[original]=true;count=1;
+    }else{
+        for(unsigned i=0;i<d->capacity;i++)if((d->enabled&(1u<<i))&&d->layer[i].visible){
+            if(d->layer[i].flags&PD_LAYER_LOCK)return false;
+            target[i]=true;count++;
+        }
+        if(!count)return false;
+    }
+    unsigned group_bytes=0;for(unsigned i=0;i<d->capacity;i++)if(target[i]){group_bytes+=adjust_record_bytes(d,i,scope==0?mask:NULL,hue_shift,saturation_shift,brightness_shift);if(group_bytes>d->history_capacity)return false;}
+    if(!group_bytes)return false;
+    if(++d->next_history_group==0)++d->next_history_group;
+    d->history_group=d->next_history_group;d->history_group_active=(uint8_t)original;
+    bool changed=false;
+    for(unsigned i=0;i<d->capacity;i++)if(target[i]){
+        d->active=i;if(!pd_begin(d))continue;uint32_t *pixels=pd_pixels(&d->layer[i]);bool layer_changed=false;
+        for(unsigned j=0;j<pd_plane(d);j++){
+            if(scope==0&&!(mask[j/32]&(1u<<(j%32))))continue;
+            uint32_t next=pd_adjust_color(pixels[j],hue_shift,saturation_shift,brightness_shift);
+            if(next!=pixels[j]){pixels[j]=next;layer_changed=true;}
+        }
+        if(layer_changed&&pd_commit(d))changed=true;else pd_cancel(d);
+    }
+    d->active=original;d->history_group=0;d->history_group_active=0;
+    if(changed)pd_composite(d);
+    return changed;
 }
 void pd_pattern_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask,unsigned pattern) {
     if(pattern>3)return;
@@ -214,12 +281,14 @@ void pd_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color){pd_brush_
 #if defined(__GNUC__)
 __attribute__((always_inline))
 #endif
-static inline uint32_t sample_layers(const PdLayer layers[PD_LAYERS],uint8_t enabled,const uint8_t order[PD_LAYERS],unsigned i){
+static inline uint32_t sample_layers(const PdLayer layers[PD_LAYERS],uint8_t enabled,const uint8_t order[PD_LAYERS],unsigned active,unsigned i,int adjust_scope,const uint32_t *mask,int hue_shift,int saturation_shift,int brightness_shift){
         unsigned a=0,r=0,g=0,b=0;
         for(unsigned k=0;k<PD_LAYERS;k++) {unsigned j=order[k];
             const PdLayer *l=&layers[j]; if(!(enabled&(1u<<j))||!l->visible)continue;
             uint32_t p=pd_pixels(l)[i]; unsigned sa=((p>>24)*l->opacity+127)/255;
             if(!sa)continue;
+            bool adjust=adjust_scope==2||((adjust_scope==0||adjust_scope==1)&&j==active);
+            if(adjust&&(adjust_scope!=0||(mask[i/32]&(1u<<(i%32)))))p=(pd_adjust_color(p,hue_shift,saturation_shift,brightness_shift)&0xffffffu)|(p&0xff000000u);
             if(l->blend&&a){
                 unsigned back[3]={(r+a/2)/a,(g+a/2)/a,(b+a/2)/a},src[3]={(p>>16)&255,(p>>8)&255,p&255};
                 for(unsigned c=0;c<3;c++){unsigned cb=back[c],cs=src[c],v=cs;
@@ -239,10 +308,10 @@ static inline uint32_t sample_layers(const PdLayer layers[PD_LAYERS],uint8_t ena
         if(a==255){return 0xff000000u|(((r+127)/255)<<16)|(((g+127)/255)<<8)|((b+127)/255);}
         return a ? (a<<24)|(((r+a/2)/a)<<16)|(((g+a/2)/a)<<8)|((b+a/2)/a) : 0;
 }
-uint32_t pd_sample_layers(const PdLayer layers[PD_LAYERS],uint8_t enabled,const uint8_t order[PD_LAYERS],unsigned i){return sample_layers(layers,enabled,order,i);}
+uint32_t pd_sample_layers(const PdLayer layers[PD_LAYERS],uint8_t enabled,const uint8_t order[PD_LAYERS],unsigned i){return sample_layers(layers,enabled,order,0,i,-1,NULL,0,0,0);}
 void pd_composite_rect(PdDocument *d,int x0,int y0,int x1,int y1) {
     if(x0<0)x0=0;if(y0<0)y0=0;if(x1>(int)d->width)x1=(int)d->width;if(y1>(int)d->height)y1=(int)d->height;
-    for(int y=y0;y<y1;y++)for(int x=x0;x<x1;x++){unsigned i=(unsigned)(y*d->stride+x);pd_image(d)[i]=sample_layers(d->layer,d->enabled,d->order,i);}
+    for(int y=y0;y<y1;y++)for(int x=x0;x<x1;x++){unsigned i=(unsigned)(y*d->stride+x);pd_image(d)[i]=sample_layers(d->layer,d->enabled,d->order,d->active,i,-1,NULL,0,0,0);}
 }
 
 void pd_composite(PdDocument *d){
@@ -250,6 +319,15 @@ void pd_composite(PdDocument *d){
 composite_calls++;
 #endif
 pd_composite_rect(d,0,0,(int)d->width,(int)d->height);}
+bool pd_adjust_preview(PdDocument *d,unsigned scope,const uint32_t *mask,int hue_shift,int saturation_shift,int brightness_shift){
+    if(!d||d->editing||scope>2||(scope==0&&!mask))return false;
+    uint32_t *out=pd_before(d);
+    for(unsigned y=0;y<d->height;y++)for(unsigned x=0;x<d->width;x++){
+        unsigned i=y*d->stride+x;
+        out[i]=sample_layers(d->layer,d->enabled,d->order,d->active,i,(int)scope,mask,hue_shift,saturation_shift,brightness_shift);
+    }
+    return true;
+}
 bool pd_merge_down(PdDocument *d){
     if(d->editing)return false;unsigned source=d->active,target=PD_LAYERS;
     for(unsigned k=0;k<PD_LAYERS;k++){unsigned i=d->order[k];if(i==source)break;if(d->enabled&(1u<<i))target=i;}

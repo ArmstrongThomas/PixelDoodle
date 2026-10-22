@@ -1,12 +1,149 @@
+## 0.14.7 four-times pixel grid (2026-10-21)
+
+The pixel grid now appears at 4x zoom and above instead of 8x. Both incremental
+and full-canvas rendering paths use the same threshold. The canvas pixels and
+exported artwork remain unchanged; only the on-screen overlay changes. Guides
+identifies the grid as `PIXEL GRID (4X+)`. Host tests compare the rendered
+4x grid boundary against the source pixel and verify the artwork pixel remains
+unchanged.
+
+The Tool drawer keeps its single-column selector and opens matching settings in
+a right-side panel. Brush settings include a live footprint preview and a
+centered filled size slider. Brush Details shows visual previews of all four
+saved presets. Advanced Brush Details and Transform Selection use centered,
+consistent overlay sheets with Close controls.
+
+## 0.14.6 transparent tools drawer (2026-10-21)
+
+When no tool settings panel is open, the drawing canvas remains visible to the
+right of the single-column tool rail. The rail keeps its opaque hit targets;
+only the active tool's compact settings panel paints over the canvas. Tapping
+a tool still opens its settings, and the persistent toolbox icon closes the
+drawer. No project, settings, protocol or server changes.
+
+Advanced Brush Details and Transform Selection now use centered overlay sheets
+with matching headers, close controls and grouped rows. The canvas remains
+visible around these sheets. Fill, Select, shape and Guide settings are handled
+inside the compact right-side tool panel rather than reopening full-screen
+legacy option pages.
+
+## 0.14.5 drawing tools drawer (2026-10-21)
+
+The persistent toolbox icon now opens a full lower-screen drawing-tool drawer.
+A single left-aligned column contains Pencil, Eraser, Sample, Fill, Select,
+Line, Rectangle, Ellipse and Guides. Tapping a tool leaves the column in place
+and opens its settings in a compact panel to the right. Pencil and Eraser show
+brush size, tip, Pixel Perfect and the preset entry point; Fill shows region,
+sample and tolerance; Select shows mask, combine, clipboard and transform
+actions; shapes show fill and size; Guides shows its five toggles. Sample has
+no settings panel. No server or file-format changes.
+
+The layer Options action label is now `DUPE`, resolving the prior `DUP`
+abbreviation. Host tests cover every drawer selection, right-panel controls,
+drawer closing, both native layouts and existing tool behavior.
+
+## 0.14.4 layer options and footer delete (2026-10-21)
+
+Layers now uses compact touch rows with direct grip, visibility, selection,
+lock and options controls. NDS shows six rows below the rail; 3DS shows all
+eight. The footer exposes New Layer and dedicated Delete Layer; Delete opens
+the destructive confirmation before changing the document. Tapping a name selects it,
+quick drag scrolls, and a 150 ms hold followed by drag reorders on release.
+Each row keeps its own Options control. The revised options sheet shows the
+selected layer by name, a full-width opacity slider, explicit Lock and Alpha
+Lock states, a four-choice blend dropdown, and Rename, Duplicate and Merge
+actions. Layer Options no longer duplicates Delete. The redundant "HOLD GRIP"
+footer hint was removed; the grip indicator and upper-screen hint explain
+reordering. The options sheet and blend dropdown share a centered 192-pixel
+NDS width or 240-pixel 3DS width. Blend choices apply on touch-down for
+immediate feedback.
+
+The upper screen shows composite and active-layer previews side by side,
+including a hidden-layer marker and the active layer's blend, opacity and
+protection state. The layer icons use the same packed antialiased glyph source
+as the rail without changing project or file formats. Host tests cover the new
+row zones, visibility and direct lock controls, the options tray, scrolling,
+reorder thresholds and both native layouts. No server change is required.
+Standard artifacts: `PixelDoodle.nds` SHA-256
+`C7524E28BBF85923CCA8E6F355663162CC6F388CE5C1C62932FEFDEB8CC2BEC8`,
+`build/3ds/PixelDoodle.3dsx` SHA-256
+`F62462EE8E47340C1479EBC110489B34C2D0A9BDB83825CF8D237778AC56B53C`,
+and `build/3ds/PixelDoodle.cia` SHA-256
+`DC160EFBAA925F745F4348A33AAD0226F9B9862B7751C1FEB3D76D0A9D9FA1C1`.
+Private artifacts: `build/private/nds/PixelDoodle-Private.nds` SHA-256
+`D005D4BCE1ED5DDC6211FD00BA818C1ACB9EABADC4A6881F1541B8328E472F6C`
+and `build/private/3ds/PixelDoodle-Private.3dsx` SHA-256
+`51A1AD089E6C735F73FB23D79069FE5612C12CF8DC61FF09455860AB7B62049C`.
+Emulator and physical-device interaction acceptance remains pending.
+
+## 0.14.2 color dashboard and picker clipping (2026-10-21)
+
+The Color page is now a three-mode lower-screen workspace. **Swatches** uses
+true square tiles in 8/6/5-column density modes, vertically scrollable, with
+explicit FG/BG targets and swap. Tap applies a swatch; a short drag scrolls and
+a 150 ms hold begins reorder. **Picker** uses a square saturation/value field,
+a vertical hue rail, alpha, FG/BG targeting and swap, a scrollable six-column
+quick palette, and a hexadecimal field that opens the shared OSK in a
+six-digit, hexadecimal-safe layout. **Edit** exclusively contains Add, Replace,
+Remove, Move, Load, Save and Done. The persistent six-slot rail uses the
+mockup line-icon language as six packed 16x16 glyphs in the shared UI font
+table. These reserve otherwise unreachable lowercase slots, so no second font
+is embedded. The touch-inactive top screen names the active
+foreground/background target or selected swatch instead of showing a redundant
+"display only" label. It now uses the full display for a large active-color
+preview, foreground/background cards, selected swatch, RGB, HSV, alpha, recent
+colors and palette position. A 12-pixel NDS or 16-pixel 3DS outer margin and
+two-axis clipping prevent preview swatches from touching or wrapping across the
+screen edge.
+
+The default palette now contains 40 colors and still supports 1-256 imported or
+edited colors. Project palettes and the PPL1 global palette storage format are
+unchanged. Palette updates still save separately from artwork.
+
+Scrolled quick-palette rows are clipped to their panel so they cannot draw over
+the target row or hexadecimal field. Host tests cover both native layouts,
+density changes, target switching, swap,
+exact hex entry through the OSK, add/replace/remove/move/load/save, full and
+mini palette scrolling, 150 ms reorder, persistence, corrupt-slot fallback and
+UI rendering.
+
+## 0.14.0 color adjustment workspace (2026-10-21)
+
+Menu now includes **Adjust**, opening a touch and drag page for signed hue
+(-180 to +180), saturation (-100 to +100) and brightness (-100 to +100).
+Selection scope changes the masked pixels on the bound current layer, Current
+scope changes the full active layer, and Visible scope changes every enabled
+visible layer independently. Transparent RGB remains untouched; alpha, layer
+order, names, visibility, opacity and blend are preserved. Locked targets make
+the operation transactional and leave all layers unchanged.
+
+History edits now carry a transaction group. Visible-layer adjustment can span
+multiple layer records while Undo and Redo treat the whole group as one step.
+The core estimates the combined changed-tile payload before mutation and
+refuses the adjustment if it cannot retain an atomic undo. The host suite covers
+HSV conversion, scope isolation, alpha preservation, hidden and locked layers,
+selection masks, grouped undo/redo, atomic history-capacity refusal, menu
+navigation, slider interaction, cancellation and native DS/3DS renders.
+
+The adjustment page renders an accurate side-by-side Before/After preview on
+the top screen. The preview uses the unchanged layer stack and matching blend
+math; it writes only the existing full-size before scratch buffer. Dragging
+retains the last complete After frame and marks it as adjusting, while stylus
+lift refreshes the preview. The shared top screen now uses a project header,
+right-aligned layer/zoom badge, framed overview and a separate saved/unsaved
+footer state.
+
+Hardware acceptance remains pending. See `docs/COLOR-ADJUSTMENTS.md`.
+
 ## Complete local build set (2026-10-21)
 
 The standard packages were rebuilt after the private candidate: root
 `PixelDoodle.nds` (SHA-256
-`C3F17B34103CEA6AFC9587F2AFF3FC01E8A62D36D2A94752E633B941B3963F34`),
+`3190C6D2FC36FC71226CAD31158089912B74F1FC72D145AFB2B4A13A33F6AFDD`),
 `build/3ds/PixelDoodle.3dsx` (SHA-256
-`28A0EE20C5A96A871769FE67953E80D4BF8136E8EAE589EB726AFC77343CA903`),
+`A85AA78022133984274060C95CE73392E901753E05FA75531D941A363E475436`),
 and `build/3ds/PixelDoodle.cia` (SHA-256
-`AEDF62661EAEFD870DCEBEA9B34D71E8191E5D7F949F1329F19AE38ED01AAC54`).
+`509B6BD9365869C2188D24BA44858703B9CFD67B4B95C75A23485129156E1FC6`).
 The standard NDS header, ARM bounds and DLDI checks and CIA metadata check
 pass. The private NDS and 3DSX hashes below remain current. This makes five
 local packages in total; no private CIA was requested or produced.
@@ -39,7 +176,7 @@ it falls back safely on DS hardware. The share path now does the same.
 
 The corrected private NDS candidate is
 `build/private/nds/PixelDoodle-Private.nds` (SHA-256
-`245BBB5FB5E0B43DDDF4FBB90F459B60964D544CC689732A234C6875F20895BC`).
+`4E0B0A1015AE2C91D90DC86329C3AD2D6D5CA16C4B4A07DCF113CB88E275D953`).
 The association notice reports the number of saved APs DSWiFi loaded so a
 hardware retest can distinguish a missing Advanced Setup entry from an
 association failure. Conditional DSi-mode initialization then reached TLS
@@ -60,7 +197,7 @@ and both private builds pass. Artifacts:
 `build/private/nds/PixelDoodle-Private.nds` (diagnostic NDS hashes and status
 are in the DSi lockup section above) and
 `build/private/3ds/PixelDoodle-Private.3dsx` (SHA-256
-`7E1D69E3E74BE413D7AC9B606A5454F5478679F386013B72A6139BBB2FB68639`).
+`1CBBD98C52DC90A7DDB381BC7C55E137D9572258BC4DEBF89834B0FC676B234A`).
 NDS header, ARM bounds and DLDI checks pass. Azahar booted an earlier private
 3DSX. Both share choices reached the configured Discord webhook and the app
 displayed their respective success notices. The first Azahar send reached
@@ -422,7 +559,7 @@ Slice 2 candidate writes PDD5 with project palettes; PDD1-PDD4 remain readable. 
 
 Settings writes now use PDS2 (16 bytes, packed paired-control permutation at byte 10); PDS1 remains readable. Shared app_bindings translates the four original action groups for both platform adapters. L/R, START and SELECT remain fixed. Remapping drafts only apply after Settings Save. Preserve settings slots; no downgrade writes.
 
-Editable global palettes now use app-owned palette0.bin/palette1.bin (PPL1, dual-slot CRC/readback). Read docs/PALETTE-SLICE1.md. Preserve these across deployment; they are distinct from settings and artwork. Missing storage permits session editing with a failed-save notice.
+Editable global palettes now use app-owned palette0.bin/palette1.bin (PPL1, dual-slot CRC/readback). Read docs/PALETTE-WORKSPACE.md. Preserve these across deployment; they are distinct from settings and artwork. Missing storage permits session editing with a failed-save notice.
 
 Latest layer follow-up uses PDD4 (blend modes/order extension), per-row controls and timed reorder. See the opening section of docs/LAYERS-SLICE1.md. Native PDD1–PDD3 reads remain supported. Layer memory indicators describe allocated document storage/slot capacity, not free heap. Merge Down is restricted to visible Normal pairs and explains refusal; do not silently flatten backdrop-dependent blends.
 
@@ -466,7 +603,7 @@ PDD7 writes eight property pairs, eight 64-byte names, eight fixed 128-stride pi
 
 Layer protections (2026-10-14): layer options now have undoable Lock and Alpha Lock toggles, with X to close. Lock blocks pixel writes, erase, deletion and destructive merges; visibility, opacity, rename and reorder remain available. Alpha Lock preserves existing per-pixel alpha, blends brush RGB by brush alpha, skips empty pixels and ignores erase. Merge into alpha-locked layers is refused. PDD8 appends eight validated protection bytes (bits 0/1) after the PDD7 palette payload; PDD1–7 remain readable. Native recovery preserves both flags. Aseprite editable bit preserves layer lock; alpha lock is native-only and export reports this. Document memory size unchanged. Host protection/UI/persistence checks pass. Eight-layer candidate and protection hardware acceptance remain pending before closing slice 4 and starting brush size/grid.
 
-Brush/grid candidate (2026-10-14): toolbox > Brush/Grid offers independent pencil/eraser sizes 1–16, square/round tips and pixel-grid toggle. Grid shows at 8x+ only on the editing canvas, never in artwork, exports or sampled colors. Both render paths preserve the grid. Brush footprints clip to canvas bounds and contribute to incremental damage. Even sizes extend one extra pixel left/up. Alpha-locked paint samples the pre-stroke pixel so overlapping stamps do not repeatedly accumulate color within a stroke. Protection applies to all stamps. Tool preferences persist on pen release in tools0.bin/tools1.bin (PDB1, 20 bytes, sequence, two size/tip fields, grid flag, CRC at byte 16; dual-slot readback). Preserve these files during deployment. Host tests cover tips/sizes/edges/undo/preferences and 1455 incremental/full render frames. User accepted protections locally and requested continuing tools; slice 4 hardware acceptance remains pending. Fill is the next tool after brush/grid acceptance.
+Brush/grid candidate (2026-10-14): toolbox > Brush/Grid offers independent pencil/eraser sizes 1–16, square/round tips and pixel-grid toggle. Grid shows at 4x+ only on the editing canvas, never in artwork, exports or sampled colors. Both render paths preserve the grid. Brush footprints clip to canvas bounds and contribute to incremental damage. Even sizes extend one extra pixel left/up. Alpha-locked paint samples the pre-stroke pixel so overlapping stamps do not repeatedly accumulate color within a stroke. Protection applies to all stamps. Tool preferences persist on pen release in tools0.bin/tools1.bin (PDB1, 20 bytes, sequence, two size/tip fields, grid flag, CRC at byte 16; dual-slot readback). Preserve these files during deployment. Host tests cover tips/sizes/edges/undo/preferences and 1455 incremental/full render frames. User accepted protections locally and requested continuing tools; slice 4 hardware acceptance remains pending. Fill is the next tool after brush/grid acceptance.
 
 
 Guides and brush popup (2026-10-14): user accepted brush drawing on physical 3DS. Top pencil/eraser icon now opens a compact size 1–16 / square-round popup over the canvas. Tap outside to dismiss without drawing; Tools or B opens the toolbox. Selecting Pencil/Eraser also opens its popup. Toolbox # Guides separates pixel grid, Symmetry X/Y and Tile X/Y. Symmetry reflects actual stamped pixels about canvas center (including even tips). Tile axes both wrap brush footprints and allow drawing on repeated previews; unwrapped input coordinates prevent seam-crossing chords. Preview/grid do not alter exports. Tools slots now write PDB2, retaining PDB1 reads; byte 13 stores four guide bits, existing CRC/dual-slot workflow retained. Preferences are device-local, not project fields. Ordinary drawing retains its incremental render path; guided strokes currently redraw the full canvas, so guided-mode DS performance needs user testing. Core seam/mirror/undo, UI repeated-copy input, repeated-preview oracle, preference reload and prior 1455 incremental-frame checks pass; NDS/3DSX/CIA build and header checks pass. Local and hardware acceptance of this candidate pending.

@@ -105,76 +105,96 @@ static void community_ui_checks(const char *dir){PdApp *a=calloc(1,sizeof(*a));u
     community_mock_http=401;community_mock_token=false;tap(a,128,36);tap(a,20,131);assert(!community_mock_saved&&!community_mock_token&&strstr(a->community_status,"EXPIRED OR REVOKED"));
     community_mock_http=403;community_mock_token=true;community_mock_saved=true;tap(a,128,36);tap(a,20,131);assert(community_mock_saved&&community_mock_token&&strstr(a->community_status,"MORE SCOPES"));
     free(a);free(bottom);free(top);puts("Community dropdown mode switch, favorite, My Uploads, relaunch and 401/403 grant fixtures: PASS");}
+static void adjustment_checks(const char *dir){
+    assert(pd_adjust_color(0xffff0000,120,0,0)==0xff00ff00);
+    assert(pd_adjust_color(0xffff0000,0,-100,0)==0xffffffff);
+    assert((pd_adjust_color(0x80abcdef,180,0,0)&0xffffffu)==(pd_adjust_color(0xffabcdef,180,0,0)&0xffffffu));
+    assert(pd_adjust_color(0x00112233,90,50,50)==0x00112233);
+
+    PdDocument *d=calloc(1,sizeof(*d));assert(d);pd_init(d);d->enabled=3;
+    dot(d,0,2,2,0x80ff0000);dot(d,1,2,2,0xff0000ff);d->active=0;d->history_used=d->count=d->cursor=0;
+    assert(pd_adjust_layers(d,1,NULL,120,0,0));assert(d->layer[0].pixels[2*128+2]==0x8000ff00);assert(d->layer[1].pixels[2*128+2]==0xff0000ff);assert(d->count==1);
+    assert(pd_undo(d)&&d->layer[0].pixels[2*128+2]==0x80ff0000&&d->cursor==0);assert(pd_redo(d)&&d->layer[0].pixels[2*128+2]==0x8000ff00);
+    pd_init(d);d->enabled=3;d->active=0;dot(d,0,2,4,0xffff0000);dot(d,1,2,4,0xff0000ff);d->active=0;d->history_used=d->count=d->cursor=0;pd_composite(d);
+    assert(pd_adjust_preview(d,2,NULL,120,0,0));assert(pd_before(d)[4*128+2]==0xffff0000);assert(pd_adjust_preview(d,1,NULL,120,0,0));assert(pd_before(d)[4*128+2]==0xff0000ff);assert(d->layer[1].pixels[4*128+2]==0xff0000ff&&!d->count);
+    pd_init(d);d->enabled=3;d->active=0;dot(d,0,2,5,0x80ff0000);dot(d,1,2,5,0xff0000ff);d->layer[1].opacity=128;d->layer[1].blend=1;d->active=0;d->history_used=d->count=d->cursor=0;pd_composite(d);
+    assert(pd_adjust_preview(d,2,NULL,60,20,-10));uint32_t expected=pd_before(d)[5*128+2];assert(pd_adjust_layers(d,2,NULL,60,20,-10));pd_composite(d);assert(pd_image(d)[5*128+2]==expected);
+
+    pd_init(d);d->enabled=3;d->active=0;dot(d,0,3,3,0xffff0000);dot(d,1,3,3,0xff0000ff);dot(d,1,4,4,0xff00ff00);d->active=0;d->history_used=d->count=d->cursor=0;
+    assert(pd_adjust_layers(d,2,NULL,120,0,0));assert(d->layer[0].pixels[3*128+3]==0xff00ff00&&d->layer[1].pixels[3*128+3]==0xffff0000&&d->layer[1].pixels[4*128+4]==0xff0000ff&&d->count==2&&d->active==0);
+    assert(pd_undo(d)&&d->layer[0].pixels[3*128+3]==0xffff0000&&d->layer[1].pixels[3*128+3]==0xff0000ff&&d->layer[1].pixels[4*128+4]==0xff00ff00&&d->cursor==0);assert(pd_redo(d)&&d->layer[0].pixels[3*128+3]==0xff00ff00&&d->layer[1].pixels[3*128+3]==0xffff0000);
+    pd_init(d);d->enabled=3;d->active=0;dot(d,0,5,5,0xffff0000);dot(d,1,5,5,0xff0000ff);d->history_used=d->count=d->cursor=0;d->layer[1].visible=0;assert(pd_adjust_layers(d,2,NULL,120,0,0));assert(d->layer[0].pixels[5*128+5]==0xff00ff00&&d->layer[1].pixels[5*128+5]==0xff0000ff);
+    pd_init(d);d->enabled=3;d->active=0;dot(d,0,6,6,0xffff0000);d->layer[0].flags=PD_LAYER_LOCK;assert(!pd_adjust_layers(d,1,NULL,120,0,0));
+    pd_init(d);dot(d,0,7,7,0x80ff0000);dot(d,0,8,7,0x80ff0000);d->history_used=d->count=d->cursor=0;uint32_t mask[PD_PIXELS/32]={0};unsigned index=7*128+7;mask[index/32]=1u<<(index%32);
+    assert(pd_adjust_layers(d,0,mask,120,0,0));assert(d->layer[0].pixels[index]==0x8000ff00&&d->layer[0].pixels[7*128+8]==0x80ff0000);assert(pd_undo(d)&&d->layer[0].pixels[index]==0x80ff0000);
+    assert(pd_create(d,512,512,3));d->enabled=7;for(unsigned i=0;i<3;i++)for(unsigned j=0;j<pd_plane(d);j++)pd_pixels(&d->layer[i])[j]=i==0?0xffff0000:i==1?0xff0000ff:0xff00ff00;d->history_used=d->count=d->cursor=0;d->active=0;
+    assert(!pd_adjust_layers(d,2,NULL,120,0,0));assert(pd_pixels(&d->layer[0])[0]==0xffff0000&&pd_pixels(&d->layer[1])[0]==0xff0000ff&&!d->count);
+
+    PdApp *a=calloc(1,sizeof(*a));uint32_t *bottom=calloc(320*240,sizeof(uint32_t)),*top=calloc(400*240,sizeof(uint32_t));assert(a&&bottom&&top);
+    app_init(a,256,192,dir,"TEST");dot(&a->doc,0,9,9,0xffff0000);a->doc.history_used=a->doc.count=a->doc.cursor=0;app_input(a,false,0,0,PD_MENU,0);tap(a,128,164);assert(a->page==31&&a->adjust_scope==1&&a->adjust_preview_ready&&!a->doc.count);
+    tap(a,42,40);assert(a->adjust_scope==0);tap(a,80,175);assert(a->page==31&&!a->doc.count);
+    tap(a,128,40);tap(a,236,70);assert(a->adjust_scope==1&&a->adjust_hue==5&&a->adjust_preview_ready&&!a->adjust_preview_stale);a->adjust_hue=120;a->touching=true;a->adjust_preview_stale=true;app_input(a,false,0,0,0,0);assert(a->adjust_hue==120&&!a->adjust_preview_stale&&a->adjust_preview_ready);a->width=320;a->height=240;app_render(a,bottom,top,400,240);
+    bool green_after=false;for(int i=0;i<400*240;i++)if(top[i]==0x00ff00){green_after=true;break;}assert(green_after);ppm(dir,"3ds-adjust-colors",bottom,320,240);ppm(dir,"3ds-adjust-preview-top",top,400,240);a->width=256;a->height=192;
+    tap(a,80,175);assert(!a->page&&a->doc.layer[0].pixels[9*128+9]==0xff00ff00&&a->doc.count==1&&a->doc.active==0);
+    app_init(a,256,192,dir,"TEST");dot(&a->doc,0,10,10,0xffff0000);a->doc.history_used=a->doc.count=a->doc.cursor=0;app_input(a,false,0,0,PD_MENU,0);tap(a,128,164);a->adjust_hue=120;a->touching=true;a->adjust_preview_stale=true;app_input(a,false,0,0,0,0);app_render(a,bottom,top,256,192);ppm(dir,"nds-adjust-colors",bottom,256,192);ppm(dir,"nds-adjust-preview-top",top,256,192);tap(a,190,175);assert(!a->page&&!a->doc.count&&a->doc.layer[0].pixels[10*128+10]==0xffff0000);
+    free(a);free(bottom);free(top);free(d);puts("Hue/saturation/brightness: selection/current/visible scope, grouped undo, locks, UI and cancellation: PASS");
+}
 static void color_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
     for(int mode=0;mode<2;mode++){
         int w=mode?320:256,h=mode?240:192;app_init(a,w,h,"","TEST");a->color=0xff2060a0;
-        tap(a,w*5/12,10);assert(a->page==2&&a->color==a->color);
-        tap(a,h-64,32); /* red hue */
-        app_input(a,true,8,32,0,0);assert(a->color==0xffffffff);
-        app_input(a,true,h-81,32,0,0);assert(a->color==0xffff0000);
-        app_input(a,true,w+10,h+10,0,0);assert(a->color==0xff000000); /* clamp captured drag */
-        app_input(a,false,0,0,0,0);tap(a,h-81,32);assert(a->color==0xffff0000);
-        tap(a,48,h-12);assert(a->color==0x00ff0000);
-        tap(a,w-9,h-12);assert(a->color==0xffff0000);
-        tap(a,w*5/12,10);assert(!a->page&&a->color==0xffff0000&&!a->doc.count);
-        tap(a,w*5/12,10);tap(a,h-64,32);tap(a,h-81,32);tap(a,w*5/12,10);
-        assert(!a->page&&a->color==0xffff0000&&!a->doc.count);
+        tap(a,w*5/12,10);assert(a->page==2&&a->color_tab==1&&!a->palette_edit);
+        tap(a,w/2,35);assert(a->color_tab==0&&a->palette_picker_active);
+        int square=h-114;if(square>104)square=104;int top=68;
+        app_input(a,true,6,top,0,0);assert(a->color==0xffffffff);
+        app_input(a,true,6+square-1,top,0,0);app_input(a,true,6,top+square-1,0,0);assert((a->color&0xffffff)==0);
+        app_input(a,false,0,0,0,0);
+        tap(a,6+square-2,top+square/2);uint32_t picked=a->color;
+        tap(a,6+square+10,top+square-1);assert((a->color>>16)>=((a->color>>8)&255)&&(a->color>>16)>=(a->color&255));
+        tap(a,20,top+square+8);assert((a->color>>24)<255);
+        uint32_t changed=a->color;tap(a,w/4,h-17);assert(a->color==0xff2060a0&&a->color_tab==1);
+        tap(a,w/2,35);tap(a,6+square-2,top+square/2);tap(a,3*w/4,h-17);assert(a->color!=0xff2060a0&&a->color_tab==1);
+        tap(a,w*5/12,10);assert(!a->page&&!a->doc.count);
+        tap(a,w*5/12,10);tap(a,w/2,35);tap(a,w*5/12,10);assert(!a->page&&!a->doc.count);
+        a->color=0xff2060a0;a->page=2;a->color_tab=0;app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-picker":"nds-picker",b,w,h);ppm(dir,mode?"3ds-picker-top":"nds-picker-top",t,mode?400:256,h);
+        a->color_tab=1;a->palette_edit=false;app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-palette":"nds-palette",b,w,h);ppm(dir,mode?"3ds-palette-top":"nds-palette-top",t,mode?400:256,h);
+        a->palette_edit=true;a->color_tab=1;app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-palette-edit":"nds-palette-edit",b,w,h);a->palette_edit=false;
+        (void)picked;(void)changed;
+        tap(a,w*5/12,10);assert(!a->page);
         app_input(a,true,100,90,0,0);app_input(a,false,0,0,0,0);assert(a->doc.count==1); /* next gesture draws */
-        tap(a,w*5/12,10);tap(a,h-64,32+(h-89)/3);tap(a,w/3,50);
-        PdApp *ref=malloc(sizeof(*ref));uint32_t *rb=malloc(320*240*4),*rt=malloc(400*240*4);assert(ref&&rb&&rt);
-        app_render(a,b,t,mode?400:256,h);
-        for(int i=0;i<40;i++){
-            app_input(a,true,8+(i*17)%(h-88),32+(i*11)%(h-88),0,0);
-            if(a->redraw){*ref=*a;ref->picker_update=false;app_render(ref,rb,rt,mode?400:256,h);app_render(a,b,t,mode?400:256,h);assert(!memcmp(b,rb,(size_t)w*h*4));assert(!a->present_top);}
-        }
-        app_input(a,false,0,0,0,0);tap(a,20,h-36);assert(a->color_tab==1);
-        app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-palette":"nds-palette",b,w,h);
-        tap(a,18+2*((w-16)/5),40);assert(a->color==0xffe04444);tap(a,20,h-36);assert(a->color_tab==0);
-        app_render(a,b,t,mode?400:256,h);app_input(a,true,48,h-12,0,0);app_render(a,b,t,mode?400:256,h);
-        app_input(a,true,48,h-12,0,0);assert(!a->redraw);app_input(a,false,0,0,0,0);
-        a->swatch_count=256;for(unsigned i=0;i<256;i++)a->swatches[i]=0x80112233u+i*37;
-        for(unsigned tab=0;tab<2;tab++){
-            a->color_tab=tab;a->palette_scroll[tab]=0;a->picker_update=false;app_render(a,b,t,mode?400:256,h);
-            int xx=tab?20:w-12;a->now_ms=1000;app_input(a,true,xx,110,0,0);a->now_ms=1050;app_input(a,true,xx,70,0,0);
-            assert(a->picker_update&&a->swatch_scrolling);*ref=*a;ref->picker_update=false;app_render(ref,rb,rt,mode?400:256,h);app_render(a,b,t,mode?400:256,h);assert(!memcmp(b,rb,(size_t)w*h*4)&&!a->present_top);
-            app_input(a,false,0,0,0,0);
-        }
         a->page=8;a->draft_handed=1;tap(a,20,135);assert(a->page==9);
         for(int tab=0;tab<4;tab++){tap(a,(2*tab+1)*w/8,44);assert(a->help_tab==(unsigned)tab);app_render(a,b,t,mode?400:256,h);char name[64];snprintf(name,sizeof(name),"%s-help-%d",mode?"3ds":"nds",tab);ppm(dir,name,b,w,h);}
         tap(a,w-20,h-16);assert(a->page==8&&a->draft_handed==1);
-        a->page=2;a->color_tab=0;a->palette_scroll[0]=0;a->picker_update=false;a->recent_count=12;for(unsigned i=0;i<12;i++)a->recent[i]=0xff000000u|((i*21)<<16)|((255-i*20)<<8)|128;app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-picker-recents":"nds-picker-recents",b,w,h);
-        free(ref);free(rb);free(rt);
+        a->page=2;a->color_tab=0;a->palette_scroll[0]=0;a->picker_update=false;a->recent_count=12;for(unsigned i=0;i<12;i++)a->recent[i]=0xff000000u|((i*21)<<16)|((255-i*20)<<8)|128;app_render(a,b,t,mode?400:256,h);
+        uint32_t guard[320*24];for(int y=44;y<68;y++)memcpy(guard+(y-44)*w,b+y*w,w*4);
+        a->palette_scroll[0]=5;app_render(a,b,t,mode?400:256,h);
+        for(int y=44;y<68;y++)assert(!memcmp(guard+(y-44)*w,b+y*w,w*4));
+        a->palette_scroll[0]=0;app_render(a,b,t,mode?400:256,h);
+        int top_w=mode?400:256,outer=mode?16:12;uint32_t margin=t[25*top_w];
+        for(int y=20;y<h-17;y++){for(int x=0;x<outer-1;x++)assert(t[y*top_w+x]==margin);for(int x=top_w-outer+1;x<top_w;x++)assert(t[y*top_w+x]==margin);}
+        ppm(dir,mode?"3ds-picker-recents":"nds-picker-recents",b,w,h);
         a->draft_bindings=a->bindings;for(int page=1;page<=17;page++){a->page=page;a->confirm=0;app_render(a,b,t,mode?400:256,h);char name[64];snprintf(name,sizeof(name),"%s-dark-page%d",mode?"3ds":"nds",page);ppm(dir,name,b,w,h);}
         a->confirm=2;snprintf(a->notice,sizeof(a->notice),"New clears all four layers");app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-dark-confirm":"nds-dark-confirm",b,w,h);
     }
     free(a);free(b);free(t);puts("HSV corners, captured drag, opacity, immediate color/close and gesture isolation: PASS");
 }
 static void palette_checks(const char *dir){
-    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));assert(a&&r);app_init(a,256,192,dir,"TEST");assert(a->swatch_count==8);
-    tap(a,106,10);tap(a,20,156);assert(a->color_tab==1);
-    a->color=0x80123456;tap(a,20,180);assert(a->swatch_count==9&&a->swatches[8]==0x80123456);a->page=15;tap(a,20,50);a->page=2;
-    tap(a,128,180);assert(a->palette_edit&&!a->color_tab&&a->color==0x80123456);
-    a->color=0xff999999;tap(a,210,156);assert(!a->palette_edit&&a->color_tab&&a->swatches[8]==0x80123456&&a->color==0x80123456);
-    tap(a,128,180);a->color=0xffabcdef;tap(a,20,156);assert(!a->palette_edit&&a->color_tab&&a->swatches[8]==0xffabcdef);a->page=15;tap(a,20,50);a->page=2;
-    app_init(r,256,192,dir,"TEST");assert(r->swatch_count==9&&r->swatches[8]==0xffabcdef);
-    /* Damaged newest record recovers the previous valid palette. */
-    char path[512];snprintf(path,sizeof(path),"%s/palette1.bin",dir);FILE *f=fopen(path,"wb");assert(f);fputs("bad",f);fclose(f);
-    app_init(r,256,192,dir,"TEST");assert(r->swatch_count==9&&r->swatches[8]==0x80123456);
-    uint32_t first=a->swatches[0],second=a->swatches[1];a->now_ms=1000;app_input(a,true,20,40,0,0);a->now_ms=1149;app_input(a,true,80,40,0,0);assert(!a->swatch_drag);app_input(a,false,0,0,0,0);assert(a->swatches[0]==first);
-    a->now_ms=2000;app_input(a,true,20,40,0,0);a->now_ms=2150;app_input(a,true,80,40,0,0);assert(a->swatch_drag);app_input(a,false,0,0,0,0);assert(a->swatches[0]==second&&a->swatches[1]==first);
-    tap(a,230,180);assert(a->swatch_count==8);a->page=15;tap(a,20,50);a->page=2;app_init(r,256,192,dir,"TEST");assert(r->swatch_count==8&&r->swatches[0]==second);
-    a->swatches[0]=0xffaabbcc;a->swatch_count=1;a->page=15;tap(a,20,50); /* custom default */
-    a->swatches[0]=0xff112233;tap(a,20,85);assert(a->page==2&&a->color_tab==1&&a->swatch_count==1&&a->swatches[0]==0xffaabbcc&&a->doc.palette[0]==0xffaabbcc);
-    a->page=15;tap(a,20,120);assert(a->page==2&&a->swatch_count==8&&a->swatches[0]==0xff182126&&a->doc.palette_count==8);
-    app_init(r,256,192,dir,"TEST");assert(r->swatch_count==1&&r->swatches[0]==0xffaabbcc); /* factory restore preserves saved default */
-    a->swatch_count=256;for(unsigned i=0;i<256;i++)a->swatches[i]=0xff000000u|i;a->palette_scroll[1]=0;a->swatch_selected=0;tap(a,20,180);assert(a->swatch_count==256);
-    uint32_t before=a->color;a->now_ms=3000;app_input(a,true,20,100,0,0);a->now_ms=3100;app_input(a,true,20,40,0,0);assert(a->swatch_scrolling&&!a->swatch_drag&&a->palette_scroll[1]==60);app_input(a,false,0,0,0,0);assert(a->color==before&&a->swatches[0]==0xff000000u);
-    a->palette_scroll[1]=0;a->now_ms=4000;app_input(a,true,20,100,0,0);a->now_ms=4150;app_input(a,true,20,100,0,0);assert(a->swatch_drag);a->now_ms=4300;app_input(a,true,20,135,0,0);assert(a->palette_scroll[1]>0);app_input(a,false,0,0,0,0);
-    tap(a,20,156);assert(!a->color_tab);before=a->color;a->now_ms=5000;app_input(a,true,240,100,0,0);a->now_ms=5100;app_input(a,true,240,40,0,0);assert(a->swatch_scrolling&&a->palette_scroll[0]==60);app_input(a,false,0,0,0,0);assert(a->color==before);
-    tap(a,20,156);tap(a,128,180);assert(a->palette_edit);a->color=0xff112233;tap(a,106,10);assert(!a->palette_edit&&!a->page&&a->color==before);
-    tap(a,106,10);tap(a,20,156);a->swatch_count=1;a->swatch_selected=0;a->palette_scroll[1]=0;tap(a,230,180);assert(a->swatch_count==1);
-    free(a);free(r);puts("Palette edit/save/back, scrolling versus 150ms reorder, limits and disk recovery: PASS");
+    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));assert(a&&r);app_init(a,256,192,dir,"TEST");assert(a->swatch_count>=8);
+    tap(a,106,10);assert(a->page==2&&a->color_tab==1);
+    a->swatch_count=40;for(unsigned i=0;i<a->swatch_count;i++)a->swatches[i]=0xff000000u|(i*0x000f0f0fu);a->swatch_selected=0;a->palette_scroll[1]=0;
+    tap(a,12,76);assert(a->swatch_selected==0&&a->color==a->swatches[0]);
+    tap(a,60,56);assert(a->palette_target==1);uint32_t first_bg=a->swatches[1];tap(a,42,76);assert(a->background==first_bg);
+    uint32_t fg=a->color,bg=a->background;tap(a,100,56);assert(a->color==bg&&a->background==fg);
+    tap(a,130,56);assert(a->palette_density==0);tap(a,170,56);assert(a->palette_density==1);tap(a,220,56);assert(a->palette_density==2);
+    tap(a,2*a->width/3+20,35);assert(a->palette_edit);tap(a,20,56);unsigned count=a->swatch_count;a->color=0xffabcdef;tap(a,30,92);assert(a->swatch_count==count+1);
+    tap(a,a->width/2,92);assert(a->swatches[a->swatch_selected]==0xffabcdef);
+    tap(a,4*a->width/6,120);assert(a->swatch_count==count+1);
+    tap(a,a->width/2,120);assert(a->swatch_count==count+1);
+    tap(a,a->width-20,176);assert(!a->palette_edit);
+    a->swatch_count=256;for(unsigned i=0;i<256;i++)a->swatches[i]=0xff000000u|i;a->palette_scroll[1]=0;a->swatch_selected=0;a->color_tab=1;a->now_ms=3000;app_input(a,true,20,150,0,0);a->now_ms=3100;app_input(a,true,20,80,0,0);assert(a->swatch_scrolling&&a->palette_scroll[1]>0);app_input(a,false,0,0,0,0);
+    a->palette_scroll[1]=0;a->now_ms=4000;app_input(a,true,20,140,0,0);a->now_ms=4150;app_input(a,true,20,160,0,0);assert(a->swatch_drag);app_input(a,false,0,0,0,0);
+    a->color_tab=0;a->palette_scroll[0]=0;a->now_ms=5000;app_input(a,true,120,150,0,0);a->now_ms=5100;app_input(a,true,120,80,0,0);assert(a->swatch_scrolling&&a->palette_scroll[0]>0);app_input(a,false,0,0,0,0);
+    free(a);free(r);puts("Square palette density/targets/edit, scrolling versus 150ms reorder and picker mini scrolling: PASS");
 }
 static void palette_file_checks(const char *dir){
     uint32_t colors[256],read[256];for(unsigned i=0;i<256;i++)colors[i]=(i<<24)|((255-i)<<16)|(i<<8)|i;unsigned count=0;char path[512],error[64];
@@ -186,16 +206,17 @@ static void palette_file_checks(const char *dir){
     snprintf(path,sizeof(path),"%s/project-palette.pdd",dir);assert(pd_write_file(d,path,0,false,error)&&!pd_dirty(d));assert(pd_open_file(r,path,error)&&r->palette_count==3&&!memcmp(d->palette,r->palette,12));
     snprintf(path,sizeof(path),"%s/project-palette.aseprite",dir);assert(pd_write_file(d,path,1,false,error));assert(pd_open_file(r,path,error)&&r->palette_count==3&&!memcmp(d->palette,r->palette,12));
     d->palette[0]++;assert(pd_dirty(d));free(d);free(r);
-    PdApp *a=calloc(1,sizeof(*a));assert(a);app_init(a,256,192,"","TEST");tap(a,106,10);tap(a,150,65);assert(a->page==11&&!a->numeric_mode);tap(a,16,80);tap(a,240,180);assert(a->page==11);tap(a,128,180);assert(a->page==2);a->page=11;a->numeric_mode=1;strcpy(a->numeric,"128");tap(a,240,180);assert(a->page==2&&((a->color>>16)&255)==128);
-    tap(a,160,125);assert(a->page==11);tap(a,128,180);assert(a->page==2);
-    a->recent_count=2;a->recent[0]=0xff123456;a->recent[1]=0x80778899;tap(a,167,104);assert(a->color==0x80778899&&a->recent[0]==0xff123456&&a->recent[1]==0x80778899);a->page=13;tap(a,80,50);assert(a->color==0x80778899&&a->recent[0]==0xff123456&&a->recent[1]==0x80778899);
-    for(unsigned i=0;i<12;i++)a->recent[i]=0xff000000u+i;a->recent_count=12;a->swatch_count=2;a->swatches[0]=a->recent[11];a->swatches[1]=0xffabcdef;a->color_tab=1;a->palette_scroll[1]=0;
-    tap(a,20,40);assert(a->recent_count==12&&a->recent[0]==0xff00000b&&a->recent[1]==0xff000000&&a->recent[11]==0xff00000a);
-    tap(a,70,40);assert(a->recent_count==12&&a->recent[0]==0xffabcdef&&a->recent[1]==0xff00000b&&a->recent[11]==0xff000009);
-    a->color_tab=0;a->palette_scroll[0]=0;tap(a,240,40);assert(a->recent_count==12&&a->recent[0]==0xff00000b&&a->recent[1]==0xffabcdef);
-    uint32_t order[12];memcpy(order,a->recent,sizeof(order));tap(a,167,104);assert(a->color==order[1]&&!memcmp(order,a->recent,sizeof(order)));
-    uint32_t fg=a->color,bg=a->background;tap(a,150,40);assert(a->color==bg&&a->background==fg);assert(a->recent_count);free(a);
-    puts("Palette HEX/GPL/PNG, alpha, transactional rejection, PDD5/ASE project palettes and numeric/swap UI: PASS");
+    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
+    for(unsigned mode=0;mode<2;mode++){
+        int w=mode?320:256,h=mode?240:192;app_init(a,w,h,"","TEST");tap(a,w*5/12,10);tap(a,w/2,35);assert(a->page==2&&a->color_tab==0);
+        tap(a,150,56);assert(a->page==5&&a->name_action==5&&a->text_mode==3);app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-hex-osk":"nds-hex-osk",b,w,h);
+        snprintf(a->filename,sizeof(a->filename),"12ABCD");app_text_result(a,"12ABCD",true);app_input(a,false,0,0,0,0);assert(a->page==2&&(a->color&0xffffff)==0x12abcd);
+        tap(a,60,56);assert(a->palette_target==1);tap(a,150,56);assert(a->page==5&&a->name_action==5);app_text_result(a,"ABCDEF",true);app_input(a,false,0,0,0,0);assert((a->background&0xffffff)==0xabcdef);
+        int side=mode?132:106,tile=mode?27:22;tap(a,side+4,72);assert((a->background&0xffffff)==(a->swatches[0]&0xffffff));
+        tap(a,100,56);uint32_t fg=a->color,bg=a->background;tap(a,100,56);assert(a->color==bg&&a->background==fg);
+    }
+    free(a);free(b);free(t);
+    puts("Palette HEX/GPL/PNG, alpha, transactional rejection, PDD5/ASE project palettes and hex-OSK/swap UI: PASS");
 }
 static void browser_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);app_init(a,256,192,dir,"DS NTR");
@@ -232,9 +253,11 @@ static void brush_checks(const char *dir){
     pd_init(d);d->width=d->height=16;assert(pd_begin(d));pd_guided_line(d,0,0,0,0,0xff123456,2,false,15);assert(pd_commit(d));assert(d->layer[0].pixels[15*128+15]==0xff123456);assert(pd_undo(d)&&!d->layer[0].pixels[15*128+15]);assert(pd_redo(d));
     pd_init(d);d->width=d->height=16;assert(pd_begin(d));pd_guided_line(d,15,4,17,4,0xffffffff,1,false,4);assert(pd_commit(d));assert(d->layer[0].pixels[4*128+15]&&d->layer[0].pixels[4*128]&&d->layer[0].pixels[4*128+1]&&!d->layer[0].pixels[4*128+8]);
     pd_init(d);d->width=16;d->height=32;assert(pd_begin(d));pd_guided_line(d,3,4,5,8,0xffabcdef,4,true,3);assert(pd_commit(d));for(unsigned y=0;y<32;y++)for(unsigned x=0;x<16;x++){uint32_t c=d->layer[0].pixels[y*128+x];assert(c==d->layer[0].pixels[y*128+15-x]&&c==d->layer[0].pixels[(31-y)*128+x]);}
-    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&r&&b&&t);char root[PD_PATH];assert(pd_join(root,dir,"brush-prefs")&&pd_mkdir(root));app_init(a,256,192,root,"TEST");tap(a,192,12);assert(a->toolbox&&!a->page);tap(a,30,42);assert(a->page==21);tap(a,180,65);tap(a,40,125);tap(a,230,160);app_input(a,false,0,0,PD_TOOLS,0);tap(a,30,176);assert(a->page==22);tap(a,40,50);assert(a->brush_size[0]==2&&a->brush_round[0]&&a->pixel_grid);app_init(r,256,192,root,"TEST");assert(r->brush_size[0]==2&&r->brush_round[0]&&r->pixel_grid);
-    tap(a,40,75);tap(a,40,125);assert(a->guides==5);app_init(r,256,192,root,"TEST");assert(r->guides==5);
-    for(int m=0;m<2;m++){a->width=m?320:256;a->height=m?240:192;a->page=21;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-brush-options":"nds-brush-options",b,a->width,a->height);a->page=22;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-guides":"nds-guides",b,a->width,a->height);a->page=0;a->zoom=4;a->guides=12;pd_init(&a->doc);a->doc.width=a->doc.height=16;dot(&a->doc,0,3,3,0xff123456);app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-pixel-grid":"nds-pixel-grid",b,a->width,a->height);assert(a->doc.layer[0].pixels[3*128+3]==0xff123456);}
+    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&r&&b&&t);char root[PD_PATH];assert(pd_join(root,dir,"brush-prefs")&&pd_mkdir(root));app_init(a,256,192,root,"TEST");tap(a,192,12);assert(a->toolbox&&!a->page);tap(a,30,35);assert(!a->page&&a->toolbox&&a->tool_options_open&&a->tool==0);tap(a,230,90);tap(a,120,120);tap(a,120,145);app_input(a,false,0,0,PD_TOOLS,0);assert(!a->toolbox);app_input(a,false,0,0,PD_TOOLS,0);tap(a,80,170);assert(a->tool_panel==8&&a->tool_options_open);tap(a,120,50);assert(a->brush_size[0]==2&&a->brush_round[0]&&a->pixel_grid&&a->pixel_perfect);app_init(r,256,192,root,"TEST");assert(r->brush_size[0]==2&&r->brush_round[0]&&r->pixel_grid&&r->pixel_perfect);
+    app_init(a,256,192,root,"TEST");tap(a,192,12);tap(a,30,35);app_render(a,b,t,256,192);ppm(dir,"nds-tool-options",b,256,192);a->width=320;a->height=240;app_render(a,b,t,400,240);ppm(dir,"3ds-tool-options",b,320,240);a->width=256;a->height=192;
+    a->brush_size[0]=1;app_input(a,true,150,90,0,0);app_input(a,true,220,90,0,0);app_input(a,true,150,90,0,0);app_input(a,false,0,0,0,0);assert(a->brush_size[0]==2);tap(a,250,100);assert(!a->toolbox&&!a->tool_options_open);tap(a,192,12);tap(a,30,35);
+    tap(a,80,170);tap(a,120,72);tap(a,120,116);assert(a->guides==5);app_init(r,256,192,root,"TEST");assert(r->guides==5);
+    for(int m=0;m<2;m++){a->width=m?320:256;a->height=m?240:192;a->page=21;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-brush-options":"nds-brush-options",b,a->width,a->height);a->page=22;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-guides":"nds-guides",b,a->width,a->height);a->page=0;a->toolbox=false;a->tool_options_open=false;a->pixel_grid=true;a->zoom=4;a->guides=0;a->ox=a->oy=a->subx=a->suby=0;pd_init(&a->doc);a->doc.width=a->doc.height=16;dot(&a->doc,0,3,3,0xff123456);app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-pixel-grid":"nds-pixel-grid",b,a->width,a->height);int left=(a->width-64)/2,upper=24+(a->height-24-64)/2;assert(b[(upper+12)*a->width+left+12]!=0x123456);assert(b[(upper+13)*a->width+left+13]==0x123456);assert(a->doc.layer[0].pixels[3*128+3]==0xff123456);}
     /* Draw directly on a repeated copy and across its seam: no chord through the middle. */
     app_init(a,256,192,"","TEST");a->doc.width=a->doc.height=16;a->zoom=4;a->guides=4;a->color=0xffaabbcc;
     app_input(a,true,156,76,0,0);app_render(a,b,t,256,192);app_input(a,true,164,76,0,0);app_render(a,b,t,256,192);app_input(a,false,0,0,0,0);
@@ -252,7 +275,7 @@ static void fill_checks(const char *dir){
     pd_init(d);assert(pd_fill(d,0,0,0x80123456,15));for(unsigned i=0;i<PD_PIXELS;i++)assert(d->layer[0].pixels[i]==0x80123456);assert(pd_undo(d)&&!d->layer[0].pixels[PD_PIXELS-1]);assert(pd_redo(d));
     d->layer[0].flags=PD_LAYER_ALPHA_LOCK;assert(pd_fill(d,0,0,0xffff0000,0));assert(d->layer[0].pixels[0]==0x80ff0000);assert(!pd_fill(d,0,0,0,0));d->layer[0].flags=PD_LAYER_LOCK;assert(!pd_fill(d,0,0,0xffffffff,0));d->layer[0].flags=0;d->layer[0].visible=0;assert(!pd_fill(d,0,0,0xffffffff,0));
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);app_init(a,256,192,"","TEST");a->doc.width=a->doc.height=16;a->zoom=4;
-    tap(a,192,12);tap(a,30,126);assert(a->tool==3&&!a->toolbox&&a->page==26);tap(a,100,170);assert(!a->page);app_input(a,true,110,90,0,0);assert(a->doc.count==1);app_input(a,true,130,100,0,0);assert(a->doc.count==1);app_input(a,false,0,0,0,0);
+    tap(a,192,12);tap(a,46,85);assert(a->tool==3&&a->toolbox&&a->tool_options_open&&!a->page);tap(a,120,50);tap(a,120,75);tap(a,230,102);tap(a,120,160);assert(!a->tool_options_open&&a->fill_global&&a->fill_visible);tap(a,192,12);assert(!a->toolbox);app_input(a,true,110,90,0,0);assert(a->doc.count==1);app_input(a,true,130,100,0,0);assert(a->doc.count==1);app_input(a,false,0,0,0,0);
     a->guides=4;app_pan(a,-100,-100);assert(a->ox<0&&a->oy==0);app_pan(a,200,200);assert(a->ox>16&&a->oy==0);a->page=22;tap(a,20,120);assert(!a->guides&&a->ox==0);a->page=0;a->guides=12;app_pan(a,-100,-100);assert(a->ox<0&&a->oy<0);
     a->ox=8;a->oy=8;a->zoom=16;for(int m=0;m<2;m++){a->width=m?320:256;a->height=m?240:192;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-tile-pan":"nds-tile-pan",b,a->width,a->height);a->toolbox=true;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-fill-tools":"nds-fill-tools",b,a->width,a->height);a->toolbox=false;}
     free(d);free(a);free(b);free(t);puts("Fill connectivity/wrapping/mirrored seeds/alpha/lock/undo/bounds and tile panning: PASS");
@@ -265,7 +288,7 @@ static void fill_options_checks(const char *dir){
     assert(pd_fill_options(d,0,0,0xffff0000,0,NULL,true,8,false));assert(d->layer[0].pixels[1]==0xffff0000&&d->layer[0].pixels[3]==0xffff0000&&d->layer[0].pixels[4]==initial[4]);assert(pd_undo(d));uint32_t mask[PD_PIXELS/32]={1};assert(pd_fill_options(d,0,0,0xff00ff00,0,mask,true,255,false));assert(d->layer[0].pixels[1]==initial[1]);assert(pd_undo(d));assert(!pd_fill_options(d,0,0,0xff00ff00,0,NULL,true,256,false));
     pd_init(d);d->width=d->height=8;d->enabled=3;for(unsigned y=0;y<8;y++)d->layer[1].pixels[y*128+4]=0xff000000;assert(pd_fill_options(d,0,0,0xffff0000,0,NULL,false,0,true));assert(d->layer[0].pixels[3]==0xffff0000&&!d->layer[0].pixels[4]&&!d->layer[0].pixels[5]&&d->layer[1].pixels[4]==0xff000000);assert(pd_undo(d));assert(pd_fill_options(d,0,0,0xffff0000,0,NULL,true,0,true));assert(d->layer[0].pixels[5]==0xffff0000&&!d->layer[0].pixels[4]);assert(pd_undo(d));assert(pd_fill_options(d,0,0,0xffff0000,0,NULL,false,0,false));assert(d->layer[0].pixels[4]==0xffff0000);assert(pd_undo(d));
     pd_init(d);d->width=2;d->height=1;d->layer[0].pixels[1]=0x00123456;assert(pd_fill_options(d,0,0,0xff010203,0,NULL,true,0,false)&&d->layer[0].pixels[1]==0xff010203);
-    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&r&&b&&t);char root[PD_PATH];assert(pd_join(root,dir,"fill-options")&&pd_mkdir(root));app_init(a,256,192,root,"TEST");tap(a,192,12);tap(a,30,120);assert(a->page==26&&a->tool==3);tap(a,100,60);tap(a,100,85);tap(a,200,115);assert(a->fill_global&&a->fill_visible&&a->fill_tolerance==1);app_input(a,true,110,142,0,0);app_input(a,true,207,142,0,0);app_input(a,false,0,0,0,0);assert(a->fill_tolerance==255);app_init(r,256,192,root,"TEST");assert(r->fill_global&&r->fill_visible&&r->fill_tolerance==255);
+    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&r&&b&&t);char root[PD_PATH];assert(pd_join(root,dir,"fill-options")&&pd_mkdir(root));app_init(a,256,192,root,"TEST");tap(a,192,12);tap(a,46,85);assert(a->toolbox&&a->tool_options_open&&!a->page&&a->tool==3);tap(a,120,50);tap(a,120,75);tap(a,230,102);assert(a->fill_global&&a->fill_visible&&a->fill_tolerance==1);app_input(a,true,110,122,0,0);app_input(a,true,240,122,0,0);app_input(a,false,0,0,0,0);assert(a->fill_tolerance==255);app_init(r,256,192,root,"TEST");assert(r->fill_global&&r->fill_visible&&r->fill_tolerance==255);
     for(int m=0;m<2;m++){a->width=m?320:256;a->height=m?240:192;app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-fill-options":"nds-fill-options",b,a->width,a->height);}free(a);free(r);free(b);free(t);free(d);puts("Fill options: global/contiguous, tolerance boundaries, visible snapshot, masks, alpha and persistence: PASS");
 }
 static void selection_alpha_checks(void){
@@ -274,7 +297,7 @@ static void selection_alpha_checks(void){
     assert(pd_copy_selection(d,mask,clip));assert(pd_begin(d));assert(pd_move_selection(d,mask,8,0,false));assert(d->layer[0].pixels[1*128+9]==0xff80007f);assert(d->layer[0].pixels[2*128+10]==0xff00ff00);assert(!d->layer[0].pixels[1*128+1]);assert(pd_commit(d));assert(pd_undo(d)&&d->layer[0].pixels[1*128+1]==0x80ff0000&&d->layer[0].pixels[1*128+9]==0xff0000ff);
     assert(pd_paste_selection(d,clip,8,0));assert(d->layer[0].pixels[1*128+9]==0xff80007f&&d->layer[0].pixels[2*128+10]==0xff00ff00);assert(pd_undo(d));d->layer[0].pixels[1*128+9]=0x800000ff;assert(pd_paste_selection(d,clip,8,0));assert(d->layer[0].pixels[1*128+9]==0xc0aa0055);assert(pd_undo(d));
     d->layer[0].flags=PD_LAYER_ALPHA_LOCK;assert(pd_paste_selection(d,clip,8,0));assert(d->layer[0].pixels[1*128+9]==0x8080007f&&d->layer[0].pixels[2*128+10]==0xff00ff00);
-    PdApp *a=calloc(1,sizeof(*a));assert(a);app_init(a,256,192,"","TEST");a->tool=4;tap(a,16,36);assert(a->selection_shape==1);tap(a,80,36);assert(a->selection_mode==1);tap(a,112,36);assert(a->selection_mode==2);tap(a,48,36);assert(a->selection_mode==0);a->selection_valid=true;a->selection_layer=a->doc.active;a->selection_revision=a->doc.revision;pd_mask_rectangle(a->selection,0,0,3,3);tap(a,144,36);assert(a->clipboard.width==4&&!a->doc.count);tap(a,240,36);assert(!a->selection_valid);
+    PdApp *a=calloc(1,sizeof(*a));assert(a);app_init(a,256,192,"","TEST");tap(a,192,12);tap(a,40,102);assert(a->tool==4&&a->tool_options_open);tap(a,200,54);assert(a->selection_shape==1);tap(a,180,78);assert(a->selection_mode==1);tap(a,220,78);assert(a->selection_mode==2);tap(a,120,78);assert(a->selection_mode==0);a->selection_valid=true;a->selection_layer=a->doc.active;a->selection_revision=a->doc.revision;pd_mask_rectangle(a->selection,0,0,3,3);tap(a,120,102);assert(a->clipboard.width==4&&!a->doc.count);tap(a,200,128);assert(!a->selection_valid);
     free(a);free(d);free(clip);puts("Selection transparent move/paste, partial-alpha source-over, alpha lock and quick icons: PASS");
 }
 static void selection_checks(const char *dir){
@@ -288,7 +311,7 @@ static void selection_checks(const char *dir){
     d->layer[0].flags=PD_LAYER_ALPHA_LOCK;assert(pd_begin(d));assert(!pd_move_selection(d,mask,0,0,true));pd_cancel(d);assert(!pd_paste_selection(d,clip,8,8));d->layer[0].flags=PD_LAYER_LOCK;assert(!pd_paste_selection(d,clip,8,8));d->layer[0].flags=0;
     pd_init(d);assert(pd_begin(d));pd_masked_line(d,0,3,15,3,0xff123456,4,false,3,NULL,mask);assert(pd_commit(d));for(int y=0;y<128;y++)for(int x=0;x<128;x++)if(d->layer[0].pixels[y*128+x])assert(mask_at(mask,x,y));pd_init(d);assert(pd_fill_mask(d,2,2,0xffabcdef,0,mask));assert(d->layer[0].pixels[2*128+2]&&!d->layer[0].pixels[1*128+1]);
     PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4),*rb=malloc(320*240*4),*rt=malloc(400*240*4);assert(a&&r&&b&&t&&rb&&rt);app_init(a,256,192,"","TEST");a->doc.width=a->doc.height=16;a->zoom=8;dot(&a->doc,0,3,3,0xff00ffff);app_render(a,b,t,256,192);
-    tap(a,192,12);tap(a,40,149);assert(a->page==23&&a->tool==4);tap(a,170,172);assert(!a->page);
+    tap(a,192,12);tap(a,40,102);assert(a->page==0&&a->toolbox&&a->tool_options_open&&a->tool==4);tap(a,192,12);assert(!a->toolbox);
     app_input(a,true,80,73,0,0);app_render(a,b,t,256,192);app_input(a,true,112,105,0,0);app_render(a,b,t,256,192);app_input(a,false,0,0,0,0);assert(a->selection_valid&&mask_at(a->selection,2,2)&&mask_at(a->selection,6,6));
     unsigned edits=a->doc.count;app_input(a,true,88,81,0,0);app_input(a,true,104,89,0,0);app_render(a,b,t,256,192);*r=*a;r->selection_drag=false;pd_composite(&r->doc);app_render(r,rb,rt,256,192);assert(!memcmp(b,rb,256*192*4));app_input(a,false,0,0,0,0);assert(a->doc.count==edits+1&&a->doc.layer[0].pixels[4*128+5]==0xff00ffff);
     a->selection_mode=1;app_input(a,true,64,57,0,0);app_input(a,true,72,65,0,0);app_input(a,false,0,0,0,0);assert(mask_at(a->selection,0,0)&&mask_at(a->selection,5,4));a->selection_mode=2;tap(a,64,57);assert(!mask_at(a->selection,0,0)&&mask_at(a->selection,1,1));
@@ -311,13 +334,14 @@ static void shape_checks(const char *dir){
         count=a->doc.count;app_input(a,true,left+10,top+10,0,0);app_input(a,true,left+30,top+30,0,0);app_input(a,true,left+30,top+30,0,PD_PAN);assert(!a->shape_drag&&!a->doc.editing&&a->doc.count==count);app_input(a,false,0,0,0,0);
     }
     for(int mode=0;mode<2;mode++){a->width=mode?320:256;a->height=mode?240:192;a->page=24;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-shapes":"nds-shapes",b,a->width,a->height);a->page=25;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-transforms":"nds-transforms",b,a->width,a->height);a->page=0;a->toolbox=true;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-tools-06":"nds-tools-06",b,a->width,a->height);a->toolbox=false;}
+    app_init(a,256,192,"","TEST");tap(a,192,12);tap(a,40,119);assert(a->tool_panel==5&&a->tool_options_open);app_input(a,true,150,90,0,0);app_input(a,true,220,90,0,0);app_input(a,false,0,0,0,0);assert(a->brush_size[0]>1);
     free(d);free(a);free(r);free(b);free(t);free(rb);free(rt);puts("Shapes: raster/ellipse symmetry/filled/clipping/tile/preview restoration/cancel; selection flips/rotation/alpha/undo: PASS");
 }
 static void perfect_checks(const char *dir){
     PdDocument *d=calloc(1,sizeof(*d));assert(d);PdPerfectStroke state={0};pd_init(d);d->layer[0].pixels[2*128+3]=0x80556677;assert(pd_begin(d));pd_perfect_line(d,&state,2,2,3,2,0xffff0000,0,NULL,NULL);pd_perfect_line(d,&state,3,2,3,3,0xffff0000,0,NULL,NULL);assert(d->layer[0].pixels[2*128+2]==0xffff0000&&d->layer[0].pixels[3*128+3]==0xffff0000&&d->layer[0].pixels[2*128+3]==0x80556677);assert(pd_commit(d));assert(pd_undo(d)&&!d->layer[0].pixels[2*128+2]&&d->layer[0].pixels[2*128+3]==0x80556677);assert(pd_redo(d));
     pd_init(d);d->width=d->height=16;memset(&state,0,sizeof(state));uint32_t damage[PD_PIXELS/32]={0};assert(pd_begin(d));pd_perfect_line(d,&state,15,2,16,2,0xffabcdef,6,damage,NULL);pd_perfect_line(d,&state,16,2,16,3,0xffabcdef,6,damage,NULL);assert(!d->layer[0].pixels[2*128]&&!d->layer[0].pixels[13*128]);assert(d->layer[0].pixels[3*128]&&d->layer[0].pixels[12*128]);assert(mask_at(damage,0,2)&&mask_at(damage,0,13));pd_cancel(d);
     pd_init(d);d->layer[0].flags=PD_LAYER_ALPHA_LOCK;d->layer[0].pixels[2*128+2]=d->layer[0].pixels[2*128+3]=d->layer[0].pixels[3*128+3]=0x800000ff;memset(&state,0,sizeof(state));assert(pd_begin(d));pd_perfect_line(d,&state,2,2,3,2,0x80ff0000,0,NULL,NULL);pd_perfect_line(d,&state,3,2,3,3,0x80ff0000,0,NULL,NULL);assert(d->layer[0].pixels[2*128+3]==0x800000ff&&d->layer[0].pixels[3*128+3]==0x8080007f);pd_cancel(d);
-    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4),*rb=malloc(320*240*4),*rt=malloc(400*240*4);assert(a&&r&&b&&t&&rb&&rt);char root[PD_PATH];assert(pd_join(root,dir,"perfect-prefs")&&pd_mkdir(root));app_init(a,256,192,root,"TEST");tap(a,192,12);tap(a,30,42);tap(a,80,150);assert(a->pixel_perfect);app_init(r,256,192,root,"TEST");assert(r->pixel_perfect);
+    PdApp *a=calloc(1,sizeof(*a)),*r=calloc(1,sizeof(*r));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4),*rb=malloc(320*240*4),*rt=malloc(400*240*4);assert(a&&r&&b&&t&&rb&&rt);char root[PD_PATH];assert(pd_join(root,dir,"perfect-prefs")&&pd_mkdir(root));app_init(a,256,192,root,"TEST");tap(a,192,12);tap(a,30,35);tap(a,120,145);assert(a->pixel_perfect);app_init(r,256,192,root,"TEST");assert(r->pixel_perfect);
     for(int mode=0;mode<2;mode++)for(unsigned guides=0;guides<=15;guides+=15){int w=mode?320:256,h=mode?240:192,tw=mode?400:256;app_init(a,w,h,"","TEST");a->pixel_perfect=true;a->zoom=8;a->guides=guides;app_render(a,b,t,tw,h);for(int step=0;step<24;step++){int wx=2+(step+1)/2,wy=2+step/2;app_input(a,true,wx*8+1,24+wy*8+1,0,0);*r=*a;r->partial=false;app_render(r,rb,rt,tw,h);app_render(a,b,t,tw,h);assert(!memcmp(b,rb,(size_t)w*h*4));}app_input(a,false,0,0,0,0);assert(a->doc.count==1);assert(pd_undo(&a->doc));assert(pd_redo(&a->doc));}
     for(int mode=0;mode<2;mode++){a->width=mode?320:256;a->height=mode?240:192;a->page=21;a->brush_edit=0;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-perfect-options":"nds-perfect-options",b,a->width,a->height);}
     free(a);free(r);free(b);free(t);free(rb);free(rt);free(d);puts("Pixel-perfect corner restoration, alpha lock, symmetry/wrapping damage, undo, persistence and partial render: PASS");
@@ -329,7 +353,7 @@ static void protection_checks(const char *dir){
     assert(pd_begin(d));d->layer[0].flags=3;assert(pd_commit(d));assert(pd_begin(d));pd_line(d,0,0,0,0,0xffffffff);assert(!pd_commit(d));assert(!pd_delete_layer(d));assert(pd_add_layer(d));dot(d,1,0,0,0xff123456);assert(!pd_merge_down(d));
     char path[PD_PATH],error[64];assert(pd_join(path,dir,"protected.pdd")&&pd_write_file(d,path,0,false,error));assert(pd_open_file(r,path,error)&&r->layer[0].flags==3);assert(pd_join(path,dir,"protected-recovery.pdd")&&pd_write_recovery(d,path,error));assert(pd_open_file(r,path,error)&&r->layer[0].flags==3);
     d->layer[0].flags=PD_LAYER_LOCK;assert(pd_join(path,dir,"protected.aseprite")&&pd_write_file(d,path,1,false,error));assert(pd_open_file(r,path,error)&&r->layer[0].flags==PD_LAYER_LOCK);
-    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);for(int m=0;m<2;m++){app_init(a,m?320:256,m?240:192,"","TEST");a->page=1;tap(a,10,50);tap(a,30,165);assert(a->doc.layer[0].flags==1);tap(a,a->width-50,165);assert(a->doc.layer[0].flags==3);app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-layer-protection":"nds-layer-protection",b,a->width,a->height);tap(a,a->width-28,37);assert(!a->layer_popup);a->page=0;tap(a,a->width/2,a->height/2);assert(!a->doc.layer[0].pixels[64*128+64]);}
+    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);for(int m=0;m<2;m++){app_init(a,m?320:256,m?240:192,"","TEST");a->page=1;tap(a,a->width-20,a->height-16);assert(!a->layer_delete);tap(a,a->width-12,40);assert(a->layer_popup);tap(a,50,125);assert(a->doc.layer[0].flags==1);tap(a,a->width-50,125);assert(a->doc.layer[0].flags==3);app_render(a,b,t,m?400:256,a->height);ppm(dir,m?"3ds-layer-protection":"nds-layer-protection",b,a->width,a->height);tap(a,a->width-28,37);assert(!a->layer_popup);tap(a,a->width-20,a->height-16);assert(!a->layer_delete);a->page=0;tap(a,a->width/2,a->height/2);assert(!a->doc.layer[0].pixels[64*128+64]);}
     free(a);free(b);free(t);free(d);free(r);puts("Layer/alpha protection: paint, erase, empty pixels, undo, delete/merge, native/recovery/ASE and UI: PASS");
 }
 static void eight_layer_checks(const char *dir){
@@ -340,7 +364,7 @@ static void eight_layer_checks(const char *dir){
     char path[PD_PATH],error[64];for(unsigned kind=0;kind<2;kind++){snprintf(path,sizeof(path),"%s/eight-layers.%s",dir,kind?"aseprite":"pdd");assert(pd_write_file(d,path,kind,false,error));assert(pd_open_file(r,path,error)&&r->enabled==255);pd_composite(r);pd_composite(d);assert(!memcmp(r->composite,d->composite,sizeof(d->composite)));}
     assert(pd_join(path,dir,"eight-recovery.pdd")&&pd_write_recovery(d,path,error)&&pd_open_file(r,path,error)&&r->enabled==255);
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*top=malloc(400*240*4);assert(a&&b&&top);
-    for(int m=0;m<2;m++){app_init(a,m?320:256,m?240:192,"","TEST");for(unsigned i=1;i<8;i++)assert(pd_add_layer(&a->doc));a->page=1;uint8_t order[PD_LAYERS];memcpy(order,a->doc.order,PD_LAYERS);a->now_ms=1000;app_input(a,true,90,140,0,0);a->now_ms=1050;app_input(a,true,90,60,0,0);app_input(a,false,0,0,0,0);assert(a->layer_scroll>0&&!memcmp(order,a->doc.order,PD_LAYERS));
+    for(int m=0;m<2;m++){app_init(a,m?320:256,m?240:192,"","TEST");for(unsigned i=1;i<8;i++)assert(pd_add_layer(&a->doc));a->page=1;uint8_t order[PD_LAYERS];memcpy(order,a->doc.order,PD_LAYERS);a->now_ms=1000;app_input(a,true,90,140,0,0);a->now_ms=1050;app_input(a,true,90,60,0,0);app_input(a,false,0,0,0,0);assert((m? a->layer_scroll==0:a->layer_scroll>0)&&!memcmp(order,a->doc.order,PD_LAYERS));
         app_render(a,b,top,m?400:256,a->height);ppm(dir,m?"3ds-eight-layers":"nds-eight-layers",b,a->width,a->height);
         a->now_ms=2000;app_input(a,true,90,70,0,0);a->now_ms=2150;app_input(a,true,90,70,0,0);assert(a->layer_drag);a->now_ms=2300;app_input(a,true,90,45,0,0);app_input(a,false,0,0,0,0);assert(a->doc.count&&a->layer_scroll>=0);
         a->layer_scroll=9999;app_render(a,b,top,m?400:256,a->height);assert(a->layer_scroll<=224);tap(a,34,a->height-45);assert(a->doc.active<8);
@@ -438,21 +462,23 @@ static void layer_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
     for(int mode=0;mode<2;mode++){
         int w=mode?320:256,h=mode?240:192,tw=mode?400:256;app_init(a,w,h,"","TEST");tap(a,w*7/12,10);assert(a->page==1);
-        tap(a,20,h-16);assert(a->doc.enabled==3&&a->doc.active==1);tap(a,10,50);tap(a,30,110);assert(a->page==5&&a->name_action==2);
+        tap(a,20,h-16);assert(a->doc.enabled==3&&a->doc.active==1);tap(a,w-12,40);assert(a->layer_popup);tap(a,50,150);assert(a->page==5&&a->name_action==2);
         snprintf(a->filename,sizeof(a->filename),"INK");tap(a,w-20,h-20);assert(a->page==1&&!strcmp(a->doc.names[1],"INK"));
         dot(&a->doc,0,64,64,0xff0000ff);dot(&a->doc,1,64,64,0xffff0000);a->doc.layer[1].visible=0;
-        app_render(a,b,t,tw,h);int size=h-76;if(size>128)size=128;assert(t[(24+size/2)*tw+(tw-size)/2+size/2]==0xff0000);
+        app_render(a,b,t,tw,h);int margin=8,gap=8,panel=(tw-margin*3-gap)/2,image_h=h-70,image=panel-8;if(image_h<image)image=image_h;int second=margin+panel+gap;assert(t[(36+(image_h-image)/2+image/2)*tw+margin+(panel-image)/2+image/2]==0x0000ff);assert(t[(36+(image_h-image)/2+image/2)*tw+second+(panel-image)/2+image/2]==0xff0000);
         ppm(dir,mode?"3ds-layers":"nds-layers",b,w,h);ppm(dir,mode?"3ds-layer-preview":"nds-layer-preview",t,tw,h);
-        tap(a,10,50);tap(a,w-40,140);assert(a->layer_delete);tap(a,w-40,134);assert(!a->layer_delete&&a->doc.enabled==3);
-        tap(a,10,50);tap(a,w-40,140);tap(a,40,134);assert(a->doc.enabled==1);tap(a,10,10);assert(a->doc.enabled==3&&a->doc.layer[1].pixels[8256]==0xffff0000);
+        tap(a,w-20,h-16);assert(a->layer_delete);tap(a,w-40,134);assert(!a->layer_delete&&a->doc.enabled==3);
+        tap(a,w-20,h-16);tap(a,40,134);assert(a->doc.enabled==1);tap(a,10,10);assert(a->doc.enabled==3&&a->doc.layer[1].pixels[8256]==0xffff0000);
         tap(a,34,50);assert(a->doc.layer[1].visible); /* eye */
-        tap(a,10,50);assert(a->layer_popup);app_render(a,b,t,tw,h);ppm(dir,mode?"3ds-layer-options":"nds-layer-options",b,w,h);
-        unsigned edits=a->doc.count;app_input(a,true,16,58,0,0);app_input(a,true,w/2,58,0,0);app_input(a,false,0,0,0,0);assert(a->doc.count==(edits<PD_HISTORY?edits+1:PD_HISTORY));assert(a->doc.layer[1].opacity<255);
-        tap(a,w-40,140);app_render(a,b,t,tw,h);ppm(dir,mode?"3ds-layer-delete":"nds-layer-delete",b,w,h);tap(a,w-40,134);
+        tap(a,w-40,50);assert(a->doc.layer[1].flags&PD_LAYER_LOCK);tap(a,w-40,50);assert(!(a->doc.layer[1].flags&PD_LAYER_LOCK));
+        tap(a,w-12,40);assert(a->layer_popup);app_render(a,b,t,tw,h);ppm(dir,mode?"3ds-layer-options":"nds-layer-options",b,w,h);
+        uint8_t blend=a->doc.layer[1].blend;tap(a,w/2,100);assert(a->layer_blend_dropdown.open&&a->doc.layer[1].blend==blend);app_render(a,b,t,tw,h);ppm(dir,mode?"3ds-layer-blend":"nds-layer-blend",b,w,h);tap(a,w/2,140);assert(!a->layer_blend_dropdown.open&&a->doc.layer[1].blend==1);
+        unsigned edits=a->doc.count;app_input(a,true,50,58,0,0);app_input(a,true,w/2,58,0,0);app_input(a,false,0,0,0,0);assert(a->doc.count==(edits<PD_HISTORY?edits+1:PD_HISTORY));assert(a->doc.layer[1].opacity<255);
+        tap(a,w-20,37);assert(!a->layer_popup);tap(a,w-20,h-16);app_render(a,b,t,tw,h);ppm(dir,mode?"3ds-layer-delete":"nds-layer-delete",b,w,h);tap(a,w-40,134);
         uint8_t order[PD_LAYERS];memcpy(order,a->doc.order,PD_LAYERS);a->now_ms=1000;app_input(a,true,80,50,0,0);a->now_ms=1149;app_input(a,true,80,82,0,0);assert(!a->layer_drag);app_input(a,false,0,0,0,0);assert(!memcmp(order,a->doc.order,PD_LAYERS));
         a->now_ms=2000;app_input(a,true,80,50,0,0);a->now_ms=2150;app_input(a,true,80,82,0,0);assert(a->layer_drag);app_render(a,b,t,tw,h);ppm(dir,mode?"3ds-layer-drag":"nds-layer-drag",b,w,h);app_input(a,false,0,0,0,0);assert(memcmp(order,a->doc.order,PD_LAYERS));tap(a,10,10);assert(!memcmp(order,a->doc.order,PD_LAYERS));
     }
-    free(a);free(b);free(t);puts("Layer add/rename/delete/undo, sparse native/ASE roundtrip, confirmation and solo preview: PASS");
+    free(a);free(b);free(t);puts("Layer add/rename/delete/undo, sparse native/ASE roundtrip, confirmation and composite/active preview: PASS");
 }
 static void large_checks(const char *dir){
     PdDocument *d=calloc(1,sizeof(*d)),*r=calloc(1,sizeof(*r));assert(d&&r);pd_init(d);pd_init(r);r->profile=3;
@@ -515,7 +541,7 @@ static void scale_duplicate_checks(const char *dir){
     assert(pd_create(d,128,128,1));memset(mask,0,PD_MAX_PIXELS/8);pd_mask_rectangle(mask,0,0,2,2);for(unsigned y=0;y<3;y++)for(unsigned x=0;x<3;x++)d->layer[0].pixels[y*128+x]=0xff000000+y*3+x;assert(pd_scale_selection(d,mask,-2,result));assert(d->layer[0].pixels[0]==0xff000000&&d->layer[0].pixels[1]==0xff000002&&d->layer[0].pixels[129]==0xff000008);assert(pd_undo(d));
     memset(mask,0,PD_MAX_PIXELS/8);pd_mask_rectangle(mask,0,0,127,127);uint64_t revision=d->revision;assert(!pd_scale_selection(d,mask,2,result)&&d->revision==revision);
     assert(pd_create(d,512,512,2));memset(mask,0,PD_MAX_PIXELS/8);pd_mask_rectangle_stride(mask,512,512,384,384,511,511);pd_pixels(&d->layer[0])[511*512+511]=0xffffffff;assert(pd_scale_selection(d,mask,4,result));assert(pd_pixels(&d->layer[0])[511*512+511]==0xffffffff&&pd_pixels(&d->layer[0])[508*512+508]==0xffffffff);assert(pd_undo(d));assert(pd_duplicate_selection(d,mask)&&!pd_duplicate_selection(d,mask));pd_dispose(d);free(d);free(mask);free(result);
-    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,"","TEST");a->page=25;a->selection_valid=true;pd_mask_rectangle(a->selection,2,2,3,3);a->doc.layer[0].pixels[258]=0xffff0000;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-transforms-010":"nds-transforms-010",b,a->width,a->height);tap(a,150,86);assert(a->doc.active==1&&a->doc.enabled==3&&a->page==0);a->page=25;tap(a,40,112);assert(a->page==0&&a->doc.layer[1].pixels[3*128+3]==0xffff0000);}free(a);free(b);free(t);puts("Duplicate selection and nearest-neighbor scaling: alpha, holes, odd half-size, undo, bounds, locks, large output and UI: PASS");
+    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,"","TEST");a->page=25;a->selection_valid=true;pd_mask_rectangle(a->selection,2,2,3,3);a->doc.layer[0].pixels[258]=0xffff0000;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-transforms-010":"nds-transforms-010",b,a->width,a->height);tap(a,a->width*3/5,86);assert(a->doc.active==1&&a->doc.enabled==3&&a->page==0);a->page=25;tap(a,40,112);assert(a->page==0&&a->doc.layer[1].pixels[3*128+3]==0xffff0000);}free(a);free(b);free(t);puts("Duplicate selection and nearest-neighbor scaling: alpha, holes, odd half-size, undo, bounds, locks, large output and UI: PASS");
 }
 
 static void dither_checks(const char *dir){
@@ -538,12 +564,12 @@ static void dither_checks(const char *dir){
     for(unsigned mode=0;mode<2;mode++)for(unsigned handed=0;handed<2;handed++){
         app_init(a,mode?320:256,mode?240:192,"","TEST");a->handed=handed;a->page=21;int left=handed?a->width-200:0;
         app_render(a,b,t,mode?400:256,a->height);if(!handed)ppm(dir,mode?"3ds-pencil-011":"nds-pencil-011",b,a->width,a->height);
-        tap(a,left+50,177);assert(a->page==27);left=handed?a->width-224:0;tap(a,left+130,60);assert(a->brush_pattern==2);tap(a,left+130,106);assert(a->brush_preset==2);tap(a,left+50,152);assert(a->brush_size[0]==8&&a->brush_pattern==2);
-        a->brush_size[0]=11;a->brush_round[0]=1;tap(a,left+160,152);a->brush_size[0]=1;tap(a,left+50,152);assert(a->brush_size[0]==11&&a->brush_round[0]==1);
+        tap(a,left+50,177);assert(a->page==27);int middle=a->width*3/5;tap(a,middle,70);assert(a->brush_pattern==2);tap(a,middle,108);assert(a->brush_preset==2);tap(a,50,150);assert(a->brush_size[0]==8&&a->brush_pattern==2);
+        a->brush_size[0]=11;a->brush_round[0]=1;tap(a,180,150);a->brush_size[0]=1;tap(a,50,150);assert(a->brush_size[0]==11&&a->brush_round[0]==1);
         app_render(a,b,t,mode?400:256,a->height);if(!handed)ppm(dir,mode?"3ds-dither-011":"nds-dither-011",b,a->width,a->height);
-        tap(a,left+50,176);assert(a->page==21&&!a->doc.count);app_input(a,false,0,0,PD_TOOLS,0);assert(a->toolbox&&!a->page);
+        tap(a,left+50,176);assert(a->page==0&&a->toolbox&&a->tool_options_open&&!a->doc.count);app_input(a,false,0,0,PD_TOOLS,0);assert(!a->toolbox&&!a->page);
     }
-    app_init(a,256,192,dir,"TEST");a->page=27;a->brush_size[0]=13;a->brush_round[0]=1;a->pixel_perfect=true;tap(a,130,60);tap(a,20,106);tap(a,160,152);
+    app_init(a,256,192,dir,"TEST");a->page=27;a->brush_size[0]=13;a->brush_round[0]=1;a->pixel_perfect=true;tap(a,150,70);tap(a,20,108);tap(a,180,150);
     app_init(r,256,192,dir,"TEST");assert(r->brush_pattern==2&&r->brush_presets[0][0]==13&&r->brush_presets[0][1]==1&&r->brush_presets[0][2]==1&&r->brush_presets[0][3]==2);
     /* Slot 1 is newer; a corrupt latest record must fall back to prior pattern record. */
     char path[PD_PATH];snprintf(path,sizeof(path),"%s/brush-presets1.bin",dir);FILE *f=fopen(path,"wb");assert(f);fputs("corrupt",f);fclose(f);app_init(r,256,192,dir,"TEST");assert(r->brush_pattern==2&&r->brush_presets[0][0]==1);
@@ -591,7 +617,7 @@ int main(int argc,char **argv){
         assert(x->width==y->width&&x->height==y->height);
         if(x->palette_count){assert(x->palette_count==y->palette_count&&!memcmp(x->palette,y->palette,x->palette_count*4));}
         unsigned j=0;for(unsigned k=0;k<PD_LAYERS;k++){unsigned i=x->order[k];if(!(x->enabled&(1u<<i)))continue;while(j<PD_LAYERS&&!(y->enabled&(1u<<y->order[j])))j++;assert(j<PD_LAYERS);unsigned other=y->order[j];assert(x->width==y->width&&x->height==y->height);assert(!memcmp(pd_pixels(&x->layer[i]),pd_pixels(&y->layer[other]),pd_bytes(x)));assert(x->layer[i].visible==y->layer[other].visible&&x->layer[i].opacity==y->layer[other].opacity&&x->layer[i].blend==y->layer[other].blend&&x->layer[i].flags==y->layer[other].flags);if(strcmp(argv[1],"compare-pixels"))assert(!strcmp(x->names[i],y->names[other]));j++;}while(j<PD_LAYERS){assert(!(y->enabled&(1u<<y->order[j])));j++;}puts("External Aseprite enabled-layer roundtrip: PASS");free(x);free(y);return 0;}
-    assert(argc==2);community_json_checks();dns_packet_checks();gallery_checks(argv[1]);shortcut_checks();dither_checks(argv[1]);png_browser_checks(argv[1]);scale_duplicate_checks(argv[1]);pan_checks();large_checks(argv[1]);brush_checks(argv[1]);fill_checks(argv[1]);fill_options_checks(argv[1]);selection_checks(argv[1]);selection_alpha_checks();shape_checks(argv[1]);perfect_checks(argv[1]);protection_checks(argv[1]);eight_layer_checks(argv[1]);dimension_checks(argv[1]);tile_history_checks();file_checks(argv[1]);workflow_checks(argv[1]);browser_checks(argv[1]);color_checks(argv[1]);layer_checks(argv[1]);palette_checks(argv[1]);palette_file_checks(argv[1]);dropdown_component_checks();community_ui_checks(argv[1]);
+    assert(argc==2);community_json_checks();dns_packet_checks();gallery_checks(argv[1]);shortcut_checks();dither_checks(argv[1]);png_browser_checks(argv[1]);scale_duplicate_checks(argv[1]);pan_checks();large_checks(argv[1]);brush_checks(argv[1]);fill_checks(argv[1]);fill_options_checks(argv[1]);selection_checks(argv[1]);selection_alpha_checks();shape_checks(argv[1]);perfect_checks(argv[1]);protection_checks(argv[1]);eight_layer_checks(argv[1]);dimension_checks(argv[1]);tile_history_checks();file_checks(argv[1]);workflow_checks(argv[1]);browser_checks(argv[1]);adjustment_checks(argv[1]);color_checks(argv[1]);layer_checks(argv[1]);palette_checks(argv[1]);palette_file_checks(argv[1]);dropdown_component_checks();community_ui_checks(argv[1]);
     PdApp *prefs=calloc(1,sizeof(*prefs));assert(prefs);app_init(prefs,256,192,argv[1],"TEST");
     app_input(prefs,false,0,0,PD_MENU,0);tap(prefs,40,145);assert(prefs->page==8);
     tap(prefs,40,42);tap(prefs,40,175);assert(prefs->handed==1&&!prefs->page);
@@ -643,10 +669,10 @@ int main(int argc,char **argv){
     unsigned old_count=a->doc.count;
     app_input(a,false,0,0,PD_TOOLS,0);assert(a->toolbox);
     app_render(a,bottom,top,256,192);ppm(argv[1],"nds-toolbox",bottom,256,192);
-    app_input(a,true,40,76,0,0);assert(a->tool==1&&!a->toolbox);
+    app_input(a,true,40,50,0,0);assert(a->tool==1&&a->toolbox&&a->tool_options_open);
     app_input(a,true,110,100,0,0);assert(!a->stroke&&a->doc.count==old_count);
     app_input(a,false,0,0,0,0);
-    app_input(a,false,0,0,PD_TOOLS,0);tap(a,40,43);assert(a->tool==0);
+    app_input(a,false,0,0,PD_TOOLS,0);assert(!a->toolbox);app_input(a,false,0,0,PD_TOOLS,0);tap(a,40,35);assert(a->tool==0&&a->tool_options_open);
     tap(a,110,10);assert(a->page==2);tap(a,235,10);assert(!a->page);
     /* Synthetic composition and native-size snapshots; not user art. */
     for(int i=0;i<100;i++){dot(&a->doc,0,14+i,14,0xff1850b0);dot(&a->doc,1,14+i,14+i,0xffe04444);}

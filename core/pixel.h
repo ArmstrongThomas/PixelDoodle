@@ -12,7 +12,7 @@
 enum { PD_LAYER_LOCK=1, PD_LAYER_ALPHA_LOCK=2 };
 /* Canonical straight-alpha 0xAARRGGBB. Layer 0 is bottommost. */
 typedef struct { uint32_t pixels[PD_PIXELS]; uint32_t *large; uint8_t visible, opacity, blend, flags; } PdLayer;
-typedef struct { unsigned offset,bytes,tiles; uint8_t layer, visibility, opacity, enabled, blend, flags, order[PD_LAYERS]; char name[64]; uint64_t before, after; } PdEdit;
+typedef struct { unsigned offset,bytes,tiles; uint32_t group; uint8_t group_active,layer, visibility, opacity, enabled, blend, flags, order[PD_LAYERS]; char name[64]; uint64_t before, after; } PdEdit;
 typedef struct {
     PdLayer layer[PD_LAYERS];
     unsigned width,height,stride,rows,capacity,profile;
@@ -24,6 +24,8 @@ typedef struct {
     PdEdit history[PD_HISTORY];
     uint8_t history_data[PD_HISTORY_BYTES];
     unsigned history_used;
+    uint32_t next_history_group,history_group;
+    uint8_t history_group_active;
     uint32_t before[PD_PIXELS], composite[PD_PIXELS];
     unsigned active, count, cursor;
     uint8_t before_visible, before_opacity;
@@ -92,6 +94,10 @@ void pd_mask_rectangle(uint32_t *mask,int x0,int y0,int x1,int y1);
 void pd_mask_polygon(uint32_t *mask,const int16_t points[][2],unsigned count,unsigned width,unsigned height);
 bool pd_undo(PdDocument *d);
 bool pd_redo(PdDocument *d);
+/* Scope: 0 selection on active layer, 1 active layer, 2 all visible layers. */
+uint32_t pd_adjust_color(uint32_t color,int hue_shift,int saturation_shift,int brightness_shift);
+bool pd_adjust_layers(PdDocument *d,unsigned scope,const uint32_t *mask,int hue_shift,int saturation_shift,int brightness_shift);
+bool pd_adjust_preview(PdDocument *d,unsigned scope,const uint32_t *mask,int hue_shift,int saturation_shift,int brightness_shift);
 uint32_t pd_sample_layers(const PdLayer layers[PD_LAYERS],uint8_t enabled,const uint8_t order[PD_LAYERS],unsigned index);
 void pd_composite(PdDocument *d);
 void pd_composite_rect(PdDocument *d,int x0,int y0,int x1,int y1);

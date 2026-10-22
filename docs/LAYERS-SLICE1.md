@@ -1,5 +1,27 @@
 # Layer management candidate
 
+## 0.14.4 touch workspace
+
+The layer list now shows six compact rows on NDS and all eight on 3DS. Each
+row has a dedicated grip, visibility eye, selectable name/mode/opacity area,
+direct Lock toggle and Options control. The footer provides New Layer and a
+dedicated Delete Layer action. Delete uses the destructive confirmation before
+changing the document. Each row's Options sheet retains opacity, a four-choice
+blend dropdown, Rename, Duplicate, Merge Down, Lock and Alpha Lock. The Options
+sheet and dropdown use the same centered width: 192 pixels on NDS and 240 on
+3DS. Blend selection commits on touch-down, eliminating release delay.
+The compact duplicate action is labeled `DUPE`.
+
+Tap a row to select it. A quick drag scrolls the list. Hold a row or its grip
+for 150 ms, then drag to reorder; release commits the move. The upper screen
+shows composite and active-layer previews side by side, with a visible hidden
+state and the active layer's blend, opacity, Lock and Alpha Lock state. The
+workspace introduces no project, settings or server format changes.
+
+Host tests cover row hit zones, direct visibility and Lock controls, the
+options sheet, footer Delete confirmation, cancellation, scrolling, 150 ms
+reorder, hidden active-layer preview and both native render sizes.
+
 ## Row-controls follow-up
 
 Layers now displays topmost first. Each row has a far-left menu button, visibility eye, name, blend mode and opacity. Only New Layer remains at the bottom; a permanent scroll track reserves space for later larger documents. The header reports used/free slots under the measured four-slot capacity. Top-screen status reports the allocated document structure in KiB and retained undo position; it does not claim runtime free RAM or infer additional capacity from it.

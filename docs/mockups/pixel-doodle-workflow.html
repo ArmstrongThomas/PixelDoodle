@@ -1,0 +1,3346 @@
+<div id="pixel-doodle-workflow-mockups">
+  <style>
+    #pixel-doodle-workflow-mockups {
+      --pd-bg: #182126;
+      --pd-panel: #35444b;
+      --pd-edge: #73868f;
+      --pd-control-edge: #7f929b;
+      --pd-text: #f5f8fa;
+      --pd-muted: #b9cbd2;
+      --pd-accent: #79e0d3;
+      --pd-active: #0d7a75;
+      --pd-danger: #ffaaa0;
+      color: var(--pd-text);
+      font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      overflow-x: clip;
+    }
+
+    #pixel-doodle-workflow-mockups * {
+      box-sizing: border-box;
+    }
+
+    #pixel-doodle-workflow-mockups .concept {
+      width: 100%;
+      min-width: 0;
+      min-height: 704px;
+      padding: 8px 0 12px;
+      display: grid;
+      place-items: center;
+    }
+
+    #pixel-doodle-workflow-mockups .console-switch {
+      width: min(100%, 470px);
+      margin: 6px auto 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 6px;
+      border: 1px solid var(--pd-edge);
+      background: #11191d;
+      font-size: 10px;
+    }
+
+    #pixel-doodle-workflow-mockups .console-switch__modes {
+      display: flex;
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .console-switch button {
+      min-height: 24px;
+      padding: 2px 8px;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .console-readout {
+      color: var(--pd-muted);
+      font-size: 9px;
+      text-align: right;
+    }
+
+    #pixel-doodle-workflow-mockups .handheld {
+      width: min(100%, 370px);
+      padding: 12px;
+      border: 2px solid #52626a;
+      background: #0f1518;
+    }
+
+    #pixel-doodle-workflow-mockups .screen {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border: 2px solid #75858d;
+      background: var(--pd-bg);
+      color: var(--pd-text);
+      font-size: 11px;
+      line-height: 13px;
+    }
+
+    #pixel-doodle-workflow-mockups .screen[data-screen="top"],
+    #pixel-doodle-workflow-mockups .screen[data-screen="bottom"] {
+      aspect-ratio: 4 / 3;
+    }
+
+    #pixel-doodle-workflow-mockups .screen + .screen {
+      margin-top: 10px;
+    }
+
+    #pixel-doodle-workflow-mockups.pd-3ds .handheld {
+      width: min(100%, 470px);
+    }
+
+    #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] {
+      aspect-ratio: 5 / 3;
+    }
+
+    #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="bottom"] {
+      width: 80%;
+      margin-right: auto;
+      margin-left: auto;
+    }
+
+    #pixel-doodle-workflow-mockups.pd-3ds .screen {
+      font-size: 11px;
+      line-height: 13px;
+    }
+
+    #pixel-doodle-workflow-mockups .screen-label {
+      position: absolute;
+      right: 5px;
+      top: 4px;
+      z-index: 5;
+      color: var(--pd-muted);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    #pixel-doodle-workflow-mockups button,
+    #pixel-doodle-workflow-mockups input {
+      font: inherit;
+    }
+
+    #pixel-doodle-workflow-mockups button {
+      min-height: 22px;
+      border: 1px solid var(--pd-control-edge);
+      border-radius: 0;
+      background: var(--pd-panel);
+      color: var(--pd-text);
+      padding: 2px 5px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    #pixel-doodle-workflow-mockups .picon {
+      display: inline-grid;
+      place-items: center;
+      width: 14px;
+      min-width: 14px;
+      height: 14px;
+      margin-right: 4px;
+      color: var(--pd-accent);
+      font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+      font-weight: 500;
+      line-height: 14px;
+      vertical-align: -2px;
+    }
+
+    #pixel-doodle-workflow-mockups .picon.lucide {
+      stroke-width: 2.25;
+    }
+
+    #pixel-doodle-workflow-mockups .icon-only {
+      display: inline-grid;
+      place-items: center;
+      gap: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .icon-only .picon {
+      margin: 0;
+    }
+
+    #pixel-doodle-workflow-mockups button[aria-pressed="true"] .picon,
+    #pixel-doodle-workflow-mockups .is-selected .picon {
+      color: var(--pd-text);
+    }
+
+    #pixel-doodle-workflow-mockups button[aria-pressed="true"] .muted,
+    #pixel-doodle-workflow-mockups .is-selected .muted,
+    #pixel-doodle-workflow-mockups .is-selected small {
+      color: var(--pd-text);
+    }
+
+    #pixel-doodle-workflow-mockups .quick-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .quick-row button,
+    #pixel-doodle-workflow-mockups .tool-shelf button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #pixel-doodle-workflow-mockups .quick-row button {
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+      min-height: 0;
+      padding: 1px;
+      font-size: 8px;
+      line-height: 8px;
+    }
+
+    #pixel-doodle-workflow-mockups .quick-row .picon {
+      width: 12px;
+      min-width: 12px;
+      height: 12px;
+      margin-right: 0;
+      line-height: 12px;
+    }
+
+    #pixel-doodle-workflow-mockups button:hover {
+      border-color: var(--pd-text);
+    }
+
+    #pixel-doodle-workflow-mockups button:focus-visible,
+    #pixel-doodle-workflow-mockups input:focus-visible {
+      outline: 2px solid var(--pd-text);
+      outline-offset: 1px;
+    }
+
+    #pixel-doodle-workflow-mockups button[aria-pressed="true"],
+    #pixel-doodle-workflow-mockups .is-selected {
+      border-color: var(--pd-accent);
+      background: var(--pd-active);
+    }
+
+    #pixel-doodle-workflow-mockups .muted {
+      color: var(--pd-muted);
+    }
+
+    #pixel-doodle-workflow-mockups .accent {
+      color: var(--pd-accent);
+    }
+
+    #pixel-doodle-workflow-mockups .checker {
+      background-color: #e8edef;
+      background-image:
+        linear-gradient(45deg, #cbd3d6 25%, transparent 25%),
+        linear-gradient(-45deg, #cbd3d6 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #cbd3d6 75%),
+        linear-gradient(-45deg, transparent 75%, #cbd3d6 75%);
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-size: 16px 16px;
+    }
+
+    #pixel-doodle-workflow-mockups .mock-art {
+      position: absolute;
+      inset: 12%;
+      background-color: #eceff0;
+      background-image:
+        linear-gradient(45deg, #d8dee0 25%, transparent 25%),
+        linear-gradient(-45deg, #d8dee0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d8dee0 75%),
+        linear-gradient(-45deg, transparent 75%, #d8dee0 75%);
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-size: 16px 16px;
+      border: 1px solid #43565e;
+    }
+
+    #pixel-doodle-workflow-mockups .mock-art::before,
+    #pixel-doodle-workflow-mockups .mock-art::after {
+      content: "";
+      position: absolute;
+      height: 5px;
+      transform-origin: left center;
+      background: #7a3341;
+    }
+
+    #pixel-doodle-workflow-mockups .mock-art::before {
+      left: 25%;
+      top: 40%;
+      width: 45%;
+      transform: rotate(18deg);
+    }
+
+    #pixel-doodle-workflow-mockups .mock-art::after {
+      left: 38%;
+      top: 60%;
+      width: 28%;
+      transform: rotate(-32deg);
+      background: #18636e;
+    }
+
+    #pixel-doodle-workflow-mockups .top-bar {
+      position: relative;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+      border-bottom: 1px solid var(--pd-edge);
+      background: #11191d;
+      font-size: 10px;
+    }
+
+    #pixel-doodle-workflow-mockups .bottom-bar {
+      position: absolute;
+      inset: auto 0 0;
+      min-height: 29px;
+      display: grid;
+      gap: 3px;
+      padding: 3px;
+      border-top: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .tiny {
+      font-size: 9px;
+      line-height: 11px;
+    }
+
+    #pixel-doodle-workflow-mockups .row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    #pixel-doodle-workflow-mockups .grow {
+      flex: 1;
+    }
+
+    #pixel-doodle-workflow-mockups .rule {
+      height: 1px;
+      background: var(--pd-edge);
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-workspace {
+      position: absolute;
+      inset: 25px 0 31px;
+      overflow: hidden;
+    }
+
+    #pixel-doodle-workflow-mockups .screen:has(.canvas-toolbar) .canvas-workspace {
+      inset: 31px 0 0;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-toolbar {
+      position: absolute;
+      z-index: 2;
+      inset: 0 0 auto;
+      height: 30px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 3px;
+      padding: 3px;
+      border-bottom: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-toolbar button {
+      display: inline-grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 24px;
+      padding: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-toolbar .picon {
+      width: 15px;
+      min-width: 15px;
+      height: 15px;
+      margin: 0;
+      line-height: 15px;
+    }
+
+    #pixel-doodle-workflow-mockups .screen:has(.canvas-toolbar) .canvas-status {
+      bottom: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-tool-tray {
+      position: absolute;
+      z-index: 4;
+      inset: 31px 4px 4px;
+      padding: 4px;
+      border: 2px solid var(--pd-accent);
+      background: var(--pd-bg);
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-tool-tray[hidden] {
+      display: none;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-tool-tray .canvas-tool-grid {
+      height: calc(100% - 30px);
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-tool-tray .canvas-tool-grid button {
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr);
+      gap: 3px;
+      min-height: 0;
+      padding: 3px 5px;
+      text-align: left;
+      font-size: 9px;
+      line-height: 11px;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-tool-tray .canvas-tool-grid .picon {
+      margin: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-dock {
+      min-height: 55px;
+      grid-template-rows: 25px 24px;
+    }
+
+    #pixel-doodle-workflow-mockups .screen:has(.canvas-dock) .canvas-workspace {
+      bottom: 55px;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-workspace .mock-art {
+      inset: 8% 15%;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-shelf {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-shelf button {
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+      text-align: center;
+      padding: 1px;
+      font-size: 8px;
+      line-height: 8px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-shelf button > .picon {
+      width: 12px;
+      min-width: 12px;
+      height: 12px;
+      margin-right: 0;
+      line-height: 12px;
+    }
+
+    #pixel-doodle-workflow-mockups .inspector {
+      display: grid;
+      grid-template-columns: 1fr 1.05fr;
+      gap: 8px;
+      padding: 10px;
+      min-height: calc(100% - 24px);
+    }
+
+    #pixel-doodle-workflow-mockups .inspector-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #pixel-doodle-workflow-mockups .inspector-kicker {
+      color: var(--pd-accent);
+      font-size: 10px;
+    }
+
+    #pixel-doodle-workflow-mockups .inspector-title {
+      font-size: 18px;
+      line-height: 20px;
+    }
+
+    #pixel-doodle-workflow-mockups .inspector-note {
+      color: var(--pd-muted);
+      max-width: 28ch;
+    }
+
+    #pixel-doodle-workflow-mockups .mini-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-top: auto;
+    }
+
+    #pixel-doodle-workflow-mockups .option-block {
+      min-height: 34px;
+      padding: 4px 6px;
+      border: 1px solid var(--pd-edge);
+      background: var(--pd-panel);
+    }
+
+    #pixel-doodle-workflow-mockups .overview-wrap {
+      position: relative;
+      min-height: 150px;
+      border: 1px solid var(--pd-edge);
+      background: #202c31;
+    }
+
+    #pixel-doodle-workflow-mockups .overview-wrap .mock-art {
+      inset: 11%;
+    }
+
+    #pixel-doodle-workflow-mockups .viewport-marker {
+      position: absolute;
+      left: 19%;
+      top: 25%;
+      width: 45%;
+      height: 43%;
+      border: 2px solid var(--pd-accent);
+      pointer-events: none;
+    }
+
+    #pixel-doodle-workflow-mockups .canvas-status {
+      position: absolute;
+      left: 5px;
+      bottom: 33px;
+      padding: 3px 5px;
+      border: 1px solid var(--pd-edge);
+      background: rgba(17, 25, 29, 0.92);
+      color: var(--pd-muted);
+      font-size: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .layers-workspace {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 6px;
+      padding: 7px;
+      height: calc(100% - 53px);
+    }
+
+    #pixel-doodle-workflow-mockups .layer-preview-dual {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px;
+      min-height: calc(100% - 24px);
+    }
+
+    #pixel-doodle-workflow-mockups .layer-preview-dual .preview-panel {
+      min-height: 148px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-bench {
+      position: absolute;
+      inset: 31px 0 0;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 31px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-topline {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      padding: 3px;
+      border-bottom: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-topline button {
+      min-width: 0;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-scroll {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row {
+      display: grid;
+      grid-template-columns: 18px 23px minmax(0, 1fr) 23px;
+      gap: 3px;
+      min-height: 26px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row > button {
+      min-width: 0;
+      min-height: 26px;
+      padding: 2px 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-vis,
+    #pixel-doodle-workflow-mockups .layer-lock,
+    #pixel-doodle-workflow-mockups .layer-drag {
+      display: grid;
+      place-items: center;
+      padding: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-drag {
+      color: var(--pd-accent);
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row.is-dragging {
+      border-color: var(--pd-accent);
+      background: var(--pd-active);
+      opacity: 0.82;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-select {
+      display: block;
+      align-self: stretch;
+      text-align: left;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-select small {
+      display: block;
+      color: var(--pd-muted);
+      font-size: 8px;
+      line-height: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row.is-selected {
+      border: 1px solid var(--pd-accent);
+      background: var(--pd-active);
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row.is-selected > button {
+      border-color: var(--pd-accent);
+      background: var(--pd-active);
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row.is-hidden {
+      opacity: 0.58;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-touch-row.is-hidden .layer-select {
+      text-decoration: line-through;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-row {
+      display: grid;
+      grid-template-columns: 22px 1fr auto;
+      gap: 4px;
+      align-items: center;
+      min-height: 39px;
+      padding: 3px;
+      border: 1px solid var(--pd-edge);
+      background: var(--pd-panel);
+    }
+
+    #pixel-doodle-workflow-mockups .layer-row button {
+      min-height: 25px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-preview {
+      position: relative;
+      min-height: 150px;
+      border: 1px solid var(--pd-edge);
+    }
+
+    #pixel-doodle-workflow-mockups .layer-preview .mock-art {
+      inset: 8%;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-meta {
+      position: absolute;
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 4px;
+      background: rgba(17, 25, 29, 0.94);
+      color: var(--pd-muted);
+      font-size: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-properties {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 3px;
+      padding: 3px;
+      border-top: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-properties button {
+      display: grid;
+      gap: 0;
+      min-width: 0;
+      min-height: 28px;
+      padding: 2px 4px;
+      line-height: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-properties button span {
+      color: var(--pd-muted);
+      font-size: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-properties button strong {
+      overflow: hidden;
+      font-size: 8px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-actions {
+      position: absolute;
+      inset: auto 0 0;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+      padding: 3px;
+      border-top: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-actions button {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      text-align: center;
+      min-width: 0;
+      padding: 2px;
+      font-size: 7px;
+      line-height: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .layer-actions .picon {
+      width: 11px;
+      min-width: 11px;
+      height: 11px;
+      margin: 0;
+      line-height: 11px;
+    }
+
+    #pixel-doodle-workflow-mockups .adjust-preview {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px;
+      min-height: calc(100% - 24px);
+    }
+
+    #pixel-doodle-workflow-mockups .preview-panel {
+      position: relative;
+      border: 1px solid var(--pd-edge);
+      background: #202c31;
+    }
+
+    #pixel-doodle-workflow-mockups .preview-panel .mock-art {
+      inset: 12%;
+      transition: filter 120ms linear;
+    }
+
+    #pixel-doodle-workflow-mockups .preview-label {
+      position: absolute;
+      left: 5px;
+      top: 5px;
+      color: var(--pd-muted);
+      font-size: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .adjust-stage {
+      position: absolute;
+      inset: 31px 0 47px;
+      display: grid;
+      grid-template-rows: 23px 1fr;
+      gap: 5px;
+      padding: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .scope-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .scope-list button {
+      min-width: 0;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .slider-stack {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .slider-row {
+      display: grid;
+      grid-template-columns: 23px minmax(0, 1fr) 23px;
+      gap: 4px;
+      align-items: center;
+    }
+
+    #pixel-doodle-workflow-mockups .slider-row > button {
+      min-width: 23px;
+      min-height: 23px;
+      padding: 0;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .slider-control {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) 30px;
+      gap: 5px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .slider-control input {
+      width: 100%;
+      accent-color: var(--pd-accent);
+    }
+
+    #pixel-doodle-workflow-mockups .command-note {
+      margin-top: 31px;
+      padding: 7px 10px;
+      color: var(--pd-muted);
+      border-bottom: 1px solid var(--pd-edge);
+      height: 38px;
+      overflow: hidden;
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-canvas {
+      position: absolute;
+      inset: 31px 0 126px;
+      background: #202c31;
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-canvas .mock-art {
+      inset: 7% 18%;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-drawer {
+      position: absolute;
+      inset: auto 0 0;
+      height: 126px;
+      padding: 4px;
+      border-top: 2px solid var(--pd-accent);
+      background: var(--pd-bg);
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-open {
+      position: absolute;
+      right: 6px;
+      bottom: 36px;
+      z-index: 2;
+      display: none;
+    }
+
+    #pixel-doodle-workflow-mockups .is-drawer-closed .tool-drawer {
+      display: none;
+    }
+
+    #pixel-doodle-workflow-mockups .is-drawer-closed .drawer-canvas {
+      bottom: 31px;
+    }
+
+    #pixel-doodle-workflow-mockups .is-drawer-closed .drawer-open {
+      display: flex;
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-head {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 4px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-tool-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-tool-grid button {
+      display: grid;
+      grid-template-columns: 16px 1fr;
+      gap: 2px;
+      align-items: center;
+      min-width: 0;
+      min-height: 31px;
+      padding: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .drawer-tool-grid .picon {
+      margin: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-options-stage {
+      position: absolute;
+      inset: 31px 0 0;
+      display: grid;
+      grid-template-rows: minmax(66px, 0.9fr) minmax(0, 1.1fr);
+      gap: 4px;
+      padding: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-select-block,
+    #pixel-doodle-workflow-mockups .tool-settings-block {
+      min-height: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-select-block {
+      grid-template-rows: 14px minmax(0, 1fr);
+    }
+
+    #pixel-doodle-workflow-mockups .tool-settings-block {
+      grid-template-rows: 18px minmax(0, 1fr);
+      padding-top: 4px;
+      border-top: 1px solid var(--pd-edge);
+    }
+
+    #pixel-doodle-workflow-mockups .tool-step-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--pd-accent);
+      font-size: 9px;
+      line-height: 12px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-choice-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-choice-grid button {
+      display: grid;
+      grid-template-columns: 13px minmax(0, 1fr);
+      gap: 2px;
+      min-width: 0;
+      min-height: 0;
+      padding: 2px 3px;
+      text-align: left;
+      font-size: 8px;
+      line-height: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-choice-grid .picon {
+      width: 12px;
+      min-width: 12px;
+      height: 12px;
+      margin: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-options-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--pd-text);
+      font-size: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-option-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 3px;
+      min-height: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-option-grid button {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 5px;
+      align-items: center;
+      min-width: 0;
+      min-height: 0;
+      padding: 2px 5px;
+      text-align: left;
+      font-size: 8px;
+      line-height: 10px;
+    }
+
+    #pixel-doodle-workflow-mockups .tool-option-value {
+      color: var(--pd-accent);
+      text-align: right;
+    }
+
+    #pixel-doodle-workflow-mockups .color-summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px;
+      min-height: calc(100% - 24px);
+    }
+
+    #pixel-doodle-workflow-mockups .color-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    #pixel-doodle-workflow-mockups .color-stack > .preview-label {
+      position: static;
+      display: flex;
+      align-items: center;
+      min-height: 14px;
+    }
+
+    #pixel-doodle-workflow-mockups .color-stack > .preview-label .picon {
+      width: 12px;
+      min-width: 12px;
+      height: 12px;
+      margin-right: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .color-summary > div:not(.color-stack) > .preview-label {
+      position: static;
+      min-height: 14px;
+    }
+
+    #pixel-doodle-workflow-mockups .color-big {
+      flex: 1;
+      min-height: 42px;
+      border: 1px solid var(--pd-edge);
+      background: #b8263d;
+    }
+
+    #pixel-doodle-workflow-mockups .color-big.secondary {
+      background: #126e72;
+    }
+
+    #pixel-doodle-workflow-mockups .recent-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      align-content: start;
+    }
+
+    #pixel-doodle-workflow-mockups .recent-grid button {
+      min-height: 28px;
+      padding: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-touch {
+      position: absolute;
+      inset: 31px 0 0;
+      display: grid;
+      grid-template-rows: 30px minmax(0, 1fr) 22px 28px 16px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-topline {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      padding: 3px;
+      background: #11191d;
+      border-bottom: 1px solid var(--pd-edge);
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      padding: 5px;
+      align-content: start;
+      min-height: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-grid button {
+      min-width: 0;
+      min-height: 30px;
+      padding: 0;
+      border-width: 2px;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-grid button.is-selected {
+      outline: 2px solid var(--pd-text);
+      outline-offset: -4px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-mode-panel {
+      min-height: 0;
+      padding: 6px;
+      border-top: 1px solid var(--pd-edge);
+      border-bottom: 1px solid var(--pd-edge);
+      background: #202c31;
+    }
+
+    #pixel-doodle-workflow-mockups .js-palette-panel[hidden] {
+      display: none !important;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-face {
+      width: 92px;
+      height: 92px;
+      margin: 1px auto 4px;
+      border: 1px solid var(--pd-edge);
+      background: conic-gradient(#d94d5f, #eab14d, #d8d84c, #4dcf79, #4fb9d7, #6e69d8, #d94d9b, #d94d5f);
+      position: relative;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-face::after {
+      content: "";
+      position: absolute;
+      inset: 27px;
+      border: 1px solid var(--pd-edge);
+      background: #b8263d;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-workbench {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      grid-template-rows: minmax(0, 1fr) 16px;
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-field {
+      position: relative;
+      min-width: 0;
+      min-height: 34px;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--pd-control-edge);
+      background:
+        linear-gradient(to top, #000, transparent),
+        linear-gradient(to right, #fff, hsl(var(--picker-hue, 349) 100% 50%));
+      cursor: crosshair;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-marker {
+      position: absolute;
+      left: 78%;
+      top: 24%;
+      width: 9px;
+      height: 9px;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px #000;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-side {
+      display: grid;
+      grid-template-rows: 1fr 22px;
+      gap: 3px;
+      min-height: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-new {
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      min-height: 0;
+      padding: 2px;
+      border: 1px solid var(--pd-edge);
+      background: var(--pd-panel);
+      font-size: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-new::before {
+      content: "";
+      width: 24px;
+      height: 18px;
+      border: 1px solid var(--pd-text);
+      background: var(--picker-color, #b8263d);
+    }
+
+    #pixel-doodle-workflow-mockups .picker-side .js-eyedropper {
+      min-height: 0;
+      padding: 0;
+      font-size: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hue {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 4px;
+      align-items: center;
+      font-size: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hue input {
+      width: 100%;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--pd-accent);
+      background: linear-gradient(to right, #f44, #ff0, #0f0, #0ff, #00f, #f0f, #f44);
+    }
+
+    #pixel-doodle-workflow-mockups .palette-preview-stage {
+      position: absolute;
+      inset: 24px 0 0;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 6px;
+      padding: 6px;
+    }
+
+    #pixel-doodle-workflow-mockups [data-variant="Palette"] .top-bar > span {
+      white-space: nowrap;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-preview-main,
+    #pixel-doodle-workflow-mockups .palette-preview-side {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-preview-main > .preview-label,
+    #pixel-doodle-workflow-mockups .palette-preview-side > .preview-label {
+      position: static;
+      min-height: 12px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-preview-main .color-big {
+      flex: 1;
+      min-height: 32px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-preview-main .color-big.secondary {
+      flex: 0.7;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-hex-panel {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 5px;
+      color: var(--pd-text);
+      font-size: 8px;
+    }
+
+    #pixel-doodle-workflow-mockups .selected-swatch {
+      min-height: 32px;
+      border: 2px solid var(--pd-text);
+      background: #b8263d;
+    }
+
+    #pixel-doodle-workflow-mockups .recent-grid-static {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 3px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .recent-grid-static span {
+      min-height: 16px;
+      border: 1px solid var(--pd-edge);
+    }
+
+    #pixel-doodle-workflow-mockups .palette-touch {
+      grid-template-rows: 24px minmax(0, 1fr) 12px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-panel {
+      min-height: 0;
+      padding: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-panel {
+      display: grid;
+      grid-template-rows: 20px minmax(0, 1fr) 11px;
+      gap: 2px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-targetbar,
+    #pixel-doodle-workflow-mockups .picker-targetbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr) auto;
+      gap: 3px;
+      align-items: center;
+      min-height: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-targetbar button,
+    #pixel-doodle-workflow-mockups .picker-targetbar button {
+      min-height: 18px;
+      padding: 1px 3px;
+      font-size: 7px;
+      line-height: 8px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-targetbar .js-color-target,
+    #pixel-doodle-workflow-mockups .picker-targetbar .js-color-target {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 3px;
+      align-items: center;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-targetbar .js-color-target strong,
+    #pixel-doodle-workflow-mockups .picker-targetbar .js-color-target strong {
+      overflow: hidden;
+      font-size: 7px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #pixel-doodle-workflow-mockups .density-group {
+      display: flex;
+      gap: 1px;
+    }
+
+    #pixel-doodle-workflow-mockups .density-group button {
+      min-width: 17px;
+      padding: 0;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-scroll {
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--pd-accent) #11191d;
+      scrollbar-width: thin;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-panel .swatch-grid {
+      grid-template-columns: repeat(8, 1fr);
+      grid-auto-rows: max-content;
+      gap: 3px;
+      padding: 2px;
+      align-items: start;
+      align-content: start;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-panel .swatch-grid button {
+      width: 100%;
+      height: auto;
+      min-height: 0;
+      aspect-ratio: 1;
+      align-self: start;
+      touch-action: manipulation;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-grid[data-density="standard"] {
+      grid-template-columns: repeat(6, 1fr);
+      grid-auto-rows: max-content;
+    }
+
+    #pixel-doodle-workflow-mockups .swatch-grid[data-density="large"] {
+      grid-template-columns: repeat(5, 1fr);
+      grid-auto-rows: max-content;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-inline-hint {
+      color: var(--pd-muted);
+      font-size: 7px;
+      line-height: 11px;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-panel {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 20px;
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-panel .picker-workbench {
+      grid-template-columns: minmax(76px, 32%) 12px minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) 12px;
+      gap: 2px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-field {
+      grid-column: 1;
+      grid-row: 1;
+      width: min(100%, 104px);
+      aspect-ratio: 1;
+      min-height: 0;
+      align-self: start;
+      justify-self: start;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hue-vertical {
+      position: relative;
+      grid-column: 2;
+      grid-row: 1;
+      display: grid;
+      min-width: 12px;
+      min-height: 0;
+      align-items: stretch;
+      overflow: hidden;
+      border: 1px solid var(--pd-control-edge);
+      background: linear-gradient(to top, #f44, #ff0, #0f0, #0ff, #00f, #f0f, #f44);
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hue-vertical::after {
+      content: "";
+      position: absolute;
+      z-index: 2;
+      left: 0;
+      right: 0;
+      top: var(--hue-position, 97%);
+      height: 2px;
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #fff;
+      pointer-events: none;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hue-vertical:has(input:focus-visible) {
+      outline: 2px solid var(--pd-text);
+      outline-offset: 1px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hue-vertical input {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      appearance: slider-vertical;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      opacity: 0;
+      cursor: ns-resize;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-alpha-line {
+      grid-column: 1 / 3;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 25px minmax(0, 1fr) 22px;
+      gap: 3px;
+      align-items: center;
+      font-size: 6px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-alpha-line input {
+      width: 100%;
+      height: 11px;
+      margin: 0;
+      accent-color: var(--pd-accent);
+    }
+
+    #pixel-doodle-workflow-mockups .picker-side {
+      grid-column: 3;
+      grid-row: 1 / 3;
+      display: grid;
+      grid-template-rows: 28px 20px minmax(0, 1fr);
+      gap: 2px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-target-swap {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr);
+      gap: 2px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-target-swap .js-color-target {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 2px;
+      min-height: 0;
+      padding: 1px 2px;
+      font-size: 7px;
+    }
+
+    #pixel-doodle-workflow-mockups .target-color {
+      min-width: 12px;
+      border: 1px solid var(--pd-text);
+      background: var(--target-color);
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hex-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 22px;
+      gap: 2px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-hex-input {
+      min-width: 0;
+      height: 20px;
+      padding: 1px 4px;
+      border: 1px solid var(--pd-control-edge);
+      border-radius: 0;
+      background: var(--pd-panel);
+      color: var(--pd-text);
+      font-size: 8px;
+      text-transform: uppercase;
+    }
+
+    #pixel-doodle-workflow-mockups .mini-swatch-strip {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-auto-rows: max-content;
+      gap: 3px;
+      min-width: 0;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--pd-accent) #11191d;
+      scrollbar-width: thin;
+      align-items: start;
+      align-content: start;
+    }
+
+    #pixel-doodle-workflow-mockups .mini-swatch-strip button {
+      width: 100%;
+      height: auto;
+      min-width: 0;
+      min-height: 0;
+      aspect-ratio: 1;
+      align-self: start;
+      padding: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+
+    #pixel-doodle-workflow-mockups .picker-actions button {
+      min-height: 0;
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-edit-panel {
+      display: grid;
+      grid-template-rows: 26px minmax(0, 1fr) 23px;
+      gap: 3px;
+    }
+
+    #pixel-doodle-workflow-mockups .edit-selected {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 5px;
+      align-items: center;
+      padding: 2px 5px;
+      border: 1px solid var(--pd-edge);
+      background: var(--pd-panel);
+    }
+
+    #pixel-doodle-workflow-mockups .edit-selected-swatch {
+      width: 24px;
+      height: 18px;
+      border: 1px solid var(--pd-text);
+      background: #b8263d;
+    }
+
+    #pixel-doodle-workflow-mockups .edit-selected strong {
+      font-size: 8px;
+      font-weight: 500;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-edit-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 3px;
+      min-height: 0;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-edit-actions button {
+      min-height: 0;
+      padding: 2px;
+      text-align: center;
+      font-size: 8px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-mode-copy {
+      color: var(--pd-muted);
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-more {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4px;
+      align-content: start;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-alpha {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 28px;
+      gap: 5px;
+      align-items: center;
+      padding: 0 5px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-alpha input {
+      width: 100%;
+      accent-color: var(--pd-accent);
+    }
+
+    #pixel-doodle-workflow-mockups .palette-alpha output {
+      color: var(--pd-muted);
+      font-size: 9px;
+      text-align: right;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-actions {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 3px;
+      padding: 3px;
+      border-top: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-actions button {
+      min-width: 0;
+      text-align: center;
+      padding: 2px;
+      font-size: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .command-grid {
+      position: absolute;
+      inset: 69px 6px 48px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 5px;
+    }
+
+    #pixel-doodle-workflow-mockups .command-grid button {
+      position: relative;
+      min-width: 0;
+      padding: 6px;
+      text-align: left;
+      white-space: normal;
+    }
+
+    #pixel-doodle-workflow-mockups .command-grid button > .picon {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+    }
+
+    #pixel-doodle-workflow-mockups .command-grid strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    #pixel-doodle-workflow-mockups .command-grid span {
+      color: var(--pd-muted);
+      font-size: 9px;
+      line-height: 11px;
+    }
+
+    #pixel-doodle-workflow-mockups .command-foot {
+      position: absolute;
+      inset: auto 0 0;
+      min-height: 43px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      border-top: 1px solid var(--pd-edge);
+      background: #11191d;
+    }
+
+    #pixel-doodle-workflow-mockups .command-foot button {
+      text-align: center;
+    }
+
+    #pixel-doodle-workflow-mockups .status-line {
+      position: absolute;
+      left: 5px;
+      right: 5px;
+      bottom: 32px;
+      color: var(--pd-accent);
+      font-size: 9px;
+    }
+
+    #pixel-doodle-workflow-mockups .palette-touch > .status-line {
+      position: static;
+      min-height: 12px;
+      padding: 0 5px;
+    }
+
+    #pixel-doodle-workflow-mockups .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 520px) {
+      #pixel-doodle-workflow-mockups .concept {
+        min-height: 676px;
+      }
+
+      #pixel-doodle-workflow-mockups .handheld {
+        width: min(100%, 326px);
+        padding: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups .screen {
+        font-size: 10px;
+        line-height: 12px;
+      }
+
+      #pixel-doodle-workflow-mockups .inspector {
+        grid-template-columns: 0.92fr 1.08fr;
+        padding: 7px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .handheld {
+        width: min(100%, 390px);
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="bottom"] {
+        width: 100%;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] .inspector {
+        gap: 4px;
+        padding: 6px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] .inspector-kicker {
+        font-size: 8px;
+        line-height: 9px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] .inspector-title {
+        font-size: 16px;
+        line-height: 18px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] .inspector-note {
+        font-size: 9px;
+        line-height: 10px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] .overview-wrap {
+        min-height: 0;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .screen[data-screen="top"] .option-block {
+        min-height: 30px;
+        padding: 2px 4px;
+        font-size: 8px;
+        line-height: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups .console-switch {
+        align-items: flex-start;
+      }
+
+      #pixel-doodle-workflow-mockups .console-readout {
+        max-width: 145px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-note {
+        height: 34px;
+        padding: 4px 7px;
+        font-size: 9px;
+        line-height: 10px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-grid {
+        inset: 65px 6px 44px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-grid button {
+        min-height: 0;
+        padding: 3px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-grid strong {
+        margin-bottom: 0;
+        font-size: 10px;
+        line-height: 11px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-grid span {
+        display: none;
+      }
+
+      #pixel-doodle-workflow-mockups .command-foot {
+        min-height: 39px;
+        padding: 3px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-scroll {
+        gap: 2px;
+        padding: 3px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-touch-row {
+        min-height: 23px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-touch-row > button {
+        min-height: 23px;
+        padding: 1px 3px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-properties button {
+        min-height: 24px;
+        padding: 1px 3px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-select small {
+        font-size: 7px;
+        line-height: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .scope-list button,
+      #pixel-doodle-workflow-mockups.pd-3ds .palette-topline button {
+        flex-direction: column;
+        gap: 0;
+        padding: 1px;
+        font-size: 8px;
+        line-height: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .scope-list .picon,
+      #pixel-doodle-workflow-mockups.pd-3ds .palette-topline .picon {
+        width: 11px;
+        min-width: 11px;
+        height: 11px;
+        margin-right: 0;
+        line-height: 11px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .drawer-tool-grid button {
+        grid-template-columns: 12px minmax(0, 1fr);
+        gap: 1px;
+        padding: 2px;
+        font-size: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .drawer-tool-grid .picon {
+        width: 12px;
+        min-width: 12px;
+        height: 12px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .palette-actions button {
+        flex-direction: row;
+        gap: 1px;
+        min-height: 0;
+        padding: 0;
+        font-size: 6px;
+        line-height: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .palette-actions .picon {
+        width: 9px;
+        min-width: 9px;
+        height: 9px;
+        margin-right: 0;
+        line-height: 9px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .command-grid button {
+        padding: 2px 16px 2px 2px;
+      }
+
+      #pixel-doodle-workflow-mockups.pd-3ds .command-grid button > .picon {
+        top: 3px;
+        right: 3px;
+        width: 10px;
+        min-width: 10px;
+        height: 10px;
+        line-height: 10px;
+      }
+    }
+
+    @media (max-width: 340px) {
+      #pixel-doodle-workflow-mockups .screen[data-screen="top"] .inspector {
+        gap: 3px;
+        padding: 5px;
+      }
+
+      #pixel-doodle-workflow-mockups .screen[data-screen="top"] .inspector-copy {
+        gap: 3px;
+      }
+
+      #pixel-doodle-workflow-mockups .screen[data-screen="top"] .inspector-note {
+        display: none;
+      }
+
+      #pixel-doodle-workflow-mockups .screen[data-screen="top"] .overview-wrap {
+        min-height: 0;
+      }
+
+      #pixel-doodle-workflow-mockups .screen[data-screen="top"] .mini-options .option-block {
+        min-height: 28px;
+        padding: 2px 4px;
+      }
+
+      #pixel-doodle-workflow-mockups .adjust-stage {
+        gap: 3px;
+        padding: 4px;
+      }
+
+      #pixel-doodle-workflow-mockups .scope-list button {
+        flex-direction: column;
+        gap: 0;
+        min-height: 18px;
+        padding: 1px;
+        font-size: 8px;
+        line-height: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups .scope-list .picon {
+        width: 11px;
+        min-width: 11px;
+        height: 11px;
+        margin-right: 0;
+        line-height: 11px;
+      }
+
+      #pixel-doodle-workflow-mockups .slider-stack {
+        gap: 1px;
+      }
+
+      #pixel-doodle-workflow-mockups .slider-row {
+        grid-template-columns: 18px minmax(0, 1fr) 18px;
+        gap: 2px;
+      }
+
+      #pixel-doodle-workflow-mockups .slider-row > button {
+        min-width: 18px;
+        min-height: 18px;
+        padding: 0;
+        font-size: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups .slider-control {
+        grid-template-columns: 40px minmax(0, 1fr) 25px;
+        gap: 3px;
+        font-size: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups .palette-actions button {
+        flex-direction: row;
+        gap: 1px;
+        min-height: 0;
+        padding: 0;
+        font-size: 6px;
+        line-height: 8px;
+      }
+
+      #pixel-doodle-workflow-mockups .palette-actions .picon {
+        width: 9px;
+        min-width: 9px;
+        height: 9px;
+        margin-right: 0;
+        line-height: 9px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-scroll {
+        gap: 0;
+        padding: 1px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-touch-row,
+      #pixel-doodle-workflow-mockups .layer-touch-row > button {
+        min-height: 21px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-touch-row > button {
+        padding: 0 1px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-select small {
+        font-size: 6px;
+        line-height: 7px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-select > span {
+        font-size: 8px;
+        line-height: 9px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-bench {
+        padding-bottom: 26px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-properties {
+        gap: 1px;
+        padding: 1px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-properties button {
+        min-height: 21px;
+        padding: 0 2px;
+        line-height: 7px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-properties button span {
+        font-size: 6px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-properties button strong {
+        font-size: 6px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-actions {
+        padding: 1px;
+      }
+
+      #pixel-doodle-workflow-mockups .layer-actions button {
+        min-height: 22px;
+        padding: 0;
+        font-size: 6px;
+        line-height: 6px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-grid button {
+        padding: 2px 16px 2px 2px;
+      }
+
+      #pixel-doodle-workflow-mockups .command-grid button > .picon {
+        top: 3px;
+        right: 3px;
+        width: 10px;
+        min-width: 10px;
+        height: 10px;
+        line-height: 10px;
+      }
+
+      #pixel-doodle-workflow-mockups [data-variant="Palette"] .color-summary .layer-meta {
+        display: none;
+      }
+    }
+  </style>
+
+  <div class="console-switch" aria-label="Mockup console size">
+    <div class="console-switch__modes" role="group" aria-label="Console">
+      <button type="button" class="js-console" data-console="dsi" aria-pressed="true">DSi</button>
+      <button type="button" class="js-console" data-console="3ds" aria-pressed="false">3DS</button>
+    </div>
+    <span class="console-readout js-console-readout" aria-live="polite">TWL / 256 x 192 / TOUCH LOWER</span>
+  </div>
+
+  <div class="viz-carousel" aria-label="Pixel Doodle workflow mockups">
+    <section data-variant="Canvas First" aria-label="Canvas first workspace mockup">
+      <div class="concept">
+        <div class="handheld">
+          <div class="screen" data-screen="top" aria-label="Top screen contextual inspector">
+            <div class="top-bar">
+              <span>PIXEL DOODLE</span>
+              <span class="muted">L1 1X SAVED</span>
+            </div>
+            <div class="inspector">
+              <div class="inspector-copy" aria-live="polite">
+                <div class="inspector-kicker">ACTIVE TOOL</div>
+                <div class="inspector-title js-tool-name">PENCIL</div>
+                <div class="inspector-note js-tool-note">Draw one-pixel lines. Lift the stylus to commit and keep the current color.</div>
+                <div class="mini-options">
+                  <div class="option-block"><span class="muted tiny">SIZE</span><br>1 PX</div>
+                  <div class="option-block"><span class="muted tiny">SHAPE</span><br>SQUARE</div>
+                </div>
+              </div>
+              <div class="overview-wrap">
+                <div class="mock-art" aria-label="Blank canvas preview placeholder"></div>
+                <div class="viewport-marker"></div>
+              </div>
+            </div>
+          </div>
+          <div class="screen" data-screen="bottom" aria-label="Bottom drawing screen">
+            <div class="canvas-toolbar" role="group" aria-label="Canvas actions">
+              <button type="button" class="js-quick icon-only" data-status="UNDO" aria-label="Undo"><i class="picon" data-lucide="undo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="REDO" aria-label="Redo"><i class="picon" data-lucide="redo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="COLOR" aria-label="Color"><i class="picon" data-lucide="palette" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="LAYERS" aria-label="Layers"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i></button>
+              <button type="button" class="js-canvas-tools icon-only" aria-label="Open tools" aria-controls="canvas-tool-tray" aria-expanded="false" aria-pressed="false"><i class="picon" data-lucide="toolbox" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="MENU" aria-label="Menu"><i class="picon" data-lucide="menu" aria-hidden="true"></i></button>
+            </div>
+            <div class="canvas-workspace">
+              <div class="mock-art" aria-label="Blank canvas placeholder"></div>
+              <div class="canvas-status js-tool-status" aria-live="polite">PENCIL 1PX</div>
+            </div>
+            <div class="canvas-tool-tray" id="canvas-tool-tray" hidden>
+              <div class="drawer-head">
+                <strong>DRAWING TOOLS</strong>
+                <span class="tiny muted">TAP TO CHOOSE</span>
+                <button type="button" class="js-canvas-tools-close" aria-label="Close tools"><i class="picon" data-lucide="x" aria-hidden="true"></i>CLOSE</button>
+              </div>
+              <div class="canvas-tool-grid tool-shelf" role="group" aria-label="Drawing tools">
+                <button type="button" data-tool="PENCIL" data-status="PENCIL 1PX" data-note="Draw one-pixel lines. Lift the stylus to commit and keep the current color." aria-pressed="true"><i class="picon" data-lucide="pencil" aria-hidden="true"></i>PENCIL</button>
+                <button type="button" data-tool="ERASER" data-status="ERASER 8PX" data-note="Remove pixels without changing the active color or layer opacity." aria-pressed="false"><i class="picon" data-lucide="eraser" aria-hidden="true"></i>ERASE</button>
+                <button type="button" data-tool="FILL" data-status="FILL ACTIVE" data-note="Fill connected pixels on the active layer. Use selection to limit the area." aria-pressed="false"><i class="picon" data-lucide="paint-bucket" aria-hidden="true"></i>FILL</button>
+                <button type="button" data-tool="SELECT" data-status="SELECT RECT" data-note="Choose a region, then transform it or open Adjust for a scoped color change." aria-pressed="false"><i class="picon" data-lucide="scan" aria-hidden="true"></i>SELECT</button>
+                <button type="button" data-tool="LINE" data-status="LINE" data-note="Drag a straight line with the current brush size and color." aria-pressed="false"><i class="picon" data-lucide="slash" aria-hidden="true"></i>LINE</button>
+                <button type="button" data-tool="RECTANGLE" data-status="RECTANGLE" data-note="Drag a rectangle outline or fill the interior." aria-pressed="false"><i class="picon" data-lucide="rectangle-horizontal" aria-hidden="true"></i>RECT</button>
+                <button type="button" data-tool="ELLIPSE" data-status="ELLIPSE" data-note="Drag an ellipse outline or fill the interior." aria-pressed="false"><i class="picon" data-lucide="circle" aria-hidden="true"></i>ELLIPSE</button>
+                <button type="button" data-tool="ADJUST" data-status="ADJUST VISIBLE" data-note="Open the top-screen Before and After preview, then tune the color controls below." aria-pressed="false"><i class="picon" data-lucide="sliders-horizontal" aria-hidden="true"></i>ADJUST</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-variant="Layer Bench" aria-label="Layer bench mockup" hidden>
+      <div class="concept">
+        <div class="handheld">
+          <div class="screen" data-screen="top" aria-label="Top screen layer comparison preview">
+            <div class="top-bar">
+              <span>LAYER PREVIEW</span>
+              <span class="muted">GRIP: HOLD + DRAG</span>
+            </div>
+            <div class="layer-preview-dual">
+              <div class="preview-panel">
+                <span class="preview-label">COMPOSITE</span>
+                <div class="mock-art" aria-label="Composite preview placeholder"></div>
+              </div>
+              <div class="preview-panel">
+                <span class="preview-label">ACTIVE LAYER</span>
+                <div class="mock-art" aria-label="Active layer preview placeholder"></div>
+              </div>
+            </div>
+            <div class="layer-meta js-layer-meta" aria-live="polite">ACTIVE: INK  /  NORMAL  /  100%</div>
+          </div>
+          <div class="screen" data-screen="bottom" aria-label="Bottom interactive layer list">
+            <div class="canvas-toolbar" role="group" aria-label="Canvas actions">
+              <button type="button" class="js-quick icon-only" data-status="UNDO" aria-label="Undo"><i class="picon" data-lucide="undo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="REDO" aria-label="Redo"><i class="picon" data-lucide="redo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="COLOR" aria-label="Color"><i class="picon" data-lucide="palette" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="LAYERS" aria-label="Layers" aria-pressed="true"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="TOOLS" aria-label="Tools"><i class="picon" data-lucide="toolbox" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="MENU" aria-label="Menu"><i class="picon" data-lucide="menu" aria-hidden="true"></i></button>
+            </div>
+            <div class="layer-bench">
+              <div class="layer-scroll" aria-label="Interactive layer stack">
+                <div class="layer-touch-row is-selected" data-layer-row="Ink" data-blend="NORMAL" data-opacity="100" data-clip="false" data-alpha-lock="false">
+                  <button type="button" class="layer-drag js-layer-drag" aria-label="Hold and drag Ink layer to reorder"><i class="picon" data-lucide="grip-vertical" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-vis js-layer-vis" aria-label="Hide Ink layer" aria-pressed="true"><i class="picon" data-lucide="eye" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-select js-layer" data-layer="Ink" aria-label="Select Ink layer"><span>INK</span><small>NORMAL 100%</small></button>
+                  <button type="button" class="layer-lock js-layer-lock" aria-label="Toggle Ink lock" aria-pressed="false"><i class="picon" data-lucide="lock-open" aria-hidden="true"></i></button>
+                </div>
+                <div class="layer-touch-row" data-layer-row="Color" data-blend="MULTIPLY" data-opacity="76" data-clip="false" data-alpha-lock="false">
+                  <button type="button" class="layer-drag js-layer-drag" aria-label="Hold and drag Color layer to reorder"><i class="picon" data-lucide="grip-vertical" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-vis js-layer-vis" aria-label="Hide Color layer" aria-pressed="true"><i class="picon" data-lucide="eye" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-select js-layer" data-layer="Color" aria-label="Select Color layer"><span>COLOR</span><small>MULTIPLY 76%</small></button>
+                  <button type="button" class="layer-lock js-layer-lock" aria-label="Toggle Color lock" aria-pressed="false"><i class="picon" data-lucide="lock-open" aria-hidden="true"></i></button>
+                </div>
+                <div class="layer-touch-row" data-layer-row="Shadow" data-blend="NORMAL" data-opacity="42" data-clip="false" data-alpha-lock="false">
+                  <button type="button" class="layer-drag js-layer-drag" aria-label="Hold and drag Shadow layer to reorder"><i class="picon" data-lucide="grip-vertical" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-vis js-layer-vis" aria-label="Hide Shadow layer" aria-pressed="true"><i class="picon" data-lucide="eye" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-select js-layer" data-layer="Shadow" aria-label="Select Shadow layer"><span>SHADOW</span><small>NORMAL 42%</small></button>
+                  <button type="button" class="layer-lock js-layer-lock" aria-label="Toggle Shadow lock" aria-pressed="false"><i class="picon" data-lucide="lock-open" aria-hidden="true"></i></button>
+                </div>
+                <div class="layer-touch-row" data-layer-row="Highlights" data-blend="SCREEN" data-opacity="64" data-clip="false" data-alpha-lock="false">
+                  <button type="button" class="layer-drag js-layer-drag" aria-label="Hold and drag Highlights layer to reorder"><i class="picon" data-lucide="grip-vertical" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-vis js-layer-vis" aria-label="Hide Highlights layer" aria-pressed="true"><i class="picon" data-lucide="eye" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-select js-layer" data-layer="Highlights" aria-label="Select Highlights layer"><span>HIGHLIGHTS</span><small>SCREEN 64%</small></button>
+                  <button type="button" class="layer-lock js-layer-lock" aria-label="Toggle Highlights lock" aria-pressed="false"><i class="picon" data-lucide="lock-open" aria-hidden="true"></i></button>
+                </div>
+                <div class="layer-touch-row" data-layer-row="Paper" data-blend="NORMAL" data-opacity="100" data-clip="false" data-alpha-lock="true">
+                  <button type="button" class="layer-drag js-layer-drag" aria-label="Hold and drag Paper layer to reorder"><i class="picon" data-lucide="grip-vertical" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-vis js-layer-vis" aria-label="Hide Paper layer" aria-pressed="true"><i class="picon" data-lucide="eye" aria-hidden="true"></i></button>
+                  <button type="button" class="layer-select js-layer" data-layer="Paper" aria-label="Select Paper layer"><span>PAPER</span><small>NORMAL 100%</small></button>
+                  <button type="button" class="layer-lock js-layer-lock" aria-label="Toggle Paper lock" aria-pressed="true"><i class="picon" data-lucide="lock-keyhole" aria-hidden="true"></i></button>
+                </div>
+              </div>
+              <div class="layer-properties" role="group" aria-label="Selected layer options">
+                <button type="button" class="js-layer-option" data-option="blend"><span>BLEND</span><strong class="js-layer-blend">NORMAL</strong></button>
+                <button type="button" class="js-layer-option" data-option="opacity"><span>OPACITY</span><strong class="js-layer-opacity">100%</strong></button>
+                <button type="button" class="js-layer-option" data-option="clip" aria-pressed="false"><span>CLIP</span><strong class="js-layer-clip">OFF</strong></button>
+                <button type="button" class="js-layer-option" data-option="alpha-lock" aria-pressed="false"><span>ALPHA LOCK</span><strong class="js-layer-alpha-lock">OFF</strong></button>
+              </div>
+              <div class="layer-actions" role="group" aria-label="Layer actions">
+                <button type="button" data-action="MOVE UP"><i class="picon" data-lucide="arrow-up" aria-hidden="true"></i>UP</button>
+                <button type="button" data-action="MOVE DOWN"><i class="picon" data-lucide="arrow-down" aria-hidden="true"></i>DOWN</button>
+                <button type="button" data-action="NEW LAYER"><i class="picon" data-lucide="plus" aria-hidden="true"></i>NEW</button>
+                <button type="button" data-action="RENAME LAYER"><i class="picon" data-lucide="pencil" aria-hidden="true"></i>NAME</button>
+                <button type="button" data-action="DUPLICATE LAYER"><i class="picon" data-lucide="copy" aria-hidden="true"></i>DUPE</button>
+                <button type="button" data-action="MERGE DOWN"><i class="picon" data-lucide="combine" aria-hidden="true"></i>MERGE</button>
+                <button type="button" data-action="DELETE LAYER"><i class="picon" data-lucide="trash-2" aria-hidden="true"></i>DELETE</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-variant="Adjust Flow" aria-label="Guided color adjustment mockup" hidden>
+      <div class="concept">
+        <div class="handheld">
+          <div class="screen" data-screen="top" aria-label="Top screen color adjustment preview">
+            <div class="top-bar">
+              <span>ADJUST COLORS</span>
+              <span class="muted js-scope-label">VISIBLE LAYERS</span>
+            </div>
+            <div class="adjust-preview">
+              <div class="preview-panel">
+                <span class="preview-label">BEFORE</span>
+                <div class="mock-art" aria-label="Before color preview placeholder"></div>
+              </div>
+              <div class="preview-panel">
+                <span class="preview-label">AFTER</span>
+                <div class="mock-art js-after-art" aria-label="After color preview placeholder"></div>
+              </div>
+            </div>
+          </div>
+          <div class="screen" data-screen="bottom" aria-label="Bottom color adjustment controls">
+            <div class="canvas-toolbar" role="group" aria-label="Canvas actions">
+              <button type="button" class="js-quick icon-only" data-status="UNDO" aria-label="Undo"><i class="picon" data-lucide="undo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="REDO" aria-label="Redo"><i class="picon" data-lucide="redo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="COLOR" aria-label="Color" aria-pressed="true"><i class="picon" data-lucide="palette" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="LAYERS" aria-label="Layers"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="TOOLS" aria-label="Tools"><i class="picon" data-lucide="toolbox" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="MENU" aria-label="Menu"><i class="picon" data-lucide="menu" aria-hidden="true"></i></button>
+            </div>
+            <div class="adjust-stage">
+              <div class="scope-list" role="group" aria-label="Adjustment scope">
+                <button type="button" class="js-scope" data-scope="SELECTION" aria-pressed="false"><i class="picon" data-lucide="scan" aria-hidden="true"></i>SELECTION</button>
+                <button type="button" class="js-scope" data-scope="CURRENT" aria-pressed="false"><i class="picon" data-lucide="square-stack" aria-hidden="true"></i>CURRENT</button>
+                <button type="button" class="js-scope" data-scope="VISIBLE LAYERS" aria-pressed="true"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i>VISIBLE</button>
+              </div>
+              <div class="slider-stack">
+                <div class="slider-row"><button type="button" class="js-nudge" data-kind="hue" data-dir="-1" aria-label="Decrease hue">-</button><label class="slider-control"><span>HUE</span><input class="js-adjust" data-kind="hue" type="range" min="-180" max="180" value="86"><output>+86</output></label><button type="button" class="js-nudge" data-kind="hue" data-dir="1" aria-label="Increase hue">+</button></div>
+                <div class="slider-row"><button type="button" class="js-nudge" data-kind="sat" data-dir="-1" aria-label="Decrease saturation">-</button><label class="slider-control"><span>SAT</span><input class="js-adjust" data-kind="sat" type="range" min="-100" max="100" value="18"><output>+18</output></label><button type="button" class="js-nudge" data-kind="sat" data-dir="1" aria-label="Increase saturation">+</button></div>
+                <div class="slider-row"><button type="button" class="js-nudge" data-kind="bright" data-dir="-1" aria-label="Decrease brightness">-</button><label class="slider-control"><span>BRIGHT</span><input class="js-adjust" data-kind="bright" type="range" min="-100" max="100" value="-4"><output>-4</output></label><button type="button" class="js-nudge" data-kind="bright" data-dir="1" aria-label="Increase brightness">+</button></div>
+                <div class="slider-row"><button type="button" class="js-nudge" data-kind="alpha" data-dir="-1" aria-label="Decrease alpha">-</button><label class="slider-control"><span>ALPHA</span><input class="js-adjust" data-kind="alpha" type="range" min="-100" max="100" value="-12"><output>-12</output></label><button type="button" class="js-nudge" data-kind="alpha" data-dir="1" aria-label="Increase alpha">+</button></div>
+              </div>
+            </div>
+            <div class="bottom-bar row">
+              <button type="button" class="grow js-cancel"><i class="picon" data-lucide="x" aria-hidden="true"></i>CANCEL</button>
+              <button type="button" class="grow is-selected js-apply"><i class="picon" data-lucide="check" aria-hidden="true"></i>APPLY</button>
+            </div>
+            <div class="status-line js-adjust-status" aria-live="polite">LIVE LAYER-STACK PREVIEW</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-variant="Tool Options" aria-label="Tool and options mockup" hidden>
+      <div class="concept">
+        <div class="handheld">
+          <div class="screen" data-screen="top" aria-label="Top screen tool help">
+            <div class="top-bar">
+              <span>TOOL &amp; OPTIONS</span>
+              <span class="muted">PICK A TOOL, THEN CHANGE ITS OPTIONS</span>
+            </div>
+            <div class="inspector">
+              <div class="inspector-copy" aria-live="polite">
+                <div class="inspector-kicker">ACTIVE TOOL</div>
+                <div class="inspector-title js-tool-name">PENCIL</div>
+                <div class="inspector-note js-tool-note">Draw one-pixel lines. The drawer closes after a tool is chosen.</div>
+                <div class="mini-options">
+                  <div class="option-block tiny muted">ICONS SPEED RECOGNITION.</div>
+                  <div class="option-block tiny">UNDO AND REDO STAY PINNED.</div>
+                </div>
+              </div>
+              <div class="overview-wrap">
+                <div class="mock-art" aria-label="Tool context preview placeholder"></div>
+              </div>
+            </div>
+          </div>
+          <div class="screen" data-screen="bottom" aria-label="Bottom tool options">
+            <div class="canvas-toolbar" role="group" aria-label="Canvas actions">
+              <button type="button" class="js-quick icon-only" data-status="UNDO" aria-label="Undo"><i class="picon" data-lucide="undo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="REDO" aria-label="Redo"><i class="picon" data-lucide="redo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="COLOR" aria-label="Color"><i class="picon" data-lucide="palette" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="LAYERS" aria-label="Layers"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="TOOLS" aria-label="Tools" aria-pressed="true"><i class="picon" data-lucide="toolbox" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="MENU" aria-label="Menu"><i class="picon" data-lucide="menu" aria-hidden="true"></i></button>
+            </div>
+            <div class="tool-options-stage">
+              <div class="tool-select-block">
+                <div class="tool-step-label">
+                  <span>1  PICK TOOL</span>
+                  <span class="muted">TAP ONCE</span>
+                </div>
+                <div class="tool-choice-grid tool-shelf" role="group" aria-label="Drawing tools">
+                  <button type="button" data-tool="PENCIL" data-status="PENCIL / 4 PX" data-note="Pencil options include size, dither, pressure and tip shape." aria-pressed="true"><i class="picon" data-lucide="pencil" aria-hidden="true"></i>PENCIL</button>
+                  <button type="button" data-tool="ERASER" data-status="ERASER / 8 PX" data-note="Eraser options include size, tip and edge feather." aria-pressed="false"><i class="picon" data-lucide="eraser" aria-hidden="true"></i>ERASER</button>
+                  <button type="button" data-tool="FILL" data-status="FILL / TOLERANCE 24" data-note="Fill options include scope, sample source, tolerance and dither." aria-pressed="false"><i class="picon" data-lucide="paint-bucket" aria-hidden="true"></i>FILL</button>
+                  <button type="button" data-tool="SELECT" data-status="SELECT / RECTANGLE" data-note="Selection options include rectangle or lasso mode, combine mode and edge behavior." aria-pressed="false"><i class="picon" data-lucide="scan" aria-hidden="true"></i>SELECT</button>
+                  <button type="button" data-tool="LINE" data-status="LINE / SOLID" data-note="Line options include width, color source and pixel-perfect drawing." aria-pressed="false"><i class="picon" data-lucide="slash" aria-hidden="true"></i>LINE</button>
+                  <button type="button" data-tool="RECTANGLE" data-status="RECTANGLE / OUTLINE" data-note="Rectangle options include outline or filled, width and rounded corners." aria-pressed="false"><i class="picon" data-lucide="rectangle-horizontal" aria-hidden="true"></i>RECT</button>
+                  <button type="button" data-tool="ELLIPSE" data-status="ELLIPSE / OUTLINE" data-note="Ellipse options include outline or filled and stroke width." aria-pressed="false"><i class="picon" data-lucide="circle" aria-hidden="true"></i>ELLIPSE</button>
+                  <button type="button" data-tool="ADJUST" data-status="ADJUST / VISIBLE" data-note="Adjust options include scope, preview mode and channel controls." aria-pressed="false"><i class="picon" data-lucide="sliders-horizontal" aria-hidden="true"></i>ADJUST</button>
+                </div>
+              </div>
+              <div class="tool-settings-block">
+                <div class="tool-options-head">
+                  <strong>2  TOOL OPTIONS</strong>
+                  <span class="muted js-tool-status" aria-live="polite">PENCIL / 4 PX</span>
+                </div>
+                <div class="tool-option-grid js-tool-option-grid" role="group" aria-label="Pencil options"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-variant="Palette" aria-label="Palette and picker mockup" hidden>
+      <div class="concept">
+        <div class="handheld">
+          <div class="screen" data-screen="top" aria-label="Top screen color preview, display only">
+            <div class="top-bar">
+              <span class="js-palette-title">PALETTE</span>
+              <span class="muted js-palette-target">FOREGROUND TARGET</span>
+            </div>
+            <div class="palette-preview-stage" aria-live="polite">
+              <div class="palette-preview-main">
+                <span class="preview-label"><i class="picon" data-lucide="square" aria-hidden="true"></i>FOREGROUND</span>
+                <div class="color-big js-color-fg" aria-label="Foreground color preview"></div>
+                <div class="palette-hex-panel">
+                  <strong class="js-palette-hex">#B8263D</strong>
+                  <span>ALPHA <span class="js-alpha-value">243</span></span>
+                </div>
+                <span class="preview-label"><i class="picon" data-lucide="square-stack" aria-hidden="true"></i>BACKGROUND</span>
+                <div class="color-big secondary js-color-bg" aria-label="Background color preview"></div>
+              </div>
+              <div class="palette-preview-side">
+                <span class="preview-label">SELECTED SWATCH</span>
+                <div class="selected-swatch js-selected-swatch" aria-label="Selected swatch preview"></div>
+                <span class="preview-label">RECENT</span>
+                <div class="recent-grid-static" aria-label="Recent colors, display only">
+                  <span style="background:#b8263d"></span>
+                  <span style="background:#126e72"></span>
+                  <span style="background:#f0d850"></span>
+                  <span style="background:#864bc1"></span>
+                  <span style="background:#218c63"></span>
+                  <span style="background:#1850b0"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="screen" data-screen="bottom" aria-label="Bottom palette controls">
+            <div class="canvas-toolbar" role="group" aria-label="Canvas actions">
+              <button type="button" class="js-quick icon-only" data-status="UNDO" aria-label="Undo"><i class="picon" data-lucide="undo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="REDO" aria-label="Redo"><i class="picon" data-lucide="redo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="COLOR" aria-label="Color" aria-pressed="true"><i class="picon" data-lucide="palette" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="LAYERS" aria-label="Layers"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="TOOLS" aria-label="Tools"><i class="picon" data-lucide="toolbox" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="MENU" aria-label="Menu"><i class="picon" data-lucide="menu" aria-hidden="true"></i></button>
+            </div>
+            <div class="palette-touch">
+              <div class="palette-topline" role="group" aria-label="Palette mode">
+                <button type="button" class="js-palette-tab is-selected" data-panel="palette" aria-pressed="true"><i class="picon" data-lucide="layout-grid" aria-hidden="true"></i>SWATCHES</button>
+                <button type="button" class="js-palette-tab" data-panel="picker" aria-pressed="false"><i class="picon" data-lucide="pipette" aria-hidden="true"></i>PICKER</button>
+                <button type="button" class="js-palette-tab" data-panel="edit" aria-pressed="false"><i class="picon" data-lucide="settings-2" aria-hidden="true"></i>EDIT</button>
+              </div>
+
+              <div class="palette-panel swatch-panel js-palette-panel" data-panel="palette">
+                <div class="palette-targetbar" role="group" aria-label="Color target and swatch density">
+                  <button type="button" class="js-color-target is-selected" data-target="fg" aria-pressed="true"><span>FG</span><strong class="js-target-fg">#B8263D</strong></button>
+                  <button type="button" class="js-swap-colors" aria-label="Swap foreground and background"><i class="picon" data-lucide="refresh-cw" aria-hidden="true"></i></button>
+                  <button type="button" class="js-color-target" data-target="bg" aria-pressed="false"><span>BG</span><strong class="js-target-bg">#126E72</strong></button>
+                  <div class="density-group" role="group" aria-label="Swatch density">
+                    <button type="button" class="js-density is-selected" data-density="compact" aria-pressed="true" aria-label="Compact swatches">S</button>
+                    <button type="button" class="js-density" data-density="standard" aria-pressed="false" aria-label="Standard swatches">M</button>
+                    <button type="button" class="js-density" data-density="large" aria-pressed="false" aria-label="Large swatches">L</button>
+                  </div>
+                </div>
+                <div class="swatch-scroll">
+                  <div class="swatch-grid" data-density="compact" aria-label="Palette swatches">
+                    <button type="button" class="js-palette-swatch" data-hex="#182126" style="background:#182126" aria-label="Use dark background"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#F5F8FA" style="background:#f5f8fa" aria-label="Use white"></button>
+                    <button type="button" class="js-palette-swatch is-selected" data-hex="#B8263D" style="background:#b8263d" aria-label="Use red" aria-pressed="true"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#F5A623" style="background:#f5a623" aria-label="Use orange"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#F0D850" style="background:#f0d850" aria-label="Use yellow"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#218C63" style="background:#218c63" aria-label="Use green"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#1850B0" style="background:#1850b0" aria-label="Use blue"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#864BC1" style="background:#864bc1" aria-label="Use purple"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#126E72" style="background:#126e72" aria-label="Use teal"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#75858D" style="background:#75858d" aria-label="Use gray"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#753542" style="background:#753542" aria-label="Use burgundy"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#D69B6A" style="background:#d69b6a" aria-label="Use sand"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#6D8FCF" style="background:#6d8fcf" aria-label="Use sky"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#8DBE7C" style="background:#8dbe7c" aria-label="Use sage"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#C883D9" style="background:#c883d9" aria-label="Use orchid"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#365564" style="background:#365564" aria-label="Use navy"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#2F6B4F" style="background:#2f6b4f" aria-label="Use forest"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#8B5A2B" style="background:#8b5a2b" aria-label="Use umber"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#D8D2C5" style="background:#d8d2c5" aria-label="Use parchment"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#8C1C2B" style="background:#8c1c2b" aria-label="Use crimson"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#2C87A3" style="background:#2c87a3" aria-label="Use cyan"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#D46A9C" style="background:#d46a9c" aria-label="Use pink"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#B7A44C" style="background:#b7a44c" aria-label="Use olive"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#4C667A" style="background:#4c667a" aria-label="Use slate"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#E07035" style="background:#e07035" aria-label="Use coral"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#694F94" style="background:#694f94" aria-label="Use violet"></button>
+                    <button type="button" class="js-palette-swatch" data-hex="#1C1C1C" style="background:#1c1c1c" aria-label="Use black"></button>
+                  </div>
+                </div>
+                <div class="palette-inline-hint">TAP USE / HOLD EDIT / SCROLL FOR MORE</div>
+              </div>
+
+              <div class="palette-panel palette-mode-panel picker-panel js-palette-panel" data-panel="picker" hidden>
+                <div class="picker-workbench">
+                  <button type="button" class="picker-field js-picker-field" aria-label="Choose color saturation and brightness" data-saturation="79" data-brightness="72">
+                    <span class="picker-marker" aria-hidden="true"></span>
+                  </button>
+                  <label class="picker-hue-vertical">
+                    <span class="sr-only">Hue</span>
+                    <input class="js-picker-hue" type="range" min="0" max="360" value="349" aria-label="Hue">
+                  </label>
+                  <div class="picker-side">
+                    <div class="picker-target-swap" role="group" aria-label="Color target">
+                      <button type="button" class="js-color-target is-selected" data-target="fg" aria-pressed="true"><span>FG</span><i class="target-color js-target-fg-swatch" aria-hidden="true"></i></button>
+                      <button type="button" class="js-swap-colors" aria-label="Swap foreground and background"><i class="picon" data-lucide="refresh-cw" aria-hidden="true"></i></button>
+                      <button type="button" class="js-color-target" data-target="bg" aria-pressed="false"><span>BG</span><i class="target-color js-target-bg-swatch" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="picker-hex-row">
+                      <input class="picker-hex-input js-hex-input" type="text" inputmode="text" value="#B8263D" maxlength="7" aria-label="Hex color">
+                      <button type="button" class="js-eyedropper" aria-label="Pick color from canvas"><i class="picon" data-lucide="pipette" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="mini-swatch-strip" aria-label="Quick palette colors">
+                      <button type="button" class="js-mini-swatch" data-hex="#182126" style="background:#182126" aria-label="Choose dark background"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#F5F8FA" style="background:#f5f8fa" aria-label="Choose white"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#B8263D" style="background:#b8263d" aria-label="Choose red"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#F5A623" style="background:#f5a623" aria-label="Choose orange"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#F0D850" style="background:#f0d850" aria-label="Choose yellow"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#218C63" style="background:#218c63" aria-label="Choose green"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#1850B0" style="background:#1850b0" aria-label="Choose blue"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#864BC1" style="background:#864bc1" aria-label="Choose purple"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#126E72" style="background:#126e72" aria-label="Choose teal"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#75858D" style="background:#75858d" aria-label="Choose gray"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#753542" style="background:#753542" aria-label="Choose burgundy"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#D69B6A" style="background:#d69b6a" aria-label="Choose sand"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#6D8FCF" style="background:#6d8fcf" aria-label="Choose sky"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#8DBE7C" style="background:#8dbe7c" aria-label="Choose sage"></button>
+                      <button type="button" class="js-mini-swatch" data-hex="#C883D9" style="background:#c883d9" aria-label="Choose orchid"></button>
+                    </div>
+                  </div>
+                  <label class="picker-alpha-line"><span>ALPHA</span><input class="js-color-alpha" type="range" min="0" max="255" value="243"><output class="js-picker-alpha-value">243</output></label>
+                </div>
+                <div class="picker-actions">
+                  <button type="button" class="js-picker-cancel"><i class="picon" data-lucide="x" aria-hidden="true"></i>CANCEL</button>
+                  <button type="button" class="js-picker-use"><i class="picon" data-lucide="check" aria-hidden="true"></i>USE COLOR</button>
+                </div>
+              </div>
+
+              <div class="palette-panel palette-mode-panel palette-edit-panel js-palette-panel" data-panel="edit" hidden>
+                <div class="edit-selected">
+                  <div class="edit-selected-swatch js-edit-selected-swatch"></div>
+                  <strong class="js-edit-hex">#B8263D / SWATCH 03</strong>
+                </div>
+                <div class="palette-edit-actions" role="group" aria-label="Palette editing actions">
+                  <button type="button" class="js-palette-action" data-action="add"><i class="picon" data-lucide="plus" aria-hidden="true"></i>ADD</button>
+                  <button type="button" class="js-palette-action" data-action="edit"><i class="picon" data-lucide="replace" aria-hidden="true"></i>REPLACE</button>
+                  <button type="button" class="js-palette-action" data-action="remove"><i class="picon" data-lucide="trash-2" aria-hidden="true"></i>REMOVE</button>
+                  <button type="button" class="js-palette-action" data-action="move"><i class="picon" data-lucide="arrow-right-left" aria-hidden="true"></i>MOVE</button>
+                  <button type="button" class="js-palette-action" data-action="load"><i class="picon" data-lucide="folder-open" aria-hidden="true"></i>LOAD</button>
+                  <button type="button" class="js-palette-action" data-action="save"><i class="picon" data-lucide="save" aria-hidden="true"></i>SAVE</button>
+                </div>
+                <button type="button" class="js-palette-done"><i class="picon" data-lucide="check" aria-hidden="true"></i>DONE / BACK TO SWATCHES</button>
+              </div>
+
+              <div class="status-line js-palette-status" aria-live="polite">TAP A SWATCH TO USE IT</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-variant="Command Board" aria-label="Command board menu mockup" hidden>
+      <div class="concept">
+        <div class="handheld">
+          <div class="screen" data-screen="top" aria-label="Top screen command context">
+            <div class="top-bar">
+              <span>UNTITLED</span>
+              <span class="muted">SAVED</span>
+            </div>
+            <div class="inspector">
+              <div class="inspector-copy" aria-live="polite">
+                <div class="inspector-kicker">WORKFLOW</div>
+                <div class="inspector-title js-command-title">DRAW</div>
+                <div class="inspector-note js-command-note">Keep the canvas in view while changing tools, color and layer visibility.</div>
+                <div class="mini-options">
+                  <div class="option-block tiny muted">TOP SCREEN SHOWS CONTEXT.</div>
+                  <div class="option-block tiny">BOTTOM SCREEN KEEPS ACTIONS.</div>
+                </div>
+              </div>
+              <div class="overview-wrap">
+                <div class="mock-art" aria-label="Current artwork preview placeholder"></div>
+              </div>
+            </div>
+          </div>
+          <div class="screen" data-screen="bottom" aria-label="Bottom command board">
+            <div class="canvas-toolbar" role="group" aria-label="Canvas actions">
+              <button type="button" class="js-quick icon-only" data-status="UNDO" aria-label="Undo"><i class="picon" data-lucide="undo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="REDO" aria-label="Redo"><i class="picon" data-lucide="redo-2" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="COLOR" aria-label="Color"><i class="picon" data-lucide="palette" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="LAYERS" aria-label="Layers"><i class="picon" data-lucide="layers-3" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="TOOLS" aria-label="Tools"><i class="picon" data-lucide="toolbox" aria-hidden="true"></i></button>
+              <button type="button" class="js-quick icon-only" data-status="MENU" aria-label="Menu" aria-pressed="true"><i class="picon" data-lucide="menu" aria-hidden="true"></i></button>
+            </div>
+            <div class="command-note js-command-detail" aria-live="polite">Choose a broad task, then the next screen keeps the same context.</div>
+            <div class="command-grid">
+              <button type="button" data-title="DRAW" data-detail="Return to the canvas with the last tool ready."><i class="picon" data-lucide="pencil" aria-hidden="true"></i><strong>DRAW</strong><span>Canvas and active tool</span></button>
+              <button type="button" data-title="TOOLS" data-detail="Choose brushes, fill, selection or shapes."><i class="picon" data-lucide="shapes" aria-hidden="true"></i><strong>TOOLS</strong><span>Brushes and regions</span></button>
+              <button type="button" data-title="LAYERS" data-detail="Change visibility, opacity and layer order."><i class="picon" data-lucide="layers-3" aria-hidden="true"></i><strong>LAYERS</strong><span>Stack and protection</span></button>
+              <button type="button" data-title="ADJUST" data-detail="Tune hue, saturation, brightness and alpha."><i class="picon" data-lucide="sliders-horizontal" aria-hidden="true"></i><strong>ADJUST</strong><span>Color changes</span></button>
+              <button type="button" data-title="FILES" data-detail="Save, open, export or restore a project."><i class="picon" data-lucide="folder" aria-hidden="true"></i><strong>FILES</strong><span>Save and export</span></button>
+              <button type="button" data-title="SETTINGS" data-detail="Change controls, help and session options."><i class="picon" data-lucide="settings" aria-hidden="true"></i><strong>SETTINGS</strong><span>Controls and help</span></button>
+            </div>
+            <div class="command-foot">
+              <button type="button" data-title="BACK" data-detail="Return to the last canvas state."><i class="picon" data-lucide="arrow-left" aria-hidden="true"></i>BACK</button>
+              <button type="button" data-title="SAVE" data-detail="Save the project or open Save As when untitled."><i class="picon" data-lucide="save" aria-hidden="true"></i>SAVE NOW</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="./vendor/lucide-subset.js"></script>
+  <script>
+    (() => {
+      const root = document.getElementById("pixel-doodle-workflow-mockups");
+      if (!root) return;
+
+      const refreshIcons = () => {
+        window.lucide?.createIcons({ attrs: { width: 14, height: 14 } });
+      };
+
+      const toolOptionSets = {
+        PENCIL: [
+          ["SIZE", ["1 PX", "2 PX", "4 PX", "8 PX", "12 PX"]],
+          ["DITHER", ["OFF", "ON"]],
+          ["PRESSURE", ["ON", "OFF"]],
+          ["TIP", ["SQUARE", "ROUND"]]
+        ],
+        ERASER: [
+          ["SIZE", ["2 PX", "4 PX", "8 PX", "16 PX"]],
+          ["TIP", ["SQUARE", "ROUND"]],
+          ["FEATHER", ["OFF", "SOFT"]],
+          ["SAMPLE", ["DESTINATION", "TRANSPARENT"]]
+        ],
+        FILL: [
+          ["SCOPE", ["CONTIGUOUS", "GLOBAL"]],
+          ["SAMPLE", ["VISIBLE", "ACTIVE"]],
+          ["TOLERANCE", ["0", "8", "24", "64", "255"]],
+          ["TEXTURE", ["SOLID", "DITHER"]]
+        ],
+        SELECT: [
+          ["MODE", ["RECTANGLE", "LASSO"]],
+          ["COMBINE", ["REPLACE", "ADD", "REMOVE"]],
+          ["EDGE", ["HARD", "ANTI-ALIAS"]],
+          ["AFTER", ["KEEP", "MOVE", "COPY"]]
+        ],
+        LINE: [
+          ["WIDTH", ["1 PX", "2 PX", "4 PX", "8 PX"]],
+          ["STYLE", ["SOLID", "DITHER", "DASHED"]],
+          ["PIXEL PERFECT", ["ON", "OFF"]],
+          ["END CAP", ["SQUARE", "ROUND"]]
+        ],
+        RECTANGLE: [
+          ["STYLE", ["OUTLINE", "FILLED"]],
+          ["WIDTH", ["1 PX", "2 PX", "4 PX"]],
+          ["CORNERS", ["SQUARE", "ROUND"]],
+          ["DITHER", ["OFF", "ON"]]
+        ],
+        ELLIPSE: [
+          ["STYLE", ["OUTLINE", "FILLED"]],
+          ["WIDTH", ["1 PX", "2 PX", "4 PX"]],
+          ["DITHER", ["OFF", "ON"]],
+          ["ASPECT", ["FREE", "LOCKED"]]
+        ],
+        ADJUST: [
+          ["SCOPE", ["SELECTION", "CURRENT", "VISIBLE"]],
+          ["PREVIEW", ["BEFORE / AFTER", "LIVE"]],
+          ["CHANNEL", ["ALL", "HUE", "SATURATION", "BRIGHTNESS"]],
+          ["ALPHA", ["INCLUDE", "PRESERVE"]]
+        ]
+      };
+
+      const renderToolOptions = (section, toolName) => {
+        const grid = section.querySelector(".js-tool-option-grid");
+        if (!grid) return;
+        grid.replaceChildren();
+        grid.setAttribute("aria-label", `${toolName} options`);
+        (toolOptionSets[toolName] ?? []).forEach(([label, values]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.dataset.optionIndex = "0";
+          button.dataset.values = values.join("|");
+          const labelNode = document.createElement("span");
+          labelNode.textContent = label;
+          const valueNode = document.createElement("strong");
+          valueNode.className = "tool-option-value";
+          valueNode.textContent = values[0];
+          button.append(labelNode, valueNode);
+          button.setAttribute("aria-label", `${label}, ${values[0]}. Activate to change.`);
+          button.addEventListener("click", () => {
+            const choices = button.dataset.values.split("|");
+            const index = (Number(button.dataset.optionIndex) + 1) % choices.length;
+            button.dataset.optionIndex = String(index);
+            valueNode.textContent = choices[index];
+            button.setAttribute("aria-label", `${label}, ${choices[index]}. Activate to change.`);
+            section.querySelector(".js-tool-status").textContent = `${toolName} / ${label}: ${choices[index]}`;
+            section.querySelector(".js-tool-note").textContent = `${toolName} option changed: ${label} is ${choices[index]}.`;
+          });
+          grid.append(button);
+        });
+      };
+
+      const setConsoleMode = (mode) => {
+        const is3ds = mode === "3ds";
+        root.classList.toggle("pd-3ds", is3ds);
+        root.dataset.console = mode;
+        root.querySelectorAll(".js-console").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.console === mode));
+        });
+        root.querySelector(".js-console-readout").textContent = is3ds
+          ? "3DS / 400 x 240 TOP / 320 x 240 TOUCH"
+          : "TWL / 256 x 192 / TOUCH LOWER";
+      };
+
+      root.querySelectorAll(".js-console").forEach((button) => {
+        button.addEventListener("click", () => setConsoleMode(button.dataset.console));
+      });
+      setConsoleMode("dsi");
+
+      const setDrawerOpen = (screen, open) => {
+        screen.classList.toggle("is-drawer-closed", !open);
+        const closeButton = screen.querySelector(".js-drawer-close");
+        const openButton = screen.querySelector(".js-drawer-open");
+        closeButton?.setAttribute("aria-expanded", String(open));
+        openButton?.setAttribute("aria-expanded", String(open));
+      };
+
+      const setCanvasToolsOpen = (section, open) => {
+        const tray = section.querySelector(".canvas-tool-tray");
+        const trigger = section.querySelector(".js-canvas-tools");
+        tray.hidden = !open;
+        trigger.setAttribute("aria-expanded", String(open));
+        trigger.setAttribute("aria-pressed", String(open));
+        trigger.setAttribute("aria-label", `${open ? "Close" : "Open"} tools`);
+      };
+
+      root.querySelectorAll(".js-canvas-tools").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const tray = section.querySelector(".canvas-tool-tray");
+          setCanvasToolsOpen(section, tray.hidden);
+        });
+      });
+
+      root.querySelectorAll(".js-canvas-tools-close").forEach((button) => {
+        button.addEventListener("click", () => setCanvasToolsOpen(button.closest("section"), false));
+      });
+
+      root.querySelectorAll(".js-drawer-close").forEach((button) => {
+        button.addEventListener("click", () => setDrawerOpen(button.closest(".screen"), false));
+      });
+
+      root.querySelectorAll(".js-drawer-open").forEach((button) => {
+        button.addEventListener("click", () => setDrawerOpen(button.closest(".screen"), true));
+      });
+
+      root.querySelectorAll(".tool-shelf").forEach((shelf) => {
+        const section = shelf.closest("section");
+        const toolName = section.querySelector(".js-tool-name");
+        const toolNote = section.querySelector(".js-tool-note");
+        const toolStatus = section.querySelector(".js-tool-status");
+        shelf.addEventListener("click", (event) => {
+          const button = event.target.closest("button[data-tool]");
+          if (!button) return;
+          shelf.querySelectorAll("button[data-tool]").forEach((item) => {
+            item.setAttribute("aria-pressed", String(item === button));
+          });
+          toolName.textContent = button.dataset.tool;
+          toolNote.textContent = button.dataset.note;
+          toolStatus.textContent = button.dataset.status;
+          renderToolOptions(section, button.dataset.tool);
+          if (shelf.classList.contains("drawer-tool-grid")) {
+            setDrawerOpen(section.querySelector(".screen[data-screen='bottom']"), false);
+          }
+          if (shelf.classList.contains("canvas-tool-grid")) {
+            setCanvasToolsOpen(section, false);
+          }
+        });
+      });
+
+      root.querySelectorAll(".js-quick").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const status = section.querySelector(".js-tool-status, .js-layer-meta, .js-adjust-status, .js-palette-status, .js-command-detail");
+          if (status) status.textContent = `${button.dataset.status} READY`;
+        });
+      });
+
+      const syncLayerProperties = (section) => {
+        const row = section.querySelector(".layer-touch-row.is-selected");
+        if (!row) return;
+        const blend = row.dataset.blend || "NORMAL";
+        const opacity = row.dataset.opacity || "100";
+        const clip = row.dataset.clip === "true";
+        const alphaLock = row.dataset.alphaLock === "true";
+        section.querySelector(".js-layer-blend").textContent = blend;
+        section.querySelector(".js-layer-opacity").textContent = `${opacity}%`;
+        section.querySelector(".js-layer-clip").textContent = clip ? "ON" : "OFF";
+        section.querySelector(".js-layer-alpha-lock").textContent = alphaLock ? "ON" : "OFF";
+        section.querySelector('[data-option="clip"]').setAttribute("aria-pressed", String(clip));
+        section.querySelector('[data-option="alpha-lock"]').setAttribute("aria-pressed", String(alphaLock));
+        row.querySelector("small").textContent = `${blend} ${opacity}%`;
+      };
+
+      root.querySelectorAll(".js-layer").forEach((button) => {
+        button.addEventListener("click", () => {
+          const list = button.closest(".layer-touch-row");
+          button.closest(".layer-scroll").querySelectorAll(".layer-touch-row").forEach((item) => item.classList.toggle("is-selected", item === list));
+          const section = button.closest("section");
+          section.querySelector(".js-layer-meta").textContent = `ACTIVE: ${button.dataset.layer.toUpperCase()}  /  NORMAL  /  100%`;
+          syncLayerProperties(section);
+        });
+      });
+
+      root.querySelectorAll(".js-layer-option").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const row = section.querySelector(".layer-touch-row.is-selected");
+          const name = row.querySelector(".js-layer").dataset.layer.toUpperCase();
+          const option = button.dataset.option;
+          if (option === "blend") {
+            const modes = ["NORMAL", "MULTIPLY", "SCREEN", "OVERLAY", "ADD"];
+            const index = (modes.indexOf(row.dataset.blend) + 1) % modes.length;
+            row.dataset.blend = modes[index];
+          } else if (option === "opacity") {
+            const levels = [100, 75, 50, 25];
+            const index = (levels.indexOf(Number(row.dataset.opacity)) + 1) % levels.length;
+            row.dataset.opacity = String(levels[index]);
+          } else if (option === "clip") {
+            row.dataset.clip = String(row.dataset.clip !== "true");
+          } else if (option === "alpha-lock") {
+            row.dataset.alphaLock = String(row.dataset.alphaLock !== "true");
+          }
+          syncLayerProperties(section);
+          section.querySelector(".js-layer-meta").textContent =
+            `${name}  /  ${row.dataset.blend} ${row.dataset.opacity}%  /  CLIP ${row.dataset.clip === "true" ? "ON" : "OFF"}  /  ALPHA ${row.dataset.alphaLock === "true" ? "LOCKED" : "OPEN"}`;
+        });
+      });
+
+      root.querySelectorAll(".js-layer-vis").forEach((button) => {
+        button.addEventListener("click", () => {
+          const row = button.closest(".layer-touch-row");
+          const hidden = row.classList.toggle("is-hidden");
+          const name = row.querySelector(".js-layer").dataset.layer.toUpperCase();
+          button.setAttribute("aria-pressed", String(!hidden));
+          button.setAttribute("aria-label", `${hidden ? "Show" : "Hide"} ${name} layer`);
+          button.innerHTML = `<i class="picon" data-lucide="${hidden ? "eye-off" : "eye"}" aria-hidden="true"></i>`;
+          button.closest("section").querySelector(".js-layer-meta").textContent = `${name} ${hidden ? "HIDDEN" : "VISIBLE"}  /  COMPOSITE UPDATED`;
+          refreshIcons();
+        });
+      });
+
+      root.querySelectorAll(".js-layer-lock").forEach((button) => {
+        button.addEventListener("click", () => {
+          const active = button.getAttribute("aria-pressed") !== "true";
+          button.setAttribute("aria-pressed", String(active));
+          button.innerHTML = `<i class="picon" data-lucide="${active ? "lock-keyhole" : "lock-open"}" aria-hidden="true"></i>`;
+          const name = button.closest(".layer-touch-row").querySelector(".js-layer").dataset.layer.toUpperCase();
+          button.closest("section").querySelector(".js-layer-meta").textContent = `${name} ${active ? "LOCKED" : "UNLOCKED"}  /  PROTECTION CHANGED`;
+          refreshIcons();
+        });
+      });
+
+      root.querySelectorAll(".js-layer-menu").forEach((button) => {
+        button.addEventListener("click", () => {
+          button.closest("section").querySelector(".js-layer-meta").textContent = "ROW MENU READY  /  OPACITY, BLEND, RENAME";
+        });
+      });
+
+      root.querySelectorAll(".layer-actions").forEach((actions) => {
+        const section = actions.closest("section");
+        actions.addEventListener("click", (event) => {
+          const button = event.target.closest("button[data-action]");
+          if (!button) return;
+          const row = section.querySelector(".layer-touch-row.is-selected");
+          const name = row?.querySelector(".js-layer")?.dataset.layer.toUpperCase() || "ACTIVE LAYER";
+          if (button.dataset.action === "MOVE UP" && row?.previousElementSibling) {
+            row.parentElement.insertBefore(row, row.previousElementSibling);
+            section.querySelector(".js-layer-meta").textContent = `${name} MOVED UP  /  STACK REORDERED`;
+          } else if (button.dataset.action === "MOVE DOWN" && row?.nextElementSibling) {
+            row.parentElement.insertBefore(row.nextElementSibling, row);
+            section.querySelector(".js-layer-meta").textContent = `${name} MOVED DOWN  /  STACK REORDERED`;
+          } else if (button.dataset.action.startsWith("MOVE")) {
+            section.querySelector(".js-layer-meta").textContent = `${name} IS ALREADY AT THE ${button.dataset.action === "MOVE UP" ? "TOP" : "BOTTOM"}`;
+          } else {
+            section.querySelector(".js-layer-meta").textContent = `${button.dataset.action} READY  /  ${name} INSPECTED`;
+          }
+        });
+      });
+
+      root.querySelectorAll(".js-layer-drag").forEach((grip) => {
+        let holdTimer = null;
+        let dragging = false;
+        let activeRow = null;
+        let suppressClickUntil = 0;
+        const finish = () => {
+          window.clearTimeout(holdTimer);
+          activeRow?.classList.remove("is-dragging");
+          if (dragging && activeRow) {
+            suppressClickUntil = performance.now() + 250;
+            const section = activeRow.closest("section");
+            const order = [...activeRow.closest(".layer-scroll").querySelectorAll(".layer-touch-row")]
+              .map((row) => row.dataset.layerRow.toUpperCase());
+            section.querySelector(".js-layer-meta").textContent = `ORDER: ${order.join(" / ")}`;
+          }
+          holdTimer = null;
+          dragging = false;
+          activeRow = null;
+        };
+
+        grip.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          activeRow = grip.closest(".layer-touch-row");
+          const section = activeRow.closest("section");
+          grip.setPointerCapture(event.pointerId);
+          holdTimer = window.setTimeout(() => {
+            dragging = true;
+            activeRow.classList.add("is-dragging");
+            section.querySelector(".js-layer-meta").textContent = `HOLD READY  /  DRAG ${activeRow.dataset.layerRow.toUpperCase()} TO REORDER`;
+          }, 320);
+        });
+
+        grip.addEventListener("pointermove", (event) => {
+          if (!dragging || !activeRow) return;
+          const rows = [...activeRow.closest(".layer-scroll").querySelectorAll(".layer-touch-row")]
+            .filter((row) => row !== activeRow);
+          const target = rows.find((row) => {
+            const rect = row.getBoundingClientRect();
+            return event.clientY < rect.top + rect.height / 2;
+          });
+          if (target) target.parentElement.insertBefore(activeRow, target);
+          else activeRow.parentElement.append(activeRow);
+        });
+
+        grip.addEventListener("pointerup", finish);
+        grip.addEventListener("pointercancel", finish);
+        grip.addEventListener("lostpointercapture", finish);
+        grip.addEventListener("click", () => {
+          if (performance.now() < suppressClickUntil) return;
+          if (dragging) return;
+          const row = grip.closest(".layer-touch-row");
+          row.closest("section").querySelector(".js-layer-meta").textContent =
+            `HOLD ${row.dataset.layerRow.toUpperCase()} AND DRAG  /  OR USE MOVE UP / DOWN`;
+        });
+      });
+
+      root.querySelectorAll(".js-scope").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          section.querySelectorAll(".js-scope").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+          section.querySelector(".js-scope-label").textContent = button.dataset.scope;
+          section.querySelector(".js-adjust-status").textContent = `${button.dataset.scope} PREVIEW READY`;
+        });
+      });
+
+      const applyPreview = (section) => {
+        const hue = Number(section.querySelector('[data-kind="hue"]').value);
+        const sat = Number(section.querySelector('[data-kind="sat"]').value);
+        const bright = Number(section.querySelector('[data-kind="bright"]').value);
+        const alpha = Number(section.querySelector('[data-kind="alpha"]').value);
+        const art = section.querySelector(".js-after-art");
+        art.style.filter = `hue-rotate(${hue}deg) saturate(${100 + sat}%) brightness(${100 + bright}%)`;
+        art.style.opacity = String(Math.max(0.15, Math.min(1, 1 + alpha / 100)));
+      };
+
+      root.querySelectorAll(".js-adjust").forEach((input) => {
+        input.addEventListener("input", () => {
+          const section = input.closest("section");
+          input.nextElementSibling.textContent = input.value > 0 ? `+${input.value}` : input.value;
+          applyPreview(section);
+          const label = input.closest(".slider-control").querySelector("span").textContent;
+          section.querySelector(".js-adjust-status").textContent = `${label} ${input.value}  /  PREVIEW UPDATED`;
+        });
+      });
+
+      root.querySelectorAll(".js-nudge").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const input = section.querySelector(`.js-adjust[data-kind="${button.dataset.kind}"]`);
+          const previousValue = Number(input.value);
+          const step = button.dataset.kind === "hue" ? 5 : 5;
+          input.value = String(Math.max(Number(input.min), Math.min(Number(input.max), Number(input.value) + Number(button.dataset.dir) * step)));
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          if (Number(input.value) === previousValue) {
+            section.querySelector(".js-adjust-status").textContent = `${button.dataset.kind.toUpperCase()} AT ${input.value} LIMIT`;
+          }
+        });
+      });
+
+      root.querySelectorAll(".js-apply").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          section.querySelector(".js-adjust-status").textContent = "APPLY READY  /  ONE UNDO STEP";
+        });
+      });
+
+      root.querySelectorAll(".js-cancel").forEach((button) => {
+        button.addEventListener("click", () => {
+          button.closest("section").querySelector(".js-adjust-status").textContent = "CHANGES DISCARDED  /  PREVIEW RESTORED";
+        });
+      });
+
+      const activatePalettePanel = (section, panelName) => {
+        section.dataset.palettePanel = panelName;
+        section.querySelectorAll(".js-palette-tab").forEach((item) => {
+          const selected = item.dataset.panel === panelName;
+          item.classList.toggle("is-selected", selected);
+          item.setAttribute("aria-pressed", String(selected));
+        });
+        section.querySelectorAll(".js-palette-panel").forEach((panel) => {
+          panel.hidden = panel.dataset.panel !== panelName;
+        });
+        if (panelName === "picker" && !section.dataset.pickerOriginal) {
+          section.dataset.pickerOriginal = section.dataset.currentHex || "#B8263D";
+        }
+        const titles = { palette: "PALETTE", picker: "PICKER", edit: "PALETTE EDIT" };
+        section.querySelector(".js-palette-title").textContent = titles[panelName];
+        section.querySelector(".js-palette-status").textContent =
+          panelName === "palette" ? "TAP A SWATCH TO USE IT" :
+          panelName === "picker" ? "DRAG THE MARKER / USE COLOR TO COMMIT" :
+          "SELECT A SWATCH, THEN CHOOSE AN ACTION";
+        syncPaletteTargets(section);
+      };
+
+      root.querySelectorAll(".js-palette-tab").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const panelName = button.dataset.panel;
+          if (panelName === "picker") {
+            const target = section.dataset.paletteTarget || "fg";
+            const active = target === "fg" ? section.dataset.paletteFg : section.dataset.paletteBg;
+            section.dataset.pickerOriginal = active;
+            syncPicker(section, active);
+          }
+          activatePalettePanel(section, panelName);
+        });
+      });
+
+      const syncPaletteTargets = (section) => {
+        const fg = section.dataset.paletteFg || "#B8263D";
+        const bg = section.dataset.paletteBg || "#126E72";
+        const target = section.dataset.paletteTarget || "fg";
+        const panel = section.dataset.palettePanel || "palette";
+        const selectedSwatch = [...section.querySelectorAll(".js-palette-swatch")]
+          .findIndex((node) => node.classList.contains("is-selected"));
+        section.querySelector(".js-color-fg").style.backgroundColor = fg;
+        section.querySelector(".js-color-bg").style.backgroundColor = bg;
+        section.querySelectorAll(".js-target-fg").forEach((node) => { node.textContent = fg; });
+        section.querySelectorAll(".js-target-bg").forEach((node) => { node.textContent = bg; });
+        section.querySelectorAll(".js-target-fg-swatch").forEach((node) => { node.style.background = fg; });
+        section.querySelectorAll(".js-target-bg-swatch").forEach((node) => { node.style.background = bg; });
+        section.querySelectorAll(".js-color-target").forEach((button) => {
+          const selected = button.dataset.target === target;
+          button.classList.toggle("is-selected", selected);
+          button.setAttribute("aria-pressed", String(selected));
+        });
+        const active = target === "fg" ? fg : bg;
+        section.dataset.currentHex = active;
+        section.querySelector(".js-palette-hex").textContent = active;
+        section.querySelector(".js-hex-input").value = active;
+        section.querySelector(".js-palette-target").textContent =
+          panel === "edit"
+            ? `SWATCH ${String(Math.max(0, selectedSwatch) + 1).padStart(2, "0")}`
+            : `${target === "fg" ? "FOREGROUND" : "BACKGROUND"} TARGET`;
+      };
+
+      const applyColorToTarget = (section, hex) => {
+        const target = section.dataset.paletteTarget || "fg";
+        if (target === "fg") section.dataset.paletteFg = hex;
+        else section.dataset.paletteBg = hex;
+        syncPaletteTargets(section);
+      };
+
+      root.querySelectorAll(".js-color-target").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          section.dataset.paletteTarget = button.dataset.target;
+          syncPaletteTargets(section);
+          const color = section.dataset.currentHex;
+          if (!section.querySelector('[data-panel="picker"]').hidden) {
+            section.dataset.pickerOriginal = color;
+          }
+          syncPicker(section, color);
+          section.querySelector(".js-palette-status").textContent =
+            `${button.dataset.target.toUpperCase()} TARGET  /  ${color}`;
+        });
+      });
+
+      const hsvToHex = (hue, saturation, brightness) => {
+        const h = ((hue % 360) + 360) % 360;
+        const s = saturation / 100;
+        const v = brightness / 100;
+        const chroma = v * s;
+        const x = chroma * (1 - Math.abs((h / 60) % 2 - 1));
+        const m = v - chroma;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        if (h < 60) [r, g, b] = [chroma, x, 0];
+        else if (h < 120) [r, g, b] = [x, chroma, 0];
+        else if (h < 180) [r, g, b] = [0, chroma, x];
+        else if (h < 240) [r, g, b] = [0, x, chroma];
+        else if (h < 300) [r, g, b] = [x, 0, chroma];
+        else [r, g, b] = [chroma, 0, x];
+        return `#${[r, g, b].map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+      };
+
+      const hexToHsv = (hex) => {
+        const value = hex.replace("#", "");
+        const [r, g, b] = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16) / 255);
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const delta = max - min;
+        let hue = 0;
+        if (delta) {
+          if (max === r) hue = 60 * (((g - b) / delta) % 6);
+          else if (max === g) hue = 60 * ((b - r) / delta + 2);
+          else hue = 60 * ((r - g) / delta + 4);
+        }
+        if (hue < 0) hue += 360;
+        return { hue: Math.round(hue), saturation: Math.round(max ? delta / max * 100 : 0), brightness: Math.round(max * 100) };
+      };
+
+      const syncPicker = (section, hex) => {
+        const field = section.querySelector(".js-picker-field");
+        const hueInput = section.querySelector(".js-picker-hue");
+        if (!field || !hueInput) return;
+        let state = {
+          hue: Number(hueInput.value),
+          saturation: Number(field.dataset.saturation),
+          brightness: Number(field.dataset.brightness)
+        };
+        if (hex) {
+          state = hexToHsv(hex);
+          hueInput.value = String(state.hue);
+          field.dataset.saturation = String(state.saturation);
+          field.dataset.brightness = String(state.brightness);
+        }
+        const output = hsvToHex(state.hue, state.saturation, state.brightness);
+        field.style.setProperty("--picker-hue", String(state.hue));
+        hueInput.closest(".picker-hue-vertical").style.setProperty("--hue-position", `${state.hue / 360 * 100}%`);
+        field.querySelector(".picker-marker").style.left = `${state.saturation}%`;
+        field.querySelector(".picker-marker").style.top = `${100 - state.brightness}%`;
+        section.querySelector(".picker-new")?.style.setProperty("--picker-color", output);
+        section.dataset.currentHex = output;
+        section.querySelector(".js-hex-input").value = output;
+      };
+
+      const updatePickerFromField = (field) => {
+        const section = field.closest("section");
+        const hue = Number(section.querySelector(".js-picker-hue").value);
+        const hex = hsvToHex(hue, Number(field.dataset.saturation), Number(field.dataset.brightness));
+        applyColorToTarget(section, hex);
+        section.querySelector(".picker-new")?.style.setProperty("--picker-color", hex);
+        const alpha = section.querySelector(".js-color-alpha").value;
+        section.querySelector(".js-hex-input").value = hex;
+        section.querySelector(".js-palette-status").textContent = `${hex}  /  PICKER UPDATED`;
+      };
+
+      root.querySelectorAll(".js-picker-hue").forEach((input) => {
+        input.addEventListener("input", () => {
+          const section = input.closest("section");
+          const field = section.querySelector(".js-picker-field");
+          syncPicker(section);
+          updatePickerFromField(field);
+        });
+      });
+
+      root.querySelectorAll(".js-picker-field").forEach((field) => {
+        const updateAtPointer = (event) => {
+          const rect = field.getBoundingClientRect();
+          field.dataset.saturation = String(Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * 100));
+          field.dataset.brightness = String(Math.round(Math.max(0, Math.min(1, 1 - (event.clientY - rect.top) / rect.height)) * 100));
+          syncPicker(field.closest("section"));
+          updatePickerFromField(field);
+        };
+        field.addEventListener("pointerdown", (event) => {
+          field.setPointerCapture(event.pointerId);
+          updateAtPointer(event);
+        });
+        field.addEventListener("pointermove", (event) => {
+          if (field.hasPointerCapture(event.pointerId)) updateAtPointer(event);
+        });
+        field.addEventListener("pointerup", (event) => {
+          if (field.hasPointerCapture(event.pointerId)) field.releasePointerCapture(event.pointerId);
+        });
+        field.addEventListener("click", updateAtPointer);
+      });
+
+      root.querySelectorAll(".js-eyedropper").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const field = section.querySelector(".js-picker-field");
+          field.dataset.saturation = "84";
+          field.dataset.brightness = "45";
+          section.querySelector(".js-picker-hue").value = "183";
+          syncPicker(section);
+          updatePickerFromField(field);
+          section.querySelector(".js-palette-status").textContent = "EYEDROPPER SAMPLE  /  #126C72";
+        });
+      });
+
+      const setMockColor = (button) => {
+        const section = button.closest("section");
+        const hex = button.dataset.hex.toUpperCase();
+        section.querySelectorAll(".js-palette-swatch").forEach((item) => {
+          const selected = item === button;
+          item.classList.toggle("is-selected", selected);
+          item.setAttribute("aria-pressed", String(selected));
+        });
+        syncPicker(section, hex);
+        applyColorToTarget(section, hex);
+        section.querySelector(".js-selected-swatch").style.backgroundColor = hex;
+        section.querySelector(".js-edit-selected-swatch").style.backgroundColor = hex;
+        const swatches = [...section.querySelectorAll(".js-palette-swatch")];
+        const index = Math.max(0, swatches.indexOf(button));
+        section.querySelector(".js-edit-hex").textContent = `${hex} / SWATCH ${String(index + 1).padStart(2, "0")}`;
+        section.querySelector(".js-palette-status").textContent = `${hex} READY FOR THE ACTIVE TOOL`;
+      };
+
+      const bindPaletteSwatch = (button) => {
+        let holdTimer = null;
+        let held = false;
+        button.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0) return;
+          holdTimer = window.setTimeout(() => {
+            held = true;
+            setMockColor(button);
+            activatePalettePanel(button.closest("section"), "edit");
+            button.closest("section").querySelector(".js-palette-status").textContent = "SWATCH HELD  /  EDIT MODE";
+          }, 420);
+        });
+        const cancelHold = () => {
+          window.clearTimeout(holdTimer);
+          holdTimer = null;
+        };
+        button.addEventListener("pointerup", cancelHold);
+        button.addEventListener("pointercancel", cancelHold);
+        button.addEventListener("click", () => {
+          if (held) {
+            held = false;
+            return;
+          }
+          setMockColor(button);
+        });
+      };
+
+      root.querySelectorAll(".js-palette-swatch").forEach(bindPaletteSwatch);
+
+      root.querySelectorAll(".js-color-alpha").forEach((input) => {
+        input.addEventListener("input", () => {
+          const section = input.closest("section");
+          const alpha = Number(input.value);
+          section.querySelector(".js-alpha-value").textContent = String(alpha);
+          section.querySelector(".js-picker-alpha-value").textContent = String(alpha);
+          const hex = section.dataset.currentHex || "#B8263D";
+          const target = section.dataset.paletteTarget || "fg";
+          const preview = target === "fg" ? section.querySelector(".js-color-fg") : section.querySelector(".js-color-bg");
+          preview.style.opacity = String(Math.max(0.08, alpha / 255));
+          section.querySelector(".js-palette-status").textContent = `ALPHA ${alpha}  /  ${target.toUpperCase()} UPDATED`;
+        });
+      });
+
+      root.querySelectorAll(".js-hex-input").forEach((input) => {
+        const commit = () => {
+          const section = input.closest("section");
+          const hex = input.value.trim().toUpperCase();
+          if (!/^#[0-9A-F]{6}$/.test(hex)) {
+            input.value = section.dataset.currentHex || "#B8263D";
+            section.querySelector(".js-palette-status").textContent = "HEX NEEDS SIX DIGITS";
+            return;
+          }
+          syncPicker(section, hex);
+          applyColorToTarget(section, hex);
+          section.querySelector(".js-hex-input").value = hex;
+          section.querySelector(".picker-new")?.style.setProperty("--picker-color", hex);
+          section.querySelector(".js-palette-status").textContent = `${hex}  /  HEX APPLIED`;
+        };
+        input.addEventListener("change", commit);
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") commit();
+        });
+      });
+
+      root.querySelectorAll(".js-mini-swatch").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const hex = button.dataset.hex.toUpperCase();
+          syncPicker(section, hex);
+          applyColorToTarget(section, hex);
+          section.querySelector(".js-hex-input").value = hex;
+          section.querySelector(".picker-new")?.style.setProperty("--picker-color", hex);
+          section.querySelector(".js-palette-status").textContent = `${hex} LOADED INTO PICKER`;
+        });
+      });
+
+      root.querySelectorAll(".js-swap-colors").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const fg = section.dataset.paletteFg || "#B8263D";
+          const bg = section.dataset.paletteBg || "#126E72";
+          section.dataset.paletteFg = bg;
+          section.dataset.paletteBg = fg;
+          syncPaletteTargets(section);
+          syncPicker(section, section.dataset.currentHex);
+          section.querySelector(".js-palette-status").textContent = "FOREGROUND AND BACKGROUND SWAPPED";
+        });
+      });
+
+      root.querySelectorAll(".js-density").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          section.querySelector(".swatch-grid").dataset.density = button.dataset.density;
+          section.querySelectorAll(".js-density").forEach((item) => {
+            const selected = item === button;
+            item.classList.toggle("is-selected", selected);
+            item.setAttribute("aria-pressed", String(selected));
+          });
+          section.querySelector(".js-palette-status").textContent = `${button.dataset.density.toUpperCase()} SWATCH DENSITY`;
+        });
+      });
+
+      root.querySelectorAll(".js-picker-use").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          delete section.dataset.pickerOriginal;
+          activatePalettePanel(section, "palette");
+          section.querySelector(".js-palette-status").textContent = `${section.dataset.currentHex} SELECTED`;
+        });
+      });
+
+      root.querySelectorAll(".js-picker-cancel").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const original = section.dataset.pickerOriginal || "#B8263D";
+          syncPicker(section, original);
+          applyColorToTarget(section, original);
+          delete section.dataset.pickerOriginal;
+          activatePalettePanel(section, "palette");
+          section.querySelector(".js-palette-status").textContent = "PICKER CHANGES CANCELLED";
+        });
+      });
+
+      root.querySelectorAll(".js-palette-action").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          const status = section.querySelector(".js-palette-status");
+          const grid = section.querySelector(".swatch-grid");
+          const action = button.dataset.action;
+          if (action === "add") {
+            const swatch = document.createElement("button");
+            swatch.type = "button";
+            swatch.className = "js-palette-swatch";
+            swatch.dataset.hex = section.dataset.currentHex || "#B8263D";
+            swatch.style.background = swatch.dataset.hex;
+            swatch.setAttribute("aria-label", "Select newly added color");
+            grid.append(swatch);
+            bindPaletteSwatch(swatch);
+            setMockColor(swatch);
+            status.textContent = "COLOR ADDED TO PALETTE";
+          } else if (action === "edit") {
+            const selected = grid.querySelector(".js-palette-swatch.is-selected");
+            if (selected) {
+              selected.dataset.hex = section.dataset.currentHex || selected.dataset.hex;
+              selected.style.background = selected.dataset.hex;
+              setMockColor(selected);
+              status.textContent = "SWATCH REPLACED WITH CURRENT COLOR";
+            }
+          } else if (action === "remove") {
+            const selected = grid.querySelector(".js-palette-swatch.is-selected") || grid.lastElementChild;
+            selected?.remove();
+            const next = grid.querySelector(".js-palette-swatch");
+            if (next) setMockColor(next);
+            status.textContent = "COLOR REMOVED FROM PALETTE";
+          } else if (action === "move") {
+            const selected = grid.querySelector(".js-palette-swatch.is-selected");
+            const next = selected?.nextElementSibling;
+            if (selected && next) {
+              grid.insertBefore(next, selected);
+              setMockColor(selected);
+              status.textContent = "SWATCH MOVED ONE SLOT RIGHT";
+            } else {
+              status.textContent = "SWATCH IS ALREADY AT THE END";
+            }
+          } else {
+            status.textContent = `${action.toUpperCase()} PALETTE READY`;
+          }
+        });
+      });
+
+      root.querySelectorAll(".js-palette-done").forEach((button) => {
+        button.addEventListener("click", () => activatePalettePanel(button.closest("section"), "palette"));
+      });
+
+      root.querySelectorAll(".command-grid button, .command-foot button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.closest("section");
+          section.querySelector(".js-command-title").textContent = button.dataset.title;
+          section.querySelector(".js-command-note").textContent = button.dataset.detail;
+          section.querySelector(".js-command-detail").textContent = button.dataset.detail;
+          section.querySelectorAll(".command-grid button, .command-foot button").forEach((item) => {
+            item.classList.toggle("is-selected", item === button);
+          });
+        });
+      });
+
+      root.querySelectorAll("[data-variant='Palette']").forEach((section) => {
+        section.dataset.paletteFg = "#B8263D";
+        section.dataset.paletteBg = "#126E72";
+        section.dataset.paletteTarget = "fg";
+        section.dataset.palettePanel = "palette";
+        section.querySelectorAll(".js-palette-tab").forEach((button, index) => {
+          const selected = index === 0;
+          button.classList.toggle("is-selected", selected);
+          button.setAttribute("aria-pressed", String(selected));
+        });
+        section.querySelectorAll(".js-palette-panel").forEach((panel) => {
+          panel.hidden = panel.dataset.panel !== "palette";
+        });
+        syncPaletteTargets(section);
+        syncPicker(section, "#B8263D");
+      });
+
+      root.querySelectorAll(".js-tool-option-grid").forEach((grid) => {
+        const section = grid.closest("section");
+        const activeTool = section.querySelector(".tool-shelf button[aria-pressed='true']");
+        if (activeTool) renderToolOptions(section, activeTool.dataset.tool);
+      });
+
+      root.querySelectorAll("[data-variant='Layer Bench']").forEach(syncLayerProperties);
+
+      root.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        const section = event.target.closest("section");
+        const tray = section?.querySelector(".canvas-tool-tray");
+        if (tray && !tray.hidden) {
+          setCanvasToolsOpen(section, false);
+          section.querySelector(".js-canvas-tools").focus();
+          return;
+        }
+        const picker = section?.querySelector(".js-palette-panel[data-panel='picker']:not([hidden])");
+        if (picker) section.querySelector(".js-picker-cancel").click();
+      });
+
+      refreshIcons();
+    })();
+  </script>
+</div>

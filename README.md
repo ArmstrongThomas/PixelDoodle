@@ -2,19 +2,64 @@
 
 Running queue: [docs/HANDS-ON-CHECKLIST.md](docs/HANDS-ON-CHECKLIST.md).
 Provider/hosting walkthrough: [docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md).
+Editable UI mockups: [docs/mockups/pixel-doodle-workflow.html](docs/mockups/pixel-doodle-workflow.html).
+Current developer handoff: [docs/HANDOFF.md](docs/HANDOFF.md).
 
 # Community implementation status (2026-10-16)
 
 Local PHP work includes schema-5 scoped favorites and resumable PNG upload APIs. Previously prepared 0.3.5 server archives remain local under `build/`; this increment produced no new server package. Fresh native build and verification results are recorded in `docs/HANDS-ON-CHECKLIST.md`.
 
 The native Community page now has Cached, Recent, Favorites and My Uploads modes on both handhelds, with a reusable touch-scroll dropdown, bounded remote thumbnails, favorite toggles, moderation status/reason and confirmed import of the device-sized PNG derivative. Grant errors distinguish invalid/revoked grants (401, clear and re-pair) from missing scopes (403, preserve and explicitly re-pair). NDS DNS resolution is nonblocking and bounded. Console submission metadata, immutable preview and resumable chunk upload are still unimplemented. Host and PHP checks pass; 3DSX/CIA and NDS builds pass. On 2026-10-21, Docker Desktop 4.82's stale runtime sockets were quarantined without deleting them, then Docker Desktop was updated in place to 4.96.0; Linux Engine 29.9.1 is running. DSi pairing and online-gallery hardware acceptance are the next tests. No device transfer or card write occurred.
-# Pixel Doodle 0.13.0 candidate
+# Pixel Doodle 0.14.7 candidate
 
 Offline solo pixel art for Nintendo DS/DSi and Nintendo 3DS. **One repository, one shared C engine and UI, three outputs: NDS, 3DSX and CIA.**
 
 ## Current build profiles
 
 Community pages are disabled in standard builds while that feature is postponed. The separate private builds add **Send Sprite** to Menu, with **Send Active Layer** and **Send Visible Composite** choices. The first sends only the selected layer, preserving its transparency and opacity; the second flattens all visible layers. Build both private console packages with `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Target all -Private`. Outputs are `build/private/nds/PixelDoodle-Private.nds` and `build/private/3ds/PixelDoodle-Private.3dsx` (homebrew 3DSX; no CIA is produced).
+
+**Menu > Adjust** opens the hue, saturation and brightness workspace. Choose
+Selection, Current Layer or Visible Layers; use signed sliders and fine-step
+buttons; then review the side-by-side Before/After top-screen preview and choose
+Apply or Cancel. Visible-layer changes preserve layer structure, opacity, blend
+and alpha and share one undo transaction. See
+[color adjustments](docs/COLOR-ADJUSTMENTS.md).
+
+The lower-screen palette workspace now has Swatches, Picker, and Edit modes.
+Swatches are square at 8, 6, or 5 columns per row, scroll vertically, and apply
+to explicit foreground/background targets. The Picker keeps a square
+saturation/value field with a vertical hue rail, alpha, foreground/background
+swap, direct hexadecimal entry through the shared keyboard, and a scrollable
+six-column quick palette. Add, Replace, Remove, Move, Load, and Save are isolated
+in Edit mode. The persistent shortcut rail uses the accepted mockup line icons
+as six packed 16x16 glyphs in otherwise unused font slots. The upper screen
+names the active target or selected swatch and uses the full display for the
+active color, FG/BG cards, selected swatch, RGB/HSV/alpha and recent colors,
+with clipped swatches and a visible outer margin. See
+[palette workspace](docs/PALETTE-WORKSPACE.md).
+
+The persistent toolbox icon opens a single-column drawing-tool drawer with
+Pencil, Eraser, Sample, Fill, Select, Line, Rectangle, Ellipse and Guides.
+Selecting a tool opens its settings in a compact panel to the right where
+applicable; Sample has no settings panel. With no settings panel open, the
+canvas remains visible through the unused right side of the drawer. See the
+controls below.
+
+Advanced Brush Details and Transform Selection open as centered sheets over the
+canvas with consistent headers, close controls and grouped actions. Brush
+Details includes visual previews of all four saved presets, and brush size uses
+a centered filled slider.
+
+Standard 0.14.7 artifacts: `PixelDoodle.nds` SHA-256
+`C7524E28BBF85923CCA8E6F355663162CC6F388CE5C1C62932FEFDEB8CC2BEC8`;
+`build/3ds/PixelDoodle.3dsx` SHA-256
+`F62462EE8E47340C1479EBC110489B34C2D0A9BDB83825CF8D237778AC56B53C`;
+and `build/3ds/PixelDoodle.cia` SHA-256
+`DC160EFBAA925F745F4348A33AAD0226F9B9862B7751C1FEB3D76D0A9D9FA1C1`.
+Private NDS SHA-256:
+`D005D4BCE1ED5DDC6211FD00BA818C1ACB9EABADC4A6881F1541B8328E472F6C`;
+private 3DSX SHA-256:
+`51A1AD089E6C735F73FB23D79069FE5612C12CF8DC61FF09455860AB7B62049C`.
 
 Private builds embed the webhook URL from the ignored, one-line `discord-webhook.txt` in the repository root at build time. The URL supplied for this candidate is already in that local build input; no webhook file needs to be copied to either console. A one-line `sdmc:/3ds/PixelDoodle/private/discord-webhook.txt` on 3DS or `fat:/PixelDoodle/private/discord-webhook.txt` on DSi overrides the embedded URL when present. An invalid override stops the send. Treat the private binaries and any override file as credentials. The app temporarily writes `share.png` in its private app folder and removes it after the upload finishes. A connection error is shown in the app and does not trigger a second upload automatically.
 
@@ -98,9 +143,17 @@ The sections below retain the development history; this profile table supersedes
 
 Slice 2 candidate adds numeric HEX/R/G/B/A entry, FG/BG swap, recent colors, GPL/HEX/PNG-strip palettes, explicit defaults and project palettes preserved in PDD5/Aseprite. Read [color/palette workflow and limits](docs/COLORS-SLICE2.md). Slice 2 is locally accepted, with its hardware test waived by the user. Slice 3 uses a custom keyboard on both consoles: staggered QWERTY, case/symbols, wide space, cursor movement/tap positioning and hold-to-delete. Select a browser file then tap ... for rename, verified duplicate or confirmed deletion; these new actions await local acceptance.
 
-1–128 pixels per side RGBA canvas, up to eight layers and up to 32 undo/redo transactions within a fixed 512 KiB pixel-history budget. New projects start with one layer. Layers has per-row visibility and options, rename, confirmed deletion, duplicate, opacity, Normal/Multiply/Screen/Overlay, restricted Normal merge-down and 150 ms hold-to-reorder. Selecting a layer previews its contents alone on the top screen, even when hidden. Closing Layers restores the artwork overview. Memory indicators report allocated document memory and slot capacity, not free heap. See [layer behavior and compatibility](docs/LAYERS-SLICE1.md).
+1–128 pixels per side RGBA canvas, up to eight layers and up to 32 undo/redo transactions within a fixed 512 KiB pixel-history budget. New projects start with one layer. Layers shows six rows on NDS and all eight on 3DS, with direct grip, visibility, lock and options controls. The touch screen retains rename, confirmed deletion, duplicate, opacity, a Normal/Multiply/Screen/Overlay dropdown, Alpha Lock, restricted Normal merge-down and 150 ms hold-to-reorder. Dedicated footer Delete uses a confirmation. The top screen shows composite and active-layer previews side by side, even when the active layer is hidden. Closing Layers restores the artwork overview. Memory indicators report allocated document memory and slot capacity, not free heap. See [layer behavior and compatibility](docs/LAYERS-SLICE1.md).
 
-The square Picker has a labeled vertical palette strip and one Palette/Picker toggle. Palette supports 1-256 colors in a square-swatch grid with Add, Edit and Remove. Edit opens the selected color with Save/Back. Drag vertically to scroll either palette; hold 150 ms to reorder, with edge scrolling. Regular picker changes apply immediately. Palette changes save separately from artwork when storage is available. See [palette workflow](docs/PALETTE-SLICE1.md).
+The palette workspace uses Swatches, Picker, and Edit tabs. The square Picker
+has a vertical hue rail, alpha, foreground/background targets and swap, direct
+hex entry through the shared OSK, and a scrollable six-column quick palette.
+Quick-palette rows are clipped below the target and hex controls while scrolling.
+Swatches support 1-256 colors in an 8/6/5-column square grid. Drag vertically to
+scroll; hold 150 ms to reorder, with edge scrolling. Palette management actions
+live only in Edit. The touch-inactive upper screen now uses a complete color
+dashboard. See
+[palette workflow](docs/PALETTE-WORKSPACE.md).
 
 Settings > Controls / Help > Remap cycles Tools/Pan/Sample/Zoom across B/Down, A/Left, X/Up and Y/Right. Conflicting assignments swap. Return to Settings and Save to apply, or Cancel to discard; Defaults resets the draft. L/R, START and SELECT remain fixed. Old PDS1 settings load with original controls; PDS2 preserves the new mapping.
 
@@ -129,7 +182,8 @@ Built artifacts: [NDS](PixelDoodle.nds), [3DSX](build/3ds/PixelDoodle.3dsx), [CI
 - L / R: temporary eraser.
 - START: save; SELECT: menu.
 - 3DS Circle Pad: pan with stylus lifted and no menu/tool overlay.
-- Touch toolbar: Undo, Redo, Color, Layers, Toolbox, Menu/Back.
+- Touch toolbar: packed mockup glyphs for Undo, Redo, Color, Layers, Toolbox,
+  Menu/Back.
 
 Toolbox and zoom placement are persistent. Modifier gestures consume the stylus contact until lift to avoid unintended ink. Drawing uses the DS Lite-accepted incremental damage path; overview catches up on lift.
 
@@ -171,7 +225,7 @@ PDD7 writes eight property pairs, eight 64-byte names, eight fixed 128-stride pi
 
 Layer protections (2026-10-14): layer options now have undoable Lock and Alpha Lock toggles, with X to close. Lock blocks pixel writes, erase, deletion and destructive merges; visibility, opacity, rename and reorder remain available. Alpha Lock preserves existing per-pixel alpha, blends brush RGB by brush alpha, skips empty pixels and ignores erase. Merge into alpha-locked layers is refused. PDD8 appends eight validated protection bytes (bits 0/1) after the PDD7 palette payload; PDD1–7 remain readable. Native recovery preserves both flags. Aseprite editable bit preserves layer lock; alpha lock is native-only and export reports this. Document memory size unchanged. Host protection/UI/persistence checks pass. Eight-layer candidate and protection hardware acceptance remain pending before closing slice 4 and starting brush size/grid.
 
-Brush/grid candidate (2026-10-14): toolbox > Brush/Grid offers independent pencil/eraser sizes 1–16, square/round tips and pixel-grid toggle. Grid shows at 8x+ only on the editing canvas, never in artwork, exports or sampled colors. Both render paths preserve the grid. Brush footprints clip to canvas bounds and contribute to incremental damage. Even sizes extend one extra pixel left/up. Alpha-locked paint samples the pre-stroke pixel so overlapping stamps do not repeatedly accumulate color within a stroke. Protection applies to all stamps. Tool preferences persist on pen release in tools0.bin/tools1.bin (PDB1, 20 bytes, sequence, two size/tip fields, grid flag, CRC at byte 16; dual-slot readback). Preserve these files during deployment. Host tests cover tips/sizes/edges/undo/preferences and 1455 incremental/full render frames. User accepted protections locally and requested continuing tools; slice 4 hardware acceptance remains pending. Fill is the next tool after brush/grid acceptance.
+Brush/grid candidate (2026-10-14): toolbox > Brush/Grid offers independent pencil/eraser sizes 1–16, square/round tips and pixel-grid toggle. Grid shows at 4x+ only on the editing canvas, never in artwork, exports or sampled colors. Both render paths preserve the grid. Brush footprints clip to canvas bounds and contribute to incremental damage. Even sizes extend one extra pixel left/up. Alpha-locked paint samples the pre-stroke pixel so overlapping stamps do not repeatedly accumulate color within a stroke. Protection applies to all stamps. Tool preferences persist on pen release in tools0.bin/tools1.bin (PDB1, 20 bytes, sequence, two size/tip fields, grid flag, CRC at byte 16; dual-slot readback). Preserve these files during deployment. Host tests cover tips/sizes/edges/undo/preferences and 1455 incremental/full render frames. User accepted protections locally and requested continuing tools; slice 4 hardware acceptance remains pending. Fill is the next tool after brush/grid acceptance.
 
 
 Guides and brush popup (2026-10-14): user accepted brush drawing on physical 3DS. Top pencil/eraser icon now opens a compact size 1–16 / square-round popup over the canvas. Tap outside to dismiss without drawing; Tools or B opens the toolbox. Selecting Pencil/Eraser also opens its popup. Toolbox # Guides separates pixel grid, Symmetry X/Y and Tile X/Y. Symmetry reflects actual stamped pixels about canvas center (including even tips). Tile axes both wrap brush footprints and allow drawing on repeated previews; unwrapped input coordinates prevent seam-crossing chords. Preview/grid do not alter exports. Tools slots now write PDB2, retaining PDB1 reads; byte 13 stores four guide bits, existing CRC/dual-slot workflow retained. Preferences are device-local, not project fields. Ordinary drawing retains its incremental render path; guided strokes currently redraw the full canvas, so guided-mode DS performance needs user testing. Core seam/mirror/undo, UI repeated-copy input, repeated-preview oracle, preference reload and prior 1455 incremental-frame checks pass; NDS/3DSX/CIA build and header checks pass. Local and hardware acceptance of this candidate pending.
