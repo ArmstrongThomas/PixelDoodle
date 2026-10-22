@@ -1,5 +1,45 @@
 # Pixel Doodle development handoff
 
+## 0.19.0 onion skin candidate (2026-10-22)
+
+Checkpoint 2ce8a56 was committed and pushed before this work. 0.18.0P animated
+GIF delivery and 0.17.0 playback are user-accepted on DSi. New hardware tests
+are tracked in docs/ANIMATION-HARDWARE.md; do not send builds while user sleeps.
+
+Frames has ONION OFF / ON beside Play. Previous frame is a faint red silhouette;
+next is blue, with no wrap at the first/last frame. The current frame paints on
+top. Onion affects the bottom editing canvas only; overview, sampler, saved
+pixels, GIF/PNG exports and playback stay clean. Toggle is session-only.
+The alpha-only preview honors visibility, opacity and layer order; blend RGB
+does not change composite alpha. Compressed neighbor tiles are read directly;
+no frame switching, snapshots, packed-pool allocations or live-pixel mutation.
+
+Cache uses two alpha planes (32 KiB at 128x128; scales with padded plane),
+allocated only when enabled and freed when disabled. Packed-frame visual
+generation, frame selection, structure and relevant layer metadata invalidate
+it. Painting the current frame reuses the cache. Allocation refusal disables
+onion with a notice and retains art. Playback suppresses ghosts. Hardware
+latency and large-canvas memory acceptance remain pending. Existing direct
+input is unchanged. Frames and Layers remain separate; handwriting deferred.
+
+### 0.19.0 verification and saved candidates
+
+Private and standard host/native builds pass, including new onion tests and
+repeated same-size project reload invalidation. Cached current-frame painting,
+read-only neighbor alpha, opacity/visibility changes and ordered composite
+alpha match the oracle. Existing GIF and 16436 render comparisons pass.
+DS/3DS synthetic onion fixtures inspected. Five artifacts staged with SHA-256
+readback. No hardware transfer or acceptance; use ANIMATION-HARDWARE.md.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.19.0\PixelDoodle.nds`: 353792 bytes; SHA-256 `2D06308FAA8624313628A7371B8EA2401747956D1BF797CA54265CCF2591B64E`
+- `G:\dev\3ds\PixelDoodle\build\test-0.19.0\PixelDoodle.3dsx`: 851456 bytes; SHA-256 `35AC50912217770092D5D6B30D8F1CF4A7404BAB33837E3646C6CC16D1AF1276`
+- `G:\dev\3ds\PixelDoodle\build\test-0.19.0\PixelDoodle.cia`: 688064 bytes; SHA-256 `A1527E164318AC026960D1ABFB38FF06BED4E3697DB13ADD5207B8FB7204B43B`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.19.0\PixelDoodle-Private.nds`: 741888 bytes; SHA-256 `2F0E7C0B36D957C744945447B88FF7A03C0B03972F9BEABF65592279C3EFBE63`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.19.0\PixelDoodle-Private.3dsx`: 859112 bytes; SHA-256 `ABE559F354EC5CA03C3CD74830BA237CF5034849043F5AE805099D4209390A96`
+
+
+
+
 ## Hardware acceptance and overnight continuation (2026-10-22)
 
 User confirms 0.18.0P successfully sent an animated GIF to Discord; attachment

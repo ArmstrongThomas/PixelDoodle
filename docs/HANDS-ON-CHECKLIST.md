@@ -1,4 +1,29 @@
 
+## 0.19.0 onion skin candidate (2026-10-22)
+
+Checkpoint 2ce8a56 was committed and pushed before this work. 0.18.0P animated
+GIF delivery and 0.17.0 playback are user-accepted on DSi. New hardware tests
+are tracked in docs/ANIMATION-HARDWARE.md; do not send builds while user sleeps.
+
+Frames has ONION OFF / ON beside Play. Previous frame is a faint red silhouette;
+next is blue, with no wrap at the first/last frame. The current frame paints on
+top. Onion affects the bottom editing canvas only; overview, sampler, saved
+pixels, GIF/PNG exports and playback stay clean. Toggle is session-only.
+The alpha-only preview honors visibility, opacity and layer order; blend RGB
+does not change composite alpha. Compressed neighbor tiles are read directly;
+no frame switching, snapshots, packed-pool allocations or live-pixel mutation.
+
+Cache uses two alpha planes (32 KiB at 128x128; scales with padded plane),
+allocated only when enabled and freed when disabled. Packed-frame visual
+generation, frame selection, structure and relevant layer metadata invalidate
+it. Painting the current frame reuses the cache. Allocation refusal disables
+onion with a notice and retains art. Playback suppresses ghosts. Hardware
+latency and large-canvas memory acceptance remain pending. Existing direct
+input is unchanged. Frames and Layers remain separate; handwriting deferred.
+
+Implementation verification and exact build results follow below.
+
+
 ## Hardware acceptance and overnight continuation (2026-10-22)
 
 User confirms 0.18.0P successfully sent an animated GIF to Discord; attachment

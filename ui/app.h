@@ -36,6 +36,10 @@ struct PdApp {
     uint32_t overview_at;
     unsigned timeline_first,timeline_layer_first;
     PdPlayback playback;
+    bool onion_enabled;
+    unsigned char *onion;
+    size_t onion_plane;
+    uint64_t onion_key;
     uint64_t recovery_frames;
     char diag_status[48];
     uint32_t color,background,recent[12];

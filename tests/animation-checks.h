@@ -3,6 +3,32 @@
 #include "gif.h"
 #include "share.h"
 
+static void onion_checks(const char *dir){
+    PdApp *a=calloc(1,sizeof(*a));PdFb *b=malloc(320*240*sizeof(PdFb)),*top=malloc(400*240*sizeof(PdFb));unsigned char *alpha=malloc(PD_PIXELS);assert(a&&b&&top&&alpha);
+    for(unsigned mode=0;mode<2;mode++){
+        app_init(a,mode?320:256,mode?240:192,"","TEST");a->zoom=2;
+        dot(&a->doc,0,5,5,0xff123456);assert(pd_frame_add(&a->doc,false));dot(&a->doc,0,9,5,0xff778899);assert(pd_frame_add(&a->doc,false));dot(&a->doc,0,13,5,0xffaabbcc);assert(pd_frame_switch(&a->doc,1));
+        unsigned count=a->doc.count,cursor=a->doc.cursor;uint64_t revision=a->doc.revision,generation=pd_frames_generation(&a->doc);size_t pool=pd_frame_memory(&a->doc);
+        a->onion_enabled=true;app_render(a,b,top,mode?400:256,a->height);assert(a->onion&&a->onion[5*128+5]==255&&a->onion[a->onion_plane+5*128+13]==255);
+        ppm(dir,mode?"3ds-onion":"nds-onion",b,a->width,a->height);
+        assert(a->doc.count==count&&a->doc.cursor==cursor&&a->doc.revision==revision&&pd_frames_generation(&a->doc)==generation&&pd_frame_memory(&a->doc)==pool&&pd_frame_index(&a->doc)==1);
+        uint64_t key=a->onion_key;unsigned char *cache=a->onion;int left=mode?32:0;
+        a->now_ms=16;app_input(a,true,left+41,65,0,0);app_render(a,b,top,mode?400:256,a->height);a->now_ms=32;app_input(a,false,0,0,0,0);a->now_ms=200;app_input(a,false,0,0,0,0);app_render(a,b,top,mode?400:256,a->height);assert(a->onion==cache&&a->onion_key==key);
+        assert(!pd_pixels(&a->doc.layer[0])[5*128+5]&&!pd_pixels(&a->doc.layer[0])[5*128+13]);
+        a->doc.layer[0].opacity=100;a->redraw=true;app_render(a,b,top,mode?400:256,a->height);assert(a->onion[5*128+5]==100&&a->onion_key!=key);
+        pd_frames_test_fail_after(0);assert(pd_frame_alpha(&a->doc,0,alpha)&&alpha[5*128+5]==100);pd_frames_test_fail_after(-1);
+        char saved[512],error[64];snprintf(saved,sizeof(saved),"%s/onion-load-%u.pdd",dir,mode);assert(pd_write_file(&a->doc,saved,0,false,error));
+        assert(pd_open_file(&a->doc,saved,error));a->redraw=true;app_render(a,b,top,mode?400:256,a->height);key=a->onion_key;
+        assert(pd_open_file(&a->doc,saved,error));a->redraw=true;app_render(a,b,top,mode?400:256,a->height);assert(a->onion_key!=key);
+        a->doc.layer[0].visible=0;a->redraw=true;app_render(a,b,top,mode?400:256,a->height);assert(!a->onion[5*128+5]);
+        app_dispose(a);
+    }
+    PdDocument *d=calloc(1,sizeof(*d));assert(d);pd_init(d);assert(pd_create(d,16,16,3));d->enabled=7;
+    for(unsigned l=0;l<3;l++){d->layer[l].opacity=(uint8_t)(80+l*60);d->layer[l].blend=(uint8_t)l;for(unsigned i=0;i<PD_PIXELS;i++)pd_pixels(&d->layer[l])[i]=((i*17+l*71)<<24)|0x123456;}
+    pd_composite(d);assert(pd_frame_alpha(d,0,alpha));for(unsigned y=0;y<16;y++)for(unsigned x=0;x<16;x++)assert(alpha[y*128+x]==pd_image(d)[y*128+x]>>24);
+    assert(pd_frame_add(d,false));assert(pd_frame_alpha(d,0,alpha));assert(pd_frame_switch(d,0));pd_composite(d);for(unsigned y=0;y<16;y++)for(unsigned x=0;x<16;x++)assert(alpha[y*128+x]==pd_image(d)[y*128+x]>>24);
+    pd_dispose(d);free(d);free(alpha);free(a);free(b);free(top);puts("Onion skin: read-only adjacent alpha, cached drawing, metadata invalidation, exact ordered alpha and no packed-pool allocations: PASS");
+}
 static void gif_checks(const char *dir){
     PdDocument *d=calloc(1,sizeof(*d));assert(d);pd_init(d);assert(pd_create(d,128,128,1));
     uint32_t random=123;

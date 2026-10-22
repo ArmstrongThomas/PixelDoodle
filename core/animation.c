@@ -18,10 +18,11 @@ struct PdAnimation {
     Tile *buckets[257];
     Frame *frames[PD_FRAMES];
     unsigned count,current;
-    uint64_t structure,saved_structure;
+    uint64_t structure,saved_structure,visual;
     size_t used,budget;
 };
 typedef struct PdAnimation Animation;
+static uint64_t visual_serial;
 #ifdef PD_TEST
 static int fail_after=-1;
 void pd_frames_test_fail_after(int n){fail_after=n;}
@@ -69,6 +70,19 @@ void pd_frames_dispose(PdDocument *d){destroy(d->animation);d->animation=NULL;}
 unsigned pd_frame_count(const PdDocument *d){return d->animation?d->animation->count:1;}
 unsigned pd_frame_index(const PdDocument *d){return d->animation?d->animation->current:0;}
 unsigned pd_frame_duration(const PdDocument *d){return d->animation?d->animation->frames[d->animation->current]->duration:100;}
+uint64_t pd_frames_visual_generation(const PdDocument *d){return d->animation?d->animation->visual:0;}
+bool pd_frame_alpha(const PdDocument *d,unsigned frame,unsigned char *out){
+    if(frame>=pd_frame_count(d)||!out)return false;memset(out,0,pd_plane(d));
+    if(frame==pd_frame_index(d)){
+        for(unsigned k=0;k<PD_LAYERS;k++){unsigned l=d->order[k];if(!(d->enabled&(1u<<l))||!d->layer[l].visible)continue;
+            for(unsigned y=0;y<d->height;y++)for(unsigned x=0;x<d->width;x++){unsigned i=y*d->stride+x,sa=((pd_pixels(&d->layer[l])[i]>>24)*d->layer[l].opacity+127)/255;out[i]=(unsigned char)(sa+(out[i]*(255-sa)+127)/255);}}
+    }else{
+        const Frame *f=d->animation->frames[frame];unsigned tiles=pd_plane(d)/64,cols=d->stride/8;uint32_t pixels[64];
+        for(unsigned k=0;k<PD_LAYERS;k++){unsigned l=d->order[k];if(!(d->enabled&(1u<<l))||!d->layer[l].visible)continue;
+            for(unsigned r=0;r<f->count;r++){const Ref *ref=&f->refs[r];if(ref->position/tiles!=l)continue;unsigned id=ref->position%tiles;decode(ref->tile,pixels);
+                for(unsigned y=0;y<8;y++)for(unsigned x=0;x<8;x++){unsigned i=(id/cols*8+y)*d->stride+id%cols*8+x,sa=((pixels[y*8+x]>>24)*d->layer[l].opacity+127)/255;out[i]=(unsigned char)(sa+(out[i]*(255-sa)+127)/255);}}}
+    }return true;
+}
 bool pd_frame_slot_unused(const PdDocument *d,unsigned layer){
     if(!d->animation)return true;const Animation *a=d->animation;unsigned tiles=pd_plane(d)/64;
     for(unsigned f=0;f<a->count;f++)if(f!=a->current)for(unsigned r=0;r<a->frames[f]->count;r++)if(a->frames[f]->refs[r].position/tiles==layer)return false;
@@ -100,7 +114,7 @@ uint64_t pd_frames_generation(const PdDocument *d){return d->animation?d->animat
 void pd_frames_saved(PdDocument *d){if(d->animation)d->animation->saved_structure=d->animation->structure;}
 static bool enable(PdDocument *d){
     if(d->animation)return true;Animation *a=calloc(1,sizeof(*a));if(!a)return false;a->budget=budget_for(d->profile);a->used=sizeof(*a)+16;
-    Frame *f=take(a,sizeof(*f));if(!f){free(a);return false;}f->duration=100;a->frames[0]=f;a->count=1;d->animation=a;return true;
+    Frame *f=take(a,sizeof(*f));if(!f){free(a);return false;}f->duration=100;a->frames[0]=f;a->count=1;a->visual=++visual_serial;d->animation=a;return true;
 }
 static bool tile_pixels(const PdDocument *d,unsigned l,unsigned id,uint32_t pixels[64]){
     unsigned cols=d->stride/8;bool any=false;
@@ -114,7 +128,7 @@ bool pd_frame_snapshot(PdDocument *d){
     if(count){f->refs=take(a,count*sizeof(Ref));if(!f->refs){free_frame(a,f);return false;}}
     for(unsigned l=0;l<d->capacity;l++)for(unsigned id=0;id<tiles;id++)if(tile_pixels(d,l,id,pixels)){
         Tile *t=intern(a,pixels);if(!t){free_frame(a,f);return false;}f->refs[f->count++]=(Ref){t,l*tiles+id};}
-    a->frames[a->current]=f;free_frame(a,old);return true;
+    a->frames[a->current]=f;free_frame(a,old);a->visual=++visual_serial;return true;
 }
 static void restore(PdDocument *d,unsigned index){
     Animation *a=d->animation;Frame *f=a->frames[index];unsigned tiles=pd_plane(d)/64,cols=d->stride/8;
@@ -235,7 +249,7 @@ bool pd_frames_read(PdDocument *d,FILE *f){
     for(unsigned b=0;b<257;b++)for(Tile *t=a->buckets[b];t;t=t->next)if(t->disk==t->refs)retained-=sizeof(*t)+t->bytes+sizeof(size_t)+16;
     if(live->refs)retained-=live->count*sizeof(Ref)+sizeof(size_t)+16;
     if(retained>persistent_budget||!pd_create(d,w,height,d->profile)){destroy(a);return false;}
-    d->animation=a;d->enabled=(uint8_t)enabled;d->active=active;memcpy(d->names,names,512);memcpy(d->order,order,8);
+    a->visual=++visual_serial;d->animation=a;d->enabled=(uint8_t)enabled;d->active=active;memcpy(d->names,names,512);memcpy(d->order,order,8);
     for(unsigned l=0;l<8;l++){d->layer[l].visible=properties[l][0];d->layer[l].opacity=properties[l][1];d->layer[l].blend=properties[l][2];d->layer[l].flags=properties[l][3];}
     memcpy(d->palette,palette,sizeof(palette));memcpy(d->saved_palette,palette,sizeof(palette));d->palette_count=d->saved_palette_count=pal_count;restore(d,current);
     for(unsigned i=0;i<live->count;i++)release(a,live->refs[i].tile);give(a,live->refs);live->refs=NULL;live->count=0;a->budget=persistent_budget;

@@ -181,7 +181,7 @@ static void diagnostics_run(PdApp *a){
 }
 bool app_set_profile(PdApp *a,unsigned profile){a->doc.profile=profile;return masks_reserve(a,(profile<=1?PD_PIXELS:PD_MAX_PIXELS)/32);}
 bool app_reserve_gallery(PdApp *a){if(!a->gallery_thumbs)a->gallery_thumbs=calloc(6,sizeof(*a->gallery_thumbs));return a->gallery_thumbs!=NULL;}
-void app_dispose(PdApp *a){pd_frames_dispose(&a->doc);free(a->selection);free(a->selection_base);free(a->selection_draft);free(a->guide_damage);free(a->clipboard);free(a->gallery_thumbs);
+void app_dispose(PdApp *a){free(a->onion);a->onion=NULL;a->onion_plane=0;pd_frames_dispose(&a->doc);free(a->selection);free(a->selection_base);free(a->selection_draft);free(a->guide_damage);free(a->clipboard);free(a->gallery_thumbs);
     a->selection=a->selection_base=a->selection_draft=a->guide_damage=NULL;a->clipboard=NULL;a->gallery_thumbs=NULL;a->mask_words=0;}
 static uint32_t pal_get(const unsigned char *p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static void pal_put(unsigned char *p,uint32_t n){for(unsigned i=0;i<4;i++)p[i]=(unsigned char)(n>>(8*i));}
@@ -720,6 +720,17 @@ static void tool_options_input(PdApp *a,int x,int y,bool pressed){
     }
     a->blocked=!a->brush_drag;a->redraw=true;
 }
+static void onion_cache(PdApp *a){
+    if(!a->onion_enabled||a->playback.active||pd_frame_count(&a->doc)<2)return;
+    size_t plane=pd_plane(&a->doc);uint64_t key=1469598103934665603ULL;
+    key=(key^pd_frames_visual_generation(&a->doc))*1099511628211ULL;key=(key^pd_frames_generation(&a->doc))*1099511628211ULL;
+    key=(key^pd_frame_index(&a->doc))*1099511628211ULL;
+    for(unsigned i=0;i<8;i++){const PdLayer *l=&a->doc.layer[i];key=(key^a->doc.order[i])*1099511628211ULL;key=(key^l->opacity^((unsigned)l->visible<<8))*1099511628211ULL;}
+    key^=a->doc.enabled;if(a->onion&&a->onion_plane==plane&&a->onion_key==key)return;
+    if(a->onion_plane!=plane||!a->onion){unsigned char *p=realloc(a->onion,plane*2);if(!p){free(a->onion);a->onion=NULL;a->onion_plane=0;a->onion_enabled=false;message(a,"Not enough memory for onion skin");return;}a->onion=p;a->onion_plane=plane;}
+    memset(a->onion,0,plane*2);unsigned f=pd_frame_index(&a->doc),count=pd_frame_count(&a->doc);
+    if(f)pd_frame_alpha(&a->doc,f-1,a->onion);if(f+1<count)pd_frame_alpha(&a->doc,f+1,a->onion+plane);a->onion_key=key;
+}
 static int timeline_slot(const PdApp *a,unsigned row){unsigned seen=0;for(unsigned i=0;i<PD_LAYERS;i++){unsigned slot=a->doc.order[PD_LAYERS-1-i];if(a->doc.enabled&(1u<<slot)){if(seen++==row)return (int)slot;}}return -1;}
 void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
     if(!masks_fit(a)){message(a,"Not enough memory for selection masks");return;}
@@ -900,7 +911,8 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
                     else if(y>=136&&y<158){if(x<a->width/2&&ms>10)pd_frame_set_duration(&a->doc,ms-10);else if(x>=a->width/2&&ms<60000)pd_frame_set_duration(&a->doc,ms+10);}else if(y>=a->height-24)a->page=32;}
                 else {unsigned count=pd_frame_count(&a->doc),current=pd_frame_index(&a->doc),cols=(unsigned)(a->width-96)/28,rows=a->height==192?6:8;int footer=a->height-48,row_h=(footer-72)/(int)rows;
                     bool changed=false,ok=true;
-                    if(y>=30&&y<58&&x>=96&&x<a->width-80){
+                    if(y>=44&&y<58&&x>=96&&x<a->width-80){a->onion_enabled=!a->onion_enabled;a->onion_key=0;if(!a->onion_enabled){free(a->onion);a->onion=NULL;a->onion_plane=0;}}
+                    else if(y>=30&&y<44&&x>=96&&x<a->width-80){
                         ok=pd_playback_start(&a->doc,&a->playback,a->now_ms);
                         if(ok){a->overview_pending=false;a->selection_valid=false;}
                         else message(a,count<2?"Add a second frame to play":"Not enough memory to start playback");
@@ -1111,6 +1123,13 @@ static uint32_t displayed(uint32_t p,int x,int y){unsigned a=p>>24,bg=((x/8+y/8)
     if(a==255)return p&0xffffff;if(!a)return bg*0x010101;
     unsigned r=(((p>>16)&255)*a+bg*(255-a)+127)/255,g=(((p>>8)&255)*a+bg*(255-a)+127)/255,b=((p&255)*a+bg*(255-a)+127)/255;return (r<<16)|(g<<8)|b;
 }
+static uint32_t canvas_displayed(PdApp *a,uint32_t p,int x,int y){
+    if(!a->onion_enabled||!a->onion||a->playback.active||a->page||a->confirm||a->onion_plane!=pd_plane(&a->doc)||pd_frame_count(&a->doc)<2)return displayed(p,x,y);
+    if((p>>24)==255)return p&0xffffff;
+    unsigned i=(unsigned)y*a->doc.stride+(unsigned)x,background=displayed(0,x,y),alphas[2]={a->onion[i]*80u/255u,a->onion[a->onion_plane+i]*80u/255u},colors[2]={0xdf5555,0x558bdf};
+    for(unsigned k=0;k<2;k++){unsigned c=0;for(unsigned shift=0;shift<24;shift+=8)c|=(((((colors[k]>>shift)&255)*alphas[k]+((background>>shift)&255)*(255-alphas[k])+127)/255)<<shift);background=c;}
+    unsigned alpha=p>>24,result=0;for(unsigned shift=0;shift<24;shift+=8)result|=(((((p>>shift)&255)*alpha+((background>>shift)&255)*(255-alpha)+127)/255)<<shift);return result;
+}
 static void brush_tip_preview(PdFb *p,int w,int h,int x,int y,int bw,int bh,unsigned size,unsigned round,unsigned pattern,uint32_t color){
     rect(p,w,h,x-1,y-1,bw+2,bh+2,UI_EDGE);
     for(int yy=0;yy<bh;yy++)for(int xx=0;xx<bw;xx++)p[(y+yy)*w+x+xx]=pd_fb((((xx/8)+(yy/8))&1)?0xcdcdcd:0xeeeeee);
@@ -1311,7 +1330,7 @@ static void guided_render(PdApp *a,PdFb *bottom){
        Composite each changed pixel once, then stamp only its visible copies. */
     for(unsigned word=0;word<pd_plane(&a->doc)/32;word++){uint32_t bits=a->guide_damage[word];if(!bits)continue;
         for(unsigned bit=0;bits;bit++,bits>>=1){if(!(bits&1))continue;unsigned index=word*32+bit;int wx=(int)(index%a->doc.stride),wy=(int)(index/a->doc.stride);
-            pd_composite_rect(&a->doc,wx,wy,wx+1,wy+1);uint32_t c=displayed(pd_image(&a->doc)[index],wx,wy);
+            pd_composite_rect(&a->doc,wx,wy,wx+1,wy+1);uint32_t c=canvas_displayed(a,pd_image(&a->doc)[index],wx,wy);
             int originx=left+(wx-a->ox)*z-a->subx,originy=upper+(wy-a->oy)*z-a->suby;
             int firstx=originx,firsty=originy;if(a->guides&4){firstx=(originx%(dw*z)+dw*z)%(dw*z);if(firstx>0)firstx-=dw*z;}if(a->guides&8){firsty=24+((originy-24)%(dh*z)+dh*z)%(dh*z);if(firsty>24)firsty-=dh*z;}
             for(int y=firsty;y<h;y+=(a->guides&8)?dh*z:h+dh*z){for(int x=firstx;x<w;x+=(a->guides&4)?dw*z:w+dw*z){
@@ -1324,6 +1343,7 @@ static void guided_render(PdApp *a,PdFb *bottom){
 }
 void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
     if(!masks_fit(a))return;
+    onion_cache(a);
     int w=a->width,h=a->height;char label[80];
     bool pan_only=a->pan_frame&&!a->page&&!a->confirm&&!a->doc.editing; a->pan_frame=false;
     bool picker_only=a->picker_update&&a->page==2&&!a->confirm;
@@ -1343,7 +1363,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
             int x=left+(wx-a->ox)*a->zoom-a->subx,y=upper+(wy-a->oy)*a->zoom-a->suby;
             int x0=x<0?0:x,y0=y<24?24:y,x1=x+a->zoom,y1=y+a->zoom;
             if(x1>w)x1=w;if(y1>h)y1=h;
-            uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);
+            uint32_t c=canvas_displayed(a,pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);
             for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=pd_fb((a->pixel_grid&&a->zoom>=4&&(yy==y||xx==x))?grid_color(c):c);
         }
         selection_overlay(a,bottom);selection_toolbar(a,bottom);
@@ -1570,7 +1590,8 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         else if(a->page==33){snprintf(label,sizeof(label),"DURATION %u MS",pd_frame_duration(&a->doc));text(bottom,w,h,8,44,label,UI_TEXT);unsigned values[]={50,100,150,200,300,500};for(int i=0;i<6;i++){snprintf(label,sizeof(label),"%u MS",values[i]);button(bottom,w,h,4+(i%2)*w/2,60+(i/2)*24,w/2-8,22,label,pd_frame_duration(&a->doc)==values[i]);}button(bottom,w,h,4,136,w/2-8,22,"- 10 MS",false);button(bottom,w,h,w/2+4,136,w/2-8,22,"+ 10 MS",false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO FRAMES",true);}
         else {unsigned cols=(unsigned)(w-96)/28,rows=h==192?6:8;int footer=h-48,row_h=(footer-72)/(int)rows;if(a->timeline_first>=count)a->timeline_first=count-1;
             snprintf(label,sizeof(label),"POOL %u/%u KB",(unsigned)((pd_frame_memory(&a->doc)+1023)/1024),(unsigned)(pd_frame_budget(&a->doc)/1024));text(bottom,w,h,8,44,label,UI_MUTED);rect(bottom,w,h,8,54,76,2,UI_PANEL);rect(bottom,w,h,8,54,(int)(pd_frame_memory(&a->doc)*76/pd_frame_budget(&a->doc)),2,UI_ACCENT);snprintf(label,sizeof(label),"%u MS",pd_frame_duration(&a->doc));button(bottom,w,h,w-76,40,72,18,label,false);
-            button(bottom,w,h,96,30,w-176,26,a->playback.active?"STOP":"PLAY",a->playback.active);
+            button(bottom,w,h,96,30,w-176,14,a->playback.active?"STOP":"PLAY",a->playback.active);
+            button(bottom,w,h,96,44,w-176,14,a->onion_enabled?"ONION ON":"ONION OFF",a->onion_enabled);
             button(bottom,w,h,4,58,40,14,"<",false);button(bottom,w,h,48,58,40,14,">",false);
             for(unsigned c=0;c<cols;c++){unsigned f=a->timeline_first+c;if(f>=count)break;snprintf(label,sizeof(label),"%u",f+1);button(bottom,w,h,96+(int)c*28,58,26,14,label,f==current);}
             unsigned layers=0;for(unsigned l=0;l<8;l++)if(a->doc.enabled&(1u<<l))layers++;if(a->timeline_layer_first>=layers)a->timeline_layer_first=0;
@@ -1599,7 +1620,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
             for(int y=24;y<h;y++){PdFb *row=bottom+y*w;int wy=a->oy+(y-upper)/a->zoom;
                 if(y<upper||wy>=(int)a->doc.height){for(int x=0;x<w;x++)row[x]=pd_fb(0x53616b);continue;}
                 for(int x=0;x<left;x++)row[x]=pd_fb(0x53616b);int x=left;
-                for(int wx=a->ox;x<w&&wx<(int)a->doc.width;wx++){uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);int end=x+a->zoom;if(end>w)end=w;int start=x;bool gridrow=a->pixel_grid&&a->zoom>=4&&(y-upper)%a->zoom==0;while(x<end){row[x]=pd_fb((a->pixel_grid&&a->zoom>=4&&(gridrow||x==start))?grid_color(c):c);x++;}}
+                for(int wx=a->ox;x<w&&wx<(int)a->doc.width;wx++){uint32_t c=canvas_displayed(a,pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);int end=x+a->zoom;if(end>w)end=w;int start=x;bool gridrow=a->pixel_grid&&a->zoom>=4&&(y-upper)%a->zoom==0;while(x<end){row[x]=pd_fb((a->pixel_grid&&a->zoom>=4&&(gridrow||x==start))?grid_color(c):c);x++;}}
                 while(x<w)row[x++]=pd_fb(0x53616b);
             }
         }else for(int y=24;y<h;y++){
@@ -1608,7 +1629,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
             int sy=(wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height;
             for(int x=0;x<w;){int dx=x-left,wx=a->ox+(dx>=0?dx/a->zoom:-((-dx+a->zoom-1)/a->zoom));int phase=(dx%a->zoom+a->zoom)%a->zoom,end=x+a->zoom-phase;if(end>w)end=w;
                 bool valid=(a->guides&4)||(x>=left&&wx>=0&&wx<(int)a->doc.width);int sx=(wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width;
-                uint32_t c=valid?displayed(pd_image(&a->doc)[sy*a->doc.stride+sx],sx,sy):0x53616b;
+                uint32_t c=valid?canvas_displayed(a,pd_image(&a->doc)[sy*a->doc.stride+sx],sx,sy):0x53616b;
                 bool gridrow=a->pixel_grid&&a->zoom>=4&&dy%a->zoom==0;int start=x;while(x<end){row[x]=pd_fb((valid&&a->pixel_grid&&a->zoom>=4&&(gridrow||(x==start&&!phase)))?grid_color(c):c);x++;}
             }
         }

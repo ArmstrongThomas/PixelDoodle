@@ -23,6 +23,8 @@ bool pd_frame_has_cel(const PdDocument *d,unsigned frame,unsigned layer);
 bool pd_frame_duplicate_layer_cels(PdDocument *d,unsigned source,unsigned target);
 bool pd_frames_dirty(const PdDocument *d);
 void pd_frames_saved(PdDocument *d);
+bool pd_frame_alpha(const PdDocument *d,unsigned frame,unsigned char *out);
+uint64_t pd_frames_visual_generation(const PdDocument *d);
 uint64_t pd_frames_generation(const PdDocument *d);
 void pd_frames_dispose(PdDocument *d);
 /* Streaming PDDA/version 10; the caller owns atomic replacement and fsync. */
