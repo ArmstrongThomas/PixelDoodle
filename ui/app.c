@@ -166,10 +166,10 @@ static bool recent_path_valid(const char *p){if(!p[0]||p[0]=='/'||strchr(p,'\\')
 static unsigned recent_read(PdApp *a,unsigned slot,unsigned char *b){char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/recent%u.bin",a->directory,slot);FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,RECENT_BYTES,f)==RECENT_BYTES&&fgetc(f)==EOF&&!ferror(f);fclose(f);if(!ok||memcmp(b,"PRJ1",4)||pal_get(b+8)>8||pal_get(b+RECENT_BYTES-4)!=(uint32_t)crc32(0,b,RECENT_BYTES-4))return 0;for(unsigned i=0;i<pal_get(b+8);i++){char *p=(char*)b+12+i*PD_PATH;if(!memchr(p,0,PD_PATH)||!recent_path_valid(p))return 0;}return pal_get(b+4);}
 static void recent_projects_load(PdApp *a){unsigned char *b=malloc(RECENT_BYTES*2);if(!b)return;unsigned s0=recent_read(a,0,b),s1=recent_read(a,1,b+RECENT_BYTES);if(s0||s1){unsigned char *p=s1>s0?b+RECENT_BYTES:b;a->recent_project_count=pal_get(p+8);memcpy(a->recent_projects,p+12,sizeof(a->recent_projects));}free(b);}
 static void recent_projects_save(PdApp *a){unsigned char *b=malloc(RECENT_BYTES*2);a->recent_files_unsaved=true;if(!b)return;unsigned char *other=b+RECENT_BYTES;unsigned s0=recent_read(a,0,b),s1=recent_read(a,1,other),seq=s0>s1?s0:s1;if(!a->directory[0]||seq==UINT32_MAX){free(b);return;}memset(b,0,RECENT_BYTES);memcpy(b,"PRJ1",4);pal_put(b+4,++seq);pal_put(b+8,a->recent_project_count);memcpy(b+12,a->recent_projects,sizeof(a->recent_projects));pal_put(b+RECENT_BYTES-4,(uint32_t)crc32(0,b,RECENT_BYTES-4));unsigned slot=s0<=s1?0:1;char path[PD_PATH];snprintf(path,sizeof(path),"%s/recent%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");bool ok=false;if(f){ok=fwrite(b,1,RECENT_BYTES,f)==RECENT_BYTES&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}if(ok)ok=recent_read(a,slot,other)==seq&&!memcmp(b,other,RECENT_BYTES);free(b);a->recent_files_unsaved=!ok;}
-static unsigned brush_read(PdApp *a,unsigned slot,unsigned char b[20]){char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/tools%u.bin",a->directory,slot);FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,20,f)==20&&fgetc(f)==EOF&&!ferror(f);fclose(f);if(!ok||(memcmp(b,"PDB1",4)&&memcmp(b,"PDB2",4)&&memcmp(b,"PDB3",4)&&memcmp(b,"PDB4",4))||b[13]>15||(!memcmp(b,"PDB3",4)&&b[14]>3)||(!memcmp(b,"PDB4",4)&&b[14]>7)||b[8]<1||b[8]>16||b[9]<1||b[9]>16||b[10]>1||b[11]>1||b[12]>1||pal_get(b+16)!=(uint32_t)crc32(0,b,16))return 0;return pal_get(b+4);}
-static void brush_load(PdApp *a){unsigned char b[20],c[20];unsigned s0=brush_read(a,0,b),s1=brush_read(a,1,c);if(s0||s1){unsigned char *p=s1>s0?c:b;a->brush_size[0]=p[8];a->brush_size[1]=p[9];a->brush_round[0]=p[10];a->brush_round[1]=p[11];a->pixel_grid=p[12]!=0;a->guides=memcmp(p,"PDB1",4)?p[13]:0;if(!memcmp(p,"PDB3",4)||!memcmp(p,"PDB4",4)){a->pixel_perfect=!memcmp(p,"PDB4",4)&&(p[14]&4)!=0;a->fill_global=(p[14]&1)!=0;a->fill_visible=(p[14]&2)!=0;a->fill_tolerance=p[15];}}}
-static void brush_save(PdApp *a){unsigned char b[20]={0},c[20];unsigned s0=brush_read(a,0,b),s1=brush_read(a,1,c),seq=s0>s1?s0:s1;if(!a->directory[0]||seq==UINT32_MAX)return;memset(b,0,20);memcpy(b,"PDB4",4);pal_put(b+4,seq+1);b[8]=(unsigned char)a->brush_size[0];b[9]=(unsigned char)a->brush_size[1];b[10]=(unsigned char)a->brush_round[0];b[11]=(unsigned char)a->brush_round[1];b[12]=a->pixel_grid;b[13]=(unsigned char)a->guides;b[14]=(unsigned char)((a->fill_global?1:0)|(a->fill_visible?2:0)|(a->pixel_perfect?4:0));b[15]=(unsigned char)a->fill_tolerance;pal_put(b+16,(uint32_t)crc32(0,b,16));unsigned slot=s0<=s1?0:1;char path[PD_PATH];snprintf(path,sizeof(path),"%s/tools%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");bool ok=false;if(f){ok=fwrite(b,1,20,f)==20&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}if(!ok||brush_read(a,slot,c)!=seq+1||memcmp(b,c,20))message(a,"Tool preferences not saved");}
-/* Separate dual slots preserve the established PDB4 settings format. */
+static unsigned brush_read(PdApp *a,unsigned slot,unsigned char b[20]){char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/tools%u.bin",a->directory,slot);FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,20,f)==20&&fgetc(f)==EOF&&!ferror(f);fclose(f);if(!ok||(memcmp(b,"PDB1",4)&&memcmp(b,"PDB2",4)&&memcmp(b,"PDB3",4)&&memcmp(b,"PDB4",4)&&memcmp(b,"PDB5",4))||b[13]>15||(!memcmp(b,"PDB3",4)&&b[14]>3)||(!memcmp(b,"PDB4",4)&&b[14]>7)||(!memcmp(b,"PDB5",4)&&b[14]>127)||b[8]<1||b[8]>16||b[9]<1||b[9]>16||b[10]>1||b[11]>1||b[12]>1||pal_get(b+16)!=(uint32_t)crc32(0,b,16))return 0;return pal_get(b+4);}
+static void brush_load(PdApp *a){unsigned char b[20],c[20];unsigned s0=brush_read(a,0,b),s1=brush_read(a,1,c);if(s0||s1){unsigned char *p=s1>s0?c:b;a->brush_size[0]=p[8];a->brush_size[1]=p[9];a->brush_round[0]=p[10];a->brush_round[1]=p[11];a->pixel_grid=p[12]!=0;a->guides=memcmp(p,"PDB1",4)?p[13]:0;if(!memcmp(p,"PDB3",4)||!memcmp(p,"PDB4",4)||!memcmp(p,"PDB5",4)){a->pixel_perfect=memcmp(p,"PDB3",4)&&(p[14]&4)!=0;a->fill_pattern=!memcmp(p,"PDB5",4)?(p[14]>>3)&3:0;a->shape_pattern=!memcmp(p,"PDB5",4)?(p[14]>>5)&3:0;a->fill_global=(p[14]&1)!=0;a->fill_visible=(p[14]&2)!=0;a->fill_tolerance=p[15];}}}
+static void brush_save(PdApp *a){unsigned char b[20]={0},c[20];unsigned s0=brush_read(a,0,b),s1=brush_read(a,1,c),seq=s0>s1?s0:s1;if(!a->directory[0]||seq==UINT32_MAX)return;memset(b,0,20);memcpy(b,"PDB5",4);pal_put(b+4,seq+1);b[8]=(unsigned char)a->brush_size[0];b[9]=(unsigned char)a->brush_size[1];b[10]=(unsigned char)a->brush_round[0];b[11]=(unsigned char)a->brush_round[1];b[12]=a->pixel_grid;b[13]=(unsigned char)a->guides;b[14]=(unsigned char)((a->fill_global?1:0)|(a->fill_visible?2:0)|(a->pixel_perfect?4:0)|((a->fill_pattern&3)<<3)|((a->shape_pattern&3)<<5));b[15]=(unsigned char)a->fill_tolerance;pal_put(b+16,(uint32_t)crc32(0,b,16));unsigned slot=s0<=s1?0:1;char path[PD_PATH];snprintf(path,sizeof(path),"%s/tools%u.bin",a->directory,slot);FILE *f=fopen(path,"wb");bool ok=false;if(f){ok=fwrite(b,1,20,f)==20&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}if(!ok||brush_read(a,slot,c)!=seq+1||memcmp(b,c,20))message(a,"Tool preferences not saved");}
+/* Separate dual slots preserve the established PDB5 tool settings format. */
 static unsigned presets_read(PdApp *a,unsigned slot,unsigned char b[32]){
     char path[PD_PATH];if(!a->directory[0])return 0;snprintf(path,sizeof(path),"%s/brush-presets%u.bin",a->directory,slot);
     FILE *f=fopen(path,"rb");if(!f)return 0;bool ok=fread(b,1,32,f)==32&&fgetc(f)==EOF&&!ferror(f);fclose(f);
@@ -627,7 +627,7 @@ static void shape_input(PdApp *a,int x,int y,bool pressed){
     if(wx==a->shape_lastx&&wy==a->shape_lasty)return;
     /* Keep old and new damage so shrinking a preview restores its old pixels. */
     memcpy(pd_pixels(&a->doc.layer[a->doc.active]),pd_before(&a->doc),pd_bytes(&a->doc));memcpy(a->guide_damage,a->selection_draft,(pd_plane(&a->doc)/8));memset(a->selection_draft,0,(pd_plane(&a->doc)/8));
-    pd_shape(&a->doc,a->shape_x,a->shape_y,wx,wy,a->tool-5,a->shape_filled,a->color,a->brush_size[0],a->brush_round[0]!=0,a->guides,a->selection_draft,a->selection_valid?a->selection:NULL);
+    pd_pattern_shape(&a->doc,a->shape_x,a->shape_y,wx,wy,a->tool-5,a->shape_filled,a->color,a->brush_size[0],a->brush_round[0]!=0,a->guides,a->selection_draft,a->selection_valid?a->selection:NULL,a->shape_pattern);
     for(unsigned i=0;i<pd_plane(&a->doc)/32;i++)a->guide_damage[i]|=a->selection_draft[i];
     a->shape_lastx=wx;a->shape_lasty=wy;a->partial=!a->redraw;a->redraw=true;
 }
@@ -660,7 +660,8 @@ static void tool_options_input(PdApp *a,int x,int y,bool pressed){
         else if(y>=68&&y<88)a->fill_visible=!a->fill_visible;
         else if(y>=92&&y<112){if(x<ix+24&&a->fill_tolerance)a->fill_tolerance--;else if(x>=px+pw-32&&a->fill_tolerance<255)a->fill_tolerance++;}
         else if(y>=114&&y<136){a->brush_drag=true;tool_slider_set(a,x);}
-        else if(y>=150&&y<170)a->tool_options_open=false;
+        else if(y>=140&&y<160)a->fill_pattern=(a->fill_pattern+1)&3;
+        else if(y>=164&&y<184)a->tool_options_open=false;
         a->brush_dirty=true;
     }else if(a->tool_panel==4){
         if(y>=44&&y<64)a->selection_shape=x>=ix+iw/2;
@@ -671,6 +672,7 @@ static void tool_options_input(PdApp *a,int x,int y,bool pressed){
     }else if(a->tool_panel>=5&&a->tool_panel<8){
         if(y>=44&&y<64&&a->tool!=5)a->shape_filled=!a->shape_filled;
         else if(y>=82&&y<102){if(x<ix+24&&a->brush_size[0]>1)a->brush_size[0]--;else if(x>=px+pw-32&&a->brush_size[0]<16)a->brush_size[0]++;else{a->brush_drag=true;tool_slider_set(a,x);}a->brush_dirty=true;}
+        else if(y>=110&&y<130){a->shape_pattern=(a->shape_pattern+1)&3;a->brush_dirty=true;}
     }else if(a->tool_panel==8&&y>=44&&y<164){
         int row=(y-44)/22;if(row>=0&&row<5){if(row==0)a->pixel_grid=!a->pixel_grid;else a->guides^=1u<<(row-1);a->brush_dirty=true;}
     }
@@ -959,7 +961,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
         else if(a->tool==4&&!(held&PD_ERASE)){selection_input(a,x,y,pressed);}
         else if(a->tool==3&&!(held&PD_ERASE)&&world(a,x,y,&wx,&wy)){
             finish(a);wx=(wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width;wy=(wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height;
-            bool changed=pd_fill_options(&a->doc,wx,wy,a->color,a->guides,a->selection_valid?a->selection:NULL,a->fill_global,a->fill_tolerance,a->fill_visible);message(a,changed?(a->fill_global?"Replaced matching colors on active layer":"Filled active layer"):(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)?"Layer locked":!a->doc.layer[a->doc.active].visible?"Layer hidden":"Fill made no change");if(changed){recent_add(a,false);selection_stamp(a);}a->blocked=true;a->redraw=true;
+            bool changed=pd_fill_pattern(&a->doc,wx,wy,a->color,a->guides,a->selection_valid?a->selection:NULL,a->fill_global,a->fill_tolerance,a->fill_visible,a->fill_pattern);message(a,changed?(a->fill_global?"Replaced matching colors on active layer":"Filled active layer"):(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)?"Layer locked":!a->doc.layer[a->doc.active].visible?"Layer hidden":"Fill made no change");if(changed){recent_add(a,false);selection_stamp(a);}a->blocked=true;a->redraw=true;
         }
         else if(world(a,x,y,&wx,&wy)){
             if(!a->stroke){
@@ -1574,6 +1576,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
         }
         if(a->tool_options_open){
             rect(bottom,w,h,px-1,26,pw+2,h-34,UI_EDGE);rect(bottom,w,h,px,27,pw,h-36,UI_BG);
+            static const char *const dither_labels[]={"DITHER: SOLID","DITHER: 25%","DITHER: 50%","DITHER: 75%"};
             const char *title=a->tool_panel==0?"PENCIL OPTIONS":a->tool_panel==1?"ERASER OPTIONS":a->tool_panel==3?"FILL OPTIONS":a->tool_panel==4?"SELECT OPTIONS":a->tool_panel==8?"GUIDES":"SHAPE OPTIONS";
             text(bottom,w,h,ix,31,title,UI_ACCENT);text(bottom,w,h,px+pw-16,31,"X",UI_TEXT);
             if(a->tool_panel==0||a->tool_panel==1){
@@ -1590,7 +1593,8 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
                 int gap=pw-32-32;snprintf(label,sizeof(label),"TOLERANCE %u",a->fill_tolerance);if((int)strlen(label)*6>gap-8)snprintf(label,sizeof(label),"TOL %u",a->fill_tolerance);
                 text(bottom,w,h,ix+24+(gap-(int)strlen(label)*6)/2,99,label,UI_TEXT);
                 int sx=ix+(int)a->fill_tolerance*(iw-5)/255;rect(bottom,w,h,ix,120,iw-4,6,UI_PANEL);rect(bottom,w,h,ix,120,sx-ix,6,UI_SELECTED);rect(bottom,w,h,sx-2,114,4,18,UI_TEXT);
-                button(bottom,w,h,ix,150,iw-4,20,"DONE",true);
+                button(bottom,w,h,ix,140,iw-4,20,dither_labels[a->fill_pattern&3],a->fill_pattern!=0);
+                button(bottom,w,h,ix,164,iw-4,18,"DONE",true);
             }else if(a->tool_panel==4){
                 button(bottom,w,h,ix,44,iw/2-2,20,"RECT",a->selection_shape==0);button(bottom,w,h,ix+iw/2+2,44,iw-iw/2-2,20,"LASSO",a->selection_shape!=0);
                 int aw=(iw-8)/3;const char *modes[]={"REP","ADD","SUB"};for(int i=0;i<3;i++)button(bottom,w,h,ix+i*(aw+4),68,aw,20,modes[i],a->selection_mode==(unsigned)i);
@@ -1602,6 +1606,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
                 snprintf(label,sizeof(label),"SIZE  %u PX",a->brush_size[0]);text(bottom,w,h,ix,70,label,UI_TEXT);
                 button(bottom,w,h,ix,82,24,20,"-",false);button(bottom,w,h,px+pw-32,82,24,20,"+",false);
                 int range=iw-60,sx=ix+30+(int)(a->brush_size[0]-1)*range/15;rect(bottom,w,h,ix+30,88,range,6,UI_PANEL);rect(bottom,w,h,ix+30,88,sx-ix-30,6,UI_SELECTED);rect(bottom,w,h,sx-2,82,4,18,UI_TEXT);
+                button(bottom,w,h,ix,110,iw-4,20,dither_labels[a->shape_pattern&3],a->shape_pattern!=0);
             }else if(a->tool_panel==8){
                 const char *guide_names[]={"PIXEL GRID","SYMMETRY X","SYMMETRY Y","TILE X","TILE Y"};
                 for(int i=0;i<5;i++){bool on=i?(a->guides&(1u<<(i-1)))!=0:a->pixel_grid;snprintf(label,sizeof(label),"%s: %s",guide_names[i],on?"ON":"OFF");button(bottom,w,h,ix,44+i*22,iw-4,20,label,on);}

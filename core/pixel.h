@@ -67,6 +67,7 @@ typedef struct {int ax,ay,bx,by;unsigned points,saved_count;unsigned index[4];ui
 void pd_perfect_line(PdDocument *d,PdPerfectStroke *state,int x0,int y0,int x1,int y1,uint32_t color,unsigned guides,uint32_t *damage,const uint32_t *mask);
 /* Canvas-anchored ordered dither: 0 solid, 1/2/3 = 25/50/75%; gaps preserve destination. */
 void pd_pattern_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask,unsigned pattern);
+bool pd_dither_gap(unsigned x,unsigned y,unsigned pattern);
 void pd_masked_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask);
 void pd_guided_line_damage(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage);
 void pd_guided_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,unsigned size,bool round,unsigned guides);
@@ -75,10 +76,13 @@ void pd_line(PdDocument *d, int x0, int y0, int x1, int y1, uint32_t color);
 /* Exact RGBA, four-connected active-layer fill. Owns one undo transaction. */
 /* Shape kind: 0 line, 1 rectangle, 2 ellipse. Caller owns transaction. */
 void pd_shape(PdDocument *d,int x0,int y0,int x1,int y1,unsigned kind,bool filled,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask);
+void pd_pattern_shape(PdDocument *d,int x0,int y0,int x1,int y1,unsigned kind,bool filled,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask,unsigned pattern);
 bool pd_duplicate_selection(PdDocument *d,const uint32_t *mask);
 bool pd_scale_selection(PdDocument *d,const uint32_t *mask,int factor,uint32_t *result);
 bool pd_transform_selection(PdDocument *d,const uint32_t *mask,unsigned operation,uint32_t *result);
 bool pd_fill_options(PdDocument *d,int x,int y,uint32_t color,unsigned guides,const uint32_t *mask,bool global,unsigned tolerance,bool visible);
+/* As pd_fill_options; pattern 0-3 uses the pencil's canvas-anchored dither. */
+bool pd_fill_pattern(PdDocument *d,int x,int y,uint32_t color,unsigned guides,const uint32_t *mask,bool global,unsigned tolerance,bool visible,unsigned pattern);
 bool pd_fill_mask(PdDocument *d,int x,int y,uint32_t color,unsigned guides,const uint32_t *mask);
 bool pd_fill(PdDocument *d,int x,int y,uint32_t color,unsigned guides);
 typedef struct {uint32_t pixels[PD_PIXELS],mask[PD_PIXELS/32];unsigned width,height;} PdClipboard;

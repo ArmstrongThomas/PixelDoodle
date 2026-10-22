@@ -1,3 +1,45 @@
+## 0.14.9 dither for Fill and shapes (2026-10-21)
+
+Fill, Line, Rectangle and Ellipse now support the pencil's canvas-anchored
+2x2 ordered dither (Solid, 25%, 50%, 75%). This supersedes the 0.11.0 rule that
+fill and shapes stay solid; Eraser remains solid. The Fill panel and the shared
+shape panel each have a `DITHER: ...` button that cycles the density. Fill has
+its own density; Line, Rect and Ellipse share one, as they share size. Gaps keep
+the destination pixel, including alpha. Fill still matches and traverses the
+full region, so the selected area does not depend on the pattern. Masks, locks,
+alpha lock, symmetry, tiling and one undo per fill or shape are unchanged.
+Core API: `pd_fill_pattern`, `pd_pattern_shape` and `pd_dither_gap`; the old
+`pd_fill_options` and `pd_shape` forward with pattern 0.
+
+In the Fill panel the dither button occupies y 140-160 and Done moved to
+y 164-182. The shape panel's dither button is at y 110-130.
+
+Tool preferences now write PDB5: the same 20-byte dual-slot record with CRC at
+byte 16. Byte 14 keeps bits 0-2 (global, visible, pixel-perfect) and adds bits
+3-4 for fill dither and bits 5-6 for shape dither. PDB1-PDB4 still load (dither
+defaults to Solid); older builds cannot read PDB5 and fall back to defaults.
+Preserve `tools0.bin`/`tools1.bin` and never downgrade them.
+
+Host tests cover every fill density against `pd_dither_gap` with a barrier and
+an unmatched pixel, line/rect/ellipse outline and filled shapes at 50% against
+their solid rasters, invalid density refusal, panel cycling, PDB5 reload, and a
+hand-written PDB4 record. Native NDS/3DS Fill and shape panels inspected.
+
+Standard artifacts: `PixelDoodle.nds` SHA-256
+`E60066BC7CEA7D201701B80768F25A4A39270D2935917DD03614DF9B1EF49EBD`,
+`build/3ds/PixelDoodle.3dsx` SHA-256
+`2DF45E0E94F349973EB669DB1A6094F6EA43B06F8946565C2CD4E50137D2AAFA`,
+`build/3ds/PixelDoodle.cia` SHA-256
+`B911E8AA932052D5765F8F1B212495D92D644A770BA233906C1441F60A1F0CC8`
+(CIA version 233). Private: `build/private/nds/PixelDoodle-Private.nds` SHA-256
+`E180B9BF011BB1045E1246CF104F56FFF8A405268720B0251A702A281713906D`,
+`build/private/3ds/PixelDoodle-Private.3dsx` SHA-256
+`E10F775CBD55854C5E54E8E2F5A94C51ED28DB4EF2A286F9E086363C4A959DF7`.
+Copies of the standard set are in `build/test-0.14.9`. Icon, NDS/DSi header,
+ARM bounds, DLDI and CIA checks pass. Azahar booted the exact test 3DSX to its
+startup recovery prompt (left untouched). Interactive dither use in Azahar and
+DSi hardware acceptance remain pending. No hardware transfer.
+
 ## 0.14.8 tool drawer slider and label fixes (2026-10-21)
 
 No new hardware report was available, so this pass came from host fixtures.
@@ -29,7 +71,7 @@ Standard artifacts: `PixelDoodle.nds` SHA-256
 `D9A4B5CC22E23984FF2FFB581CD0B9C077931727E89DB4E77D8BB83618E2F9CE`,
 `build/3ds/PixelDoodle.cia` SHA-256
 `7D5A7A7C829D7C33390014C8EFB1D224DC25C28FC94F7E319947C4EC6990E3C5`
-(CIA version 232). Private: `build/private/nds/PixelDoodle-Private.nds` SHA-256
+(CIA version 232; superseded by 0.14.9). Private: `build/private/nds/PixelDoodle-Private.nds` SHA-256
 `9D6F732834BD88E0D45CF87A3F53E97AF2334348C135DE227EE431552CC249E1`,
 `build/private/3ds/PixelDoodle-Private.3dsx` SHA-256
 `373B8D9C0D4A8E294D4D83784087CFD6C5C0E6E0E1CEF3B293CDD9D476874753`.

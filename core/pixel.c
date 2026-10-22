@@ -208,6 +208,7 @@ bool pd_adjust_layers(PdDocument *d,unsigned scope,const uint32_t *mask,int hue_
     if(changed)pd_composite(d);
     return changed;
 }
+bool pd_dither_gap(unsigned x,unsigned y,unsigned pattern){return pattern&&(((x&1u)<<1)^((y&1u)*3u))>=pattern;}
 void pd_pattern_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask,unsigned pattern) {
     if(pattern>3)return;
     if(size<1||size>16)return;
@@ -228,7 +229,7 @@ void pd_pattern_line(PdDocument *d,int x0,int y0,int x1,int y1,uint32_t color,un
             int cx=(int)bx*2-(int)size+1,cy=(int)by*2-(int)size+1;if(round&&cx*cx+cy*cy>(int)(size*size))continue;
             for(unsigned mirror=0;mirror<=(guides&3);mirror++){if(mirror&~guides)continue;
             unsigned targetx=(unsigned)((mirror&1)?(int)d->width-1-px:px),targety=(unsigned)((mirror&2)?(int)d->height-1-py:py);
-            if(pattern){unsigned rank=((targetx&1u)<<1)^((targety&1u)*3u);if(rank>=pattern)continue;}
+            if(pd_dither_gap(targetx,targety,pattern))continue;
             unsigned index=targety*d->stride+targetx;if(mask&&!(mask[index/32]&(1u<<(index%32))))continue;uint32_t *pixel=&pd_pixels(&d->layer[d->active])[index],old=*pixel;
             if(d->layer[d->active].flags&PD_LAYER_ALPHA_LOCK){unsigned a=color>>24;uint32_t original=pd_before(d)[index];if((original>>24)&&a){uint32_t rgb=0;for(unsigned shift=0;shift<24;shift+=8)rgb|=((((color>>shift)&255)*a+((original>>shift)&255)*(255-a)+127)/255)<<shift;*pixel=(original&0xff000000u)|rgb;}}
             else *pixel=color;
@@ -248,8 +249,10 @@ static bool fill_matches(uint32_t pixel,uint32_t target,unsigned tolerance){
     if(!(pixel>>24))pixel=0;if(!(target>>24))target=0;
     for(unsigned shift=0;shift<32;shift+=8){int difference=(int)((pixel>>shift)&255)-(int)((target>>shift)&255);if(abs(difference)>(int)tolerance)return false;}return true;
 }
-bool pd_fill_options(PdDocument *d,int x,int y,uint32_t color,unsigned guides,const uint32_t *mask,bool global,unsigned tolerance,bool visible){
-    if(tolerance>255)return false;
+bool pd_fill_options(PdDocument *d,int x,int y,uint32_t color,unsigned guides,const uint32_t *mask,bool global,unsigned tolerance,bool visible){return pd_fill_pattern(d,x,y,color,guides,mask,global,tolerance,visible,0);}
+/* Dither gaps are still traversed so the matched region does not depend on the pattern. */
+bool pd_fill_pattern(PdDocument *d,int x,int y,uint32_t color,unsigned guides,const uint32_t *mask,bool global,unsigned tolerance,bool visible,unsigned pattern){
+    if(tolerance>255||pattern>3)return false;
     if(d->editing||d->active>=d->capacity||!(d->enabled&(1u<<d->active))||!d->layer[d->active].visible||(d->layer[d->active].flags&PD_LAYER_LOCK))return false;
     if(x<0||y<0||x>=(int)d->width||y>=(int)d->height)return false;
     /* Bounded iterative queue; each pixel is queued once, never recursive. */
@@ -264,7 +267,7 @@ bool pd_fill_options(PdDocument *d,int x,int y,uint32_t color,unsigned guides,co
         else{work[tail++]=seed;seen[seed/8]|=(uint8_t)(1u<<(seed%8));}
         while(head<tail){unsigned index=work[head++];uint32_t original=pd_before(d)[index],value=color;
             if(d->layer[d->active].flags&PD_LAYER_ALPHA_LOCK){unsigned alpha=color>>24;value=original;if((original>>24)&&alpha){uint32_t rgb=0;for(unsigned shift=0;shift<24;shift+=8)rgb|=((((color>>shift)&255)*alpha+((original>>shift)&255)*(255-alpha)+127)/255)<<shift;value=(original&0xff000000u)|rgb;}}
-            pd_pixels(&d->layer[d->active])[index]=value;
+            if(!pd_dither_gap(index%d->stride,index/d->stride,pattern))pd_pixels(&d->layer[d->active])[index]=value;
             if(global)continue;
             int px=(int)(index%d->stride),py=(int)(index/d->stride);int nx[4]={px-1,px+1,px,px},ny[4]={py,py,py-1,py+1};
             for(unsigned n=0;n<4;n++){if(nx[n]<0){if(!(guides&4))continue;nx[n]=(int)d->width-1;}if(nx[n]>=(int)d->width){if(!(guides&4))continue;nx[n]=0;}if(ny[n]<0){if(!(guides&8))continue;ny[n]=(int)d->height-1;}if(ny[n]>=(int)d->height){if(!(guides&8))continue;ny[n]=0;}
@@ -387,14 +390,15 @@ static bool ellipse_inside(int x,int y,int width,int height){
     int cx=2*x-width+1,cy=2*y-height+1;unsigned ww=(unsigned)(width*width),hh=(unsigned)(height*height);
     return (uint64_t)(cx*cx)*hh+(uint64_t)(cy*cy)*ww<=(uint64_t)ww*hh;
 }
-void pd_shape(PdDocument *d,int x0,int y0,int x1,int y1,unsigned kind,bool filled,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask){
-    if(kind>2||x0< -4096||x0>4096||x1< -4096||x1>4096||y0< -4096||y0>4096||y1< -4096||y1>4096||abs(x1-x0)>=(int)d->width||abs(y1-y0)>=(int)d->height)return;
-    if(!kind){pd_masked_line(d,x0,y0,x1,y1,color,size,round,guides,damage,mask);return;}
+void pd_shape(PdDocument *d,int x0,int y0,int x1,int y1,unsigned kind,bool filled,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask){pd_pattern_shape(d,x0,y0,x1,y1,kind,filled,color,size,round,guides,damage,mask,0);}
+void pd_pattern_shape(PdDocument *d,int x0,int y0,int x1,int y1,unsigned kind,bool filled,uint32_t color,unsigned size,bool round,unsigned guides,uint32_t *damage,const uint32_t *mask,unsigned pattern){
+    if(kind>2||pattern>3||x0< -4096||x0>4096||x1< -4096||x1>4096||y0< -4096||y0>4096||y1< -4096||y1>4096||abs(x1-x0)>=(int)d->width||abs(y1-y0)>=(int)d->height)return;
+    if(!kind){pd_pattern_line(d,x0,y0,x1,y1,color,size,round,guides,damage,mask,pattern);return;}
     if(x0>x1){int t=x0;x0=x1;x1=t;}if(y0>y1){int t=y0;y0=y1;y1=t;}int width=x1-x0+1,height=y1-y0+1;
     for(int y=0;y<height;y++)for(int x=0;x<width;x++){
         bool inside=kind==1||ellipse_inside(x,y,width,height);if(!inside)continue;
         bool edge=kind==1?(!x||!y||x==width-1||y==height-1):(!ellipse_inside(x-1,y,width,height)||!ellipse_inside(x+1,y,width,height)||!ellipse_inside(x,y-1,width,height)||!ellipse_inside(x,y+1,width,height));
-        if(filled||edge)pd_masked_line(d,x0+x,y0+y,x0+x,y0+y,color,filled?1:size,round,guides,damage,mask);
+        if(filled||edge)pd_pattern_line(d,x0+x,y0+y,x0+x,y0+y,color,filled?1:size,round,guides,damage,mask,pattern);
     }
 }
 bool pd_transform_selection(PdDocument *d,const uint32_t *mask,unsigned operation,uint32_t *result){

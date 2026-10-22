@@ -95,6 +95,7 @@ struct PdApp {
     bool pixel_grid,brush_drag,brush_dirty,presets_dirty;
     bool fill_global,fill_visible;
     unsigned fill_tolerance;
+    unsigned fill_pattern,shape_pattern; /* 0 solid, 1/2/3 = 25/50/75% dither */
     int adjust_hue,adjust_saturation,adjust_brightness;
     unsigned adjust_scope,adjust_drag;
     bool adjust_preview_ready,adjust_preview_stale;

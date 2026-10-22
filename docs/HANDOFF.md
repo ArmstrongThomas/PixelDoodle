@@ -4,8 +4,8 @@
 
 - Repository: `G:\dev\3ds\PixelDoodle`
 - Branch: `main`
-- Version: `0.14.8`
-- Git state: 0.14.8 drawer fixes are committed on `main` after `eeadf20`; the
+- Version: `0.14.9`
+- Git state: 0.14.8 is commit `cfad4f1`; 0.14.9 dither is committed after it; the
   remaining modified community/HTTPS files differ only in line endings
 - Current work: touchscreen UI refinement for NDS/DSi and 3DS
 - Server changes required by this candidate: none
@@ -13,8 +13,17 @@
 
 The standard and private packages were rebuilt after the final source changes.
 Host tests, header checks, icon checks and CIA metadata checks pass. Azahar
-booted the exact standard 3DSX (`build/test-0.14.8`) to its startup recovery
+booted the exact standard 3DSX (`build/test-0.14.9`) to its startup recovery
 prompt; that prompt was left untouched and no drawer interaction was driven.
+
+## 0.14.9 Fill and shape dither
+
+- Fill panel and shared Line/Rect/Ellipse panel each have a `DITHER` button
+  cycling Solid/25%/50%/75%, using the pencil's canvas-anchored pattern.
+- Fill traverses the full matched region; only gap pixels are left unchanged.
+- Fill Done moved down to make room (y 164-182 on both screens).
+- Tool preferences now write PDB5 (fill dither bits 3-4, shape dither bits 5-6
+  of byte 14); PDB1-PDB4 still load.
 
 ## 0.14.8 fixes (from fixture review; no new hardware report)
 
@@ -67,6 +76,8 @@ prompt; that prompt was left untouched and no drawer interaction was driven.
    confirm the shape size slider still moves.
 8. Verify Brush Details previews and Load/Store behavior.
 9. Verify Selection Delete, SEL ALL and Transform remain inside their buttons.
+   Cycle DITHER in Fill and in Line/Rect/Ellipse; confirm gaps keep the art
+   beneath and the pattern lines up with Pencil dither.
 10. Enable Pixel Grid at 4x and confirm it is useful and does not obscure art.
 11. Retest private Sprite sending with the rotated Discord webhook override at
     `fat:/PixelDoodle/private/discord-webhook.txt`. Confirm `share.png` is
@@ -97,21 +108,21 @@ prompt; that prompt was left untouched and no drawer interaction was driven.
 ## Current artifact hashes
 
 - `PixelDoodle.nds`:
-  `257E59064E42C578377C90E1BDCE689B7E13601F5D980F5B83812D8AADA09691`
+  `E60066BC7CEA7D201701B80768F25A4A39270D2935917DD03614DF9B1EF49EBD`
 - `build/3ds/PixelDoodle.3dsx`:
-  `D9A4B5CC22E23984FF2FFB581CD0B9C077931727E89DB4E77D8BB83618E2F9CE`
-- `build/3ds/PixelDoodle.cia` (CIA version 232):
-  `7D5A7A7C829D7C33390014C8EFB1D224DC25C28FC94F7E319947C4EC6990E3C5`
+  `2DF45E0E94F349973EB669DB1A6094F6EA43B06F8946565C2CD4E50137D2AAFA`
+- `build/3ds/PixelDoodle.cia` (CIA version 233):
+  `B911E8AA932052D5765F8F1B212495D92D644A770BA233906C1441F60A1F0CC8`
 - `build/private/nds/PixelDoodle-Private.nds`:
-  `9D6F732834BD88E0D45CF87A3F53E97AF2334348C135DE227EE431552CC249E1`
+  `E180B9BF011BB1045E1246CF104F56FFF8A405268720B0251A702A281713906D`
 - `build/private/3ds/PixelDoodle-Private.3dsx`:
-  `373B8D9C0D4A8E294D4D83784087CFD6C5C0E6E0E1CEF3B293CDD9D476874753`
+  `E10F775CBD55854C5E54E8E2F5A94C51ED28DB4EF2A286F9E086363C4A959DF7`
 
 ## Prompt for the next LLM
 
 Continue work on Pixel Doodle in `G:\dev\3ds\PixelDoodle` on branch `main`.
 Read the root `AGENTS.md` and `docs/HANDOFF.md` first. The current candidate is
-`0.14.8`. Start from the current committed `main` state. Preserve the DSi-first
+`0.14.9`. Start from the current committed `main` state. Preserve the DSi-first
 workflow: the user manually copies NDS artifacts and tests them on physical
 hardware.
 

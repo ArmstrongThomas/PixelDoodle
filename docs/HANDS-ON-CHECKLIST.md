@@ -1,7 +1,21 @@
+## Fill and shape dither 0.14.9 (2026-10-21)
+
+- [ ] Fill panel: tap DITHER to cycle Solid, 25%, 50%, 75%. Fill an area over
+  existing art at each density; gaps keep the art underneath.
+- [ ] Global fill and Visible match still select the same region with dither on.
+- [ ] Line, Rect and Ellipse: cycle DITHER in the shape panel. Draw outline and
+  filled shapes; the preview while dragging matches the committed result.
+- [ ] Dithered shapes and fills line up with Pencil dither at the same density.
+- [ ] Fill Done (now lower in the panel) and the X both close the panel.
+- [ ] Each dithered fill or shape is one Undo step.
+- [ ] Relaunch: Fill and shape dither settings persist separately.
+
+Host suite, builds, icon/header/CIA checks pass; Azahar booted the exact 3DSX.
+Interactive emulator use and DSi hardware acceptance are pending.
+
 ## Tool drawer sliders and labels 0.14.8 (2026-10-21)
 
-Copy `build/private/nds/PixelDoodle-Private.nds` (or standard `PixelDoodle.nds`)
-to the DSi card. Confirm the launcher subtitle shows 0.14.8.
+These checks apply to 0.14.9 as well; its launcher subtitle shows 0.14.9.
 
 - [ ] Pencil, Eraser, Fill tolerance, Line, Rect and Ellipse: drag each slider
   repeatedly both ways. The knob stays under the stylus; no stale touches,
