@@ -12,8 +12,9 @@
 enum { PD_LAYER_LOCK=1, PD_LAYER_ALPHA_LOCK=2 };
 /* Canonical straight-alpha 0xAARRGGBB. Layer 0 is bottommost. */
 typedef struct { uint32_t pixels[PD_PIXELS]; uint32_t *large; uint8_t visible, opacity, blend, flags; } PdLayer;
-typedef struct { unsigned offset,bytes,tiles; uint32_t group; uint8_t group_active,layer, visibility, opacity, enabled, blend, flags, order[PD_LAYERS]; char name[64]; uint64_t before, after; } PdEdit;
+typedef struct { unsigned offset,bytes,tiles; uint32_t group; uint16_t frame; uint8_t group_active,layer, visibility, opacity, enabled, blend, flags, order[PD_LAYERS]; char name[64]; uint64_t before, after; } PdEdit;
 typedef struct {
+    struct PdAnimation *animation;
     PdLayer layer[PD_LAYERS];
     unsigned width,height,stride,rows,capacity,profile;
     void *allocation;

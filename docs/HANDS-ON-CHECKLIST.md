@@ -1,3 +1,165 @@
+
+## Hardware acceptance and overnight continuation (2026-10-22)
+
+User confirms 0.18.0P successfully sent an animated GIF to Discord; attachment
+143535.gif is the received animation. 0.17.0 playback was also accepted.
+This confirms the tested DSi private flow, not DS Lite/3DS parity, maximum
+canvas/frame capacity, palette fallback appearance or all failure paths.
+Rapid separate-stroke work is explicitly deferred. Keep direct input and keep
+Frames and Layers separate. User authorized a checkpoint commit and push before
+further animation improvements, then autonomous progress with handoff and
+hardware checklist updates after each improvement. PC may be locked; native
+host fixtures/builds remain available. Do not infer device receiver readiness
+or perform more live webhook sends while the user is away.
+
+Next priorities: safe onion skin preview, animation file interchange, local
+exports and practical timeline controls. Record exact verification and remaining
+hardware checks for every increment; do not describe untested hardware as accepted.
+
+
+## 0.18.0 animated GIF webhook candidate (2026-10-22)
+
+User accepted 0.17.0 playback on hardware and requested GIF sending through the
+private Discord webhook. Rapid separate-stroke work stays deferred. Frames and
+Layers remain separate; direct input remains unchanged.
+
+Private Send Sprite keeps active-layer PNG and visible-composite PNG, and adds
+SEND ANIMATION GIF. GIF includes visible layers in every frame, starts at frame
+1 regardless of selection, loops forever and uses per-frame delays rounded to
+10 ms. It restores the editing frame/pixels and preserves undo, revision and
+structural dirty state. GIF has binary transparency (alpha below 128 becomes
+transparent), not partial RGBA. Each frame keeps exact RGB when it fits 255
+opaque colors plus transparency; otherwise it uses a nearest 216-color RGB
+cube. The send screen explains binary alpha and possible color reduction.
+PNG and native project pixels remain full RGBA and are not quantized.
+
+Encoder streams to a private share.gif.tmp then renames on success. Existing
+output/temp files are refused by the encoder; the sender owns cleanup of its
+private share files. Output is capped at the existing 2 MiB application limit;
+oversize/write failure removes the partial file and sends nothing. One indexed
+frame buffer plus bounded dictionary/palette scratch is used, not all frames
+in memory. A snapshot must fit before multi-frame export; later frame seeking
+and restoration allocate nothing. GIF uses local palettes, disposal 2 and a
+Netscape infinite-loop extension. No delta frames or dithering in this slice.
+
+Both native transports use one shared multipart prefix builder with .gif /
+image/gif or .png / image/png. allowed_mentions disables mention expansion.
+NDS keeps streaming its staged file; 3DS retains its existing buffered upload.
+Private credentials/config, TLS validation, endpoint and retry behavior stay
+unchanged. Standard builds do not expose the private sender. No server change.
+
+Host tests cover state restoration, existing-file refusal, bounded output and
+cleanup, RGB palette overflow, alpha threshold, and PNG/GIF multipart metadata.
+An independent Pillow decoder checks all pixels of three frames, including an
+empty frame after opaque art, disposal/transparency, exact colors, loop and
+110/250/500 ms delays, plus fallback colors. DS and 3DS send layouts inspected.
+Native builds and hardware webhook delivery results are recorded separately.
+
+
+## 0.17.0 animation playback candidate (2026-10-22)
+
+User explicitly deferred the quick separate-stroke issue and requested animation
+work to continue. Keep direct input; do not reintroduce the rejected queued
+capture. Photo 143534.jpg confirms V0.16.2P / INPUT DIRECT: input 16856 us,
+render 1459 us, copy 8814 us, sample gap 16717 us / N150. FREE/LARGEST
+14139 KB, card write 1226/read 1434 KB/s, PEN16 / INK12. This establishes
+improved measured timings, not a claim that rapid strokes are fixed.
+
+Menu > FRAMES now has PLAY / STOP. Playback loops all frames using their
+individual durations and follows the active frame column. Any new touch or
+button stops playback and consumes that action, returning to the original
+editing frame. Editing, navigation, file actions and recovery are suspended
+while playing. Start requires two frames and a successful snapshot of current
+pixels. A failed snapshot leaves the editor unchanged. After start, ticking
+and stopping restore immutable stored frames without allocations or repacking.
+Clock rollover and delayed-loop catch-up are bounded; complete elapsed cycles
+are skipped before choosing the visible frame. Playback does not change pixels,
+undo history, dirty generation or durations. Frame buffers still render at the
+existing display cadence; actual hardware playback performance needs testing.
+
+Frames and Layers remain separate. Onion skin, linked cels, tags, animated ASE
+and sprite sheets remain future work. Historical sections describing playback
+as pending are superseded by this candidate. No hardware transfer is implied.
+
+
+## 0.16.2 latency rollback (2026-10-22)
+
+0.16.1 is rejected on DSi hardware. Photo 143533.jpg shows V0.16.1P,
+input 17315 us, render 219991 us, copy 19938 us, sample gap 267440 us
+(N 10), queue peak 16 with zero overflows, PEN 9 / INK 5. These independent
+maxima must not be summed. User reports massively increased drawing latency.
+
+0.16.2 removes the queued IRQ/worker capture experiment from both platform
+adapters and restores one direct SDK scan and one app_input call per display
+loop. The queue consumer called app_input again before rendering, invalidating
+pending partial damage and forcing expensive full renders. Queue-only host
+tests did not exercise this platform/render interaction and were insufficient.
+The unused queue implementation and its tests are removed. Diagnostics now
+show INPUT DIRECT. The visible V0.16.2 / V0.16.2P label, heap probe correction,
+animation core and separate FRAMES page remain. Frames and Layers must stay
+separate until the user accepts thorough testing. Playback/onion skin remain
+pending. This is a latency rollback candidate; the original missing quick
+strokes are still unresolved. Hardware responsiveness must be retested.
+
+Historical 0.16.1 delivery notes below describe a rejected build, not the
+current input path. No 3DS transfer is authorized while its receiver is absent.
+
+## 0.16.1 retest (2026-10-22)
+
+- [x] Standard and private NDS sent save-only (both OK SAVED).
+- [x] No 3DS transfer: user said it was not ready.
+- [ ] Confirm V0.16.1 (standard) / V0.16.1P (private) at upper-left in-app.
+- [ ] DSi: quick handwriting and tiny lift/touch strokes; compare with 0.16.0.
+- [ ] Diagnostics: Q ON, peak depth, LOST overflow incidents, PEN/INK deltas.
+- [ ] Rapid touches across menu changes never activate an unseen new menu.
+- [ ] Private Send Sprite, text entry, slider/long-press drags and Exit still work.
+- [ ] DS Lite and New 3DS: queued capture and FREE/LARGEST, when available.
+
+0.16.0 FRAMES menu presence is confirmed by the user; missed handwriting strokes
+remain. Frames and Layers must remain separate until the user tests thoroughly.
+DSi pre-0.16.1 FREE/LARGEST are both 14135 KB; card write/read 1241/1433 KB/s.
+
+## 0.16.0 candidate (2026-10-22)
+
+- [x] Standard 3DSX sent through 3dslink (exit 0).
+- [x] Standard and private NDS sent through DSi Link (both OK SAVED).
+- [ ] DSi TWL, DS Lite NTR, New 3DS: rerun Memory + Card Test; record FREE,
+  LARGEST and card rates. Previous photos confirmed masks/card rates only.
+- [ ] Rapid handwriting/taps: no completely missing strokes; compare 0.15.0.
+- [ ] Overview catches up after lifting; guide/eraser/undo colors remain correct.
+- [ ] Menu > Frames: NEW, DUPE, layer/cel selection and durations.
+- [ ] DS six-row timeline scroll track reaches all eight layers.
+- [ ] Pan+L/R and New 3DS ZL/ZR step frames without drawing/undo conflicts.
+- [ ] Native animation Save As/reopen/recovery retains every frame and duration.
+  Use a new filename: older builds cannot open PDDA/version 10.
+- [ ] Delete Frame cancellation preserves art/history; confirmation clears undo.
+- [ ] Private Send Sprite still uploads the current frame.
+- [ ] Regression: selection/copy/cut/paste, layers, file browser, palette, Settings.
+
+0.15.0 private Send Sprite is accepted by the user. This does not accept the
+new 0.16.0 build. Playback/onion skin/animated ASE are not present to test yet.
+
+## DSi Link (2026-10-21)
+
+- [x] DSi Link joins Wi-Fi on the DSi LL and shows its address.
+- [x] A sent build is received, checked and saved to `Homebrew/Dev/`.
+- [ ] Booting the sent build through Pico Loader (first try returned to DSi
+  Link with SD CARD NOT AVAILABLE).
+- [ ] Exiting a booted app returns to DSi Link.
+- [x] The PixelDoodle.nds saved by DSi Link boots from Pico Launcher.
+- [ ] Run 0.15.0 Settings > Diagnostics > Run Memory + Card Test on the DSi.
+
+## Memory optimization 0.15.0 (2026-10-21)
+
+- [ ] Standard and private NDS builds boot on the DSi; colors, text and the
+  canvas look the same as 0.14.9 on both screens.
+- [ ] Settings > Diagnostics > Run Memory + Card Test on the DSi. Record FREE,
+  LARGEST, MASKS and card WRITE/READ. Masks should read 128 KB in DSi mode.
+- [ ] If possible, repeat in DS mode (or on DS Lite). Masks should read 8 KB.
+- [ ] Repeat on the 3DS (already sent by 3dslink).
+- [ ] Copy/cut/paste, selection, layers, file open/save and drawing still work.
+- [ ] Private build: Send Sprite still uploads; standard build has no Send.
+
 ## Fill and shape dither 0.14.9 (2026-10-21)
 
 - [ ] Fill panel: tap DITHER to cycle Solid, 25%, 50%, 75%. Fill an area over

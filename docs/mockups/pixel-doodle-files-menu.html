@@ -1,0 +1,551 @@
+<title>Pixel Doodle File Screens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+  /* Layout: device screens on the left at native resolution, review notes on the right; stacks on phones. */
+  :root {
+    --bg: #0f161a;
+    --surface: #172024;
+    --shell: #0a1013;
+    --line: #2a383f;
+    --fg: #eef3f5;
+    --muted: #9fb3bb;
+    --accent: #79e0d3;
+    --accent-ink: #0b2e2b;
+    --warn: #f2c46b;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 48px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 22px; }
+  header h1 { font-size: 1.7rem; line-height: 1.2; margin: 0; font-weight: 600; text-wrap: balance; }
+  header p { margin: 6px 0 0; color: var(--muted); max-width: 68ch; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button {
+    font: 500 0.78rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); background: transparent; border: 0; padding: 10px 13px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .seg-label { font: 500 0.72rem/1 var(--font-mono); letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-right: 8px; }
+  .group { display: inline-flex; align-items: center; }
+  [hidden] { display: none !important; }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 28px; align-items: start; }
+  @media (max-width: 920px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+  .device {
+    background: var(--shell); border: 1px solid var(--line); border-radius: 20px;
+    padding: 20px 18px; display: flex; flex-direction: column; align-items: center; gap: 0;
+  }
+  .device canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; height: auto; touch-action: none; }
+  .hinge { width: 64%; height: 14px; margin: 6px 0; border-radius: 0 0 6px 6px; background: linear-gradient(var(--surface), var(--shell)); }
+  #bottom { cursor: pointer; }
+  .caption { margin-top: 12px; font: 500 0.72rem/1.4 var(--font-mono); letter-spacing: 0.05em; color: var(--muted); text-align: center; text-transform: uppercase; }
+  .notes { min-width: 0; display: grid; gap: 18px; }
+  .notes section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .notes h2 { margin: 0 0 8px; font: 500 0.75rem/1.2 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+  .notes ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .notes p { margin: 0; }
+  .notes code { font-family: var(--font-mono); font-size: 0.85em; color: var(--fg); background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+  .try { color: var(--muted); font-size: 0.9rem; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Pixel Doodle file screens</h1>
+    <p>Proposed Menu, file browser, type filter, keyboard and a new home for Adjust. Each screen is drawn at the console's real resolution with the app's own 5&times;7 font and colors, so everything shown here fits on the hardware.</p>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Screen">
+      <button type="button" id="tab-menu" data-tab="menu" aria-pressed="true">Menu</button>
+      <button type="button" id="tab-browser" data-tab="browser" aria-pressed="false">File browser</button>
+      <button type="button" id="tab-keyboard" data-tab="keyboard" aria-pressed="false">Keyboard</button>
+      <button type="button" id="tab-adjust" data-tab="adjust" aria-pressed="false">Adjust home</button>
+    </div>
+    <div class="group"><span class="seg-label">Console</span>
+      <div class="seg" role="group" aria-label="Console">
+        <button type="button" id="con-dsi" data-console="dsi" aria-pressed="true">DSi</button>
+        <button type="button" id="con-3ds" data-console="3ds" aria-pressed="false">3DS</button>
+      </div>
+    </div>
+    <div class="group" id="ctx-browser" hidden><span class="seg-label">Mode</span>
+      <div class="seg" role="group" aria-label="Browser mode">
+        <button type="button" id="mode-open" data-mode="open" aria-pressed="true">Open</button>
+        <button type="button" id="mode-save" data-mode="save" aria-pressed="false">Save as</button>
+      </div>
+    </div>
+    <div class="group" id="ctx-menu"><span class="seg-label">Build</span>
+      <div class="seg" role="group" aria-label="Build">
+        <button type="button" id="build-private" data-build="private" aria-pressed="true">Private</button>
+        <button type="button" id="build-standard" data-build="standard" aria-pressed="false">Standard</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div>
+      <div class="device">
+        <canvas id="top" aria-label="Upper screen"></canvas>
+        <div class="hinge" aria-hidden="true"></div>
+        <canvas id="bottom" aria-label="Touch screen, interactive"></canvas>
+      </div>
+      <div class="caption" id="caption">DSi &middot; 256 &times; 192 upper / 256 &times; 192 touch</div>
+    </div>
+    <div class="notes" id="notes"></div>
+  </div>
+</div>
+
+<script>
+const FONT = {"glyphs":{"0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],"2":[14,17,1,2,4,8,31],"3":[30,1,1,14,1,1,30],"4":[2,6,10,18,31,2,2],"5":[31,16,16,30,1,1,30],"6":[6,8,16,30,17,17,14],"7":[31,1,2,4,8,8,8],"8":[14,17,17,14,17,17,14],"9":[14,17,17,15,1,2,12],"A":[14,17,17,31,17,17,17],"B":[30,17,17,30,17,17,30],"C":[14,17,16,16,16,17,14],"D":[30,17,17,17,17,17,30],"E":[31,16,16,30,16,16,31],"F":[31,16,16,30,16,16,16],"G":[14,17,16,23,17,17,15],"H":[17,17,17,31,17,17,17],"I":[14,4,4,4,4,4,14],"J":[7,2,2,2,18,18,12],"K":[17,18,20,24,20,18,17],"L":[16,16,16,16,16,16,31],"M":[17,27,21,21,17,17,17],"N":[17,25,21,19,17,17,17],"O":[14,17,17,17,17,17,14],"P":[30,17,17,30,16,16,16],"Q":[14,17,17,17,21,18,13],"R":[30,17,17,30,20,18,17],"S":[15,16,16,14,1,1,30],"T":[31,4,4,4,4,4,4],"U":[17,17,17,17,17,17,14],"V":[17,17,17,17,17,10,4],"W":[17,17,17,21,21,21,10],"X":[17,17,10,4,10,17,17],"Y":[17,17,10,4,4,4,4],"Z":[31,1,2,4,8,16,31],"a":[0,0,14,1,15,17,15],"b":[16,16,22,25,17,17,30],"c":[0,0,14,16,16,17,14],"d":[1,1,13,19,17,17,15],"e":[0,0,14,17,31,16,14],"f":[6,8,8,28,8,8,8],"g":[0,0,15,17,15,1,14],"h":[16,16,22,25,17,17,17],"i":[4,0,12,4,4,4,14],"j":[2,0,6,2,2,18,12],"k":[16,16,18,20,24,20,18],"l":[12,4,4,4,4,4,14],"m":[0,0,26,21,21,21,21],"n":[0,0,22,25,17,17,17],"o":[0,0,14,17,17,17,14],"p":[0,0,30,17,30,16,16],"q":[0,0,13,19,15,1,1],"r":[0,0,22,25,16,16,16],"s":[0,0,15,16,14,1,30],"t":[8,8,28,8,8,9,6],"u":[0,0,17,17,17,19,13],"v":[0,0,17,17,17,10,4],"w":[0,0,17,21,21,21,10],"x":[0,0,17,10,4,10,17],"y":[0,0,17,17,15,1,14],"z":[0,0,31,2,4,8,31],"-":[0,0,0,31,0,0,0],":":[0,4,0,0,4,0,0],".":[0,0,0,0,0,12,12],"/":[1,1,2,4,8,16,16],"<":[2,4,8,16,8,4,2],">":[8,4,2,1,2,4,8],"[":[14,8,8,8,8,8,14],"]":[14,2,2,2,2,2,14],"_":[0,0,0,0,0,0,31],"!":[4,4,4,4,4,0,4],"?":[14,17,1,2,4,0,4],",":[0,0,0,0,0,4,8],"'":[4,4,8,0,0,0,0],"\"":[10,10,20,0,0,0,0],"#":[10,31,10,10,31,10,0],"%":[25,25,2,4,8,19,19],"&":[12,18,20,8,21,18,13],"(":[2,4,8,8,8,4,2],")":[8,4,2,2,2,4,8],"*":[0,21,14,31,14,21,0],"+":[0,4,4,31,4,4,0],"=":[0,31,0,31,0,0,0],"@":[14,17,23,21,23,16,14],"|":[4,4,4,4,4,4,4],";":[0,4,0,0,4,4,8],"$":[4,15,20,14,5,30,4],"\\":[16,16,8,4,2,1,1],"^":[4,10,17,0,0,0,0],"`":[8,4,2,0,0,0,0],"{":[2,4,4,8,4,4,2],"}":[8,4,4,2,4,4,8],"~":[0,0,9,22,0,0,0],"?default":[31,17,21,21,17,17,31]},"icons":[0,0,0,0,0,0,0,0,0,2400,0,0,0,40208,0,0,9,53760,0,0,190,39048,34914,0,190,39048,35006,24576,9,53760,3,58112,0,40208,0,31232,0,2400,0,19712,0,0,0,23552,0,0,1,54784,0,3,13149,40960,0,45,56774,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1680,0,0,0,729,0,0,0,29,36864,0,9864,34953,60160,6,60296,34953,60160,62,12288,29,36864,167,0,729,0,196,0,1680,0,182,0,0,0,109,4096,0,0,10,54579,12288,0,0,27869,53760,0,0,0,0,0,0,0,0,0,0,19,12544,0,0,19454,61382,0,9,59152,365,45312,156,4096,17409,44032,1249,6976,47872,3184,2928,6976,4352,1232,7952,0,27,16626,15874,28672,27,16611,15879,57856,0,992,7952,8192,0,15728,2928,0,15582,59136,1249,0,50994,0,156,4096,43008,0,9,59152,23552,0,0,19454,59136,0,0,19,8192,0,0,2,8192,0,0,1215,64320,0,5,52865,6108,24576,1757,24576,6,56672,12112,0,0,1522,3048,4096,1,36528,58,59952,670,46080,5632,10731,48786,97,7843,22,28928,15073,654,46080,75,59680,513,32454,27879,4128,11856,108,50688,1506,1757,24576,6,56672,5,52865,6108,24576,0,1215,64320,0,0,2,8192,0,0,51,13056,0,0,3053,57008,0,0,15872,227,0,2,40584,35049,8192,62,43912,35002,58112,998,0,0,28224,7776,0,0,1761,15616,5632,97,211,15923,28211,13286,13283,24541,57309,56829,56821,15616,15616,211,211,15616,512,32,211,15616,0,0,211,7832,34952,34952,35297,632,34952,34952,34592,0,0,0,0,0,0,0,0,0,0,0,0,35,13107,13107,12800,173,56797,56797,55808,0,0,0,0,0,0,0,0,0,0,0,0,104,34952,34952,34304,104,34952,34952,34304,0,0,0,0,0,0,0,0,0,0,0,0,173,56797,56797,55808,35,13107,13107,12800,0,0,0,0,0,0,0,0]};
+const C = { bg:"#182126", panel:"#35444b", edge:"#73868f", text:"#f5f8fa", muted:"#b9cbd2", accent:"#79e0d3", sel:"#0d7a75",
+  rail:"#121a1e", line:"#25333a", deep:"#202c32", danger:"#ffaaa0", warn:"#f2c46b", check1:"#cfcfcf", check2:"#efefef" };
+const TINT = { dir:"#e9c46a", pdd:"#79e0d3", ase:"#c3a6ff", png:"#8ec5ff", pal:"#ff9ec7", all:"#b9cbd2" };
+const DIM = { dir:"#5e5232", pdd:"#2e5a55", ase:"#4f4669", png:"#3a5370", pal:"#6a4456", all:"#46545a" };
+
+/* ---------- drawing primitives at native resolution ---------- */
+function rect(s,x,y,w,h,c){ s.ctx.fillStyle=c; s.ctx.fillRect(x|0,y|0,w|0,h|0); }
+function tw(str){ return str.length ? str.length*6-1 : 0; }
+function glyph(ch){ return FONT.glyphs[ch] || FONT.glyphs["?default"]; }
+function text(s,x,y,str,c){
+  s.ctx.fillStyle=c;
+  for(let i=0;i<str.length;i++){ const ch=str[i]; if(ch===" ") continue; const rows=glyph(ch);
+    for(let yy=0;yy<7;yy++){ const r=rows[yy]; if(!r) continue; for(let xx=0;xx<5;xx++) if(r&(1<<(4-xx))) s.ctx.fillRect(x+i*6+xx,y+yy,1,1); } }
+}
+function fit(str,max){ if(tw(str)<=max) return str; let n=Math.max(0,Math.floor((max+1)/6)-3); return str.slice(0,n)+"..."; }
+function frame(s,x,y,w,h,edge,fill){ rect(s,x,y,w,h,edge); rect(s,x+1,y+1,w-2,h-2,fill); }
+function button(s,x,y,w,h,label,primary,opt={}){
+  frame(s,x,y,w,h,opt.edge||C.edge,primary?C.sel:(opt.fill||C.panel));
+  const tx=opt.center?x+((w-tw(label))>>1):x+6; text(s,tx,y+((h-7)>>1),label,opt.color||C.text);
+}
+function bmp(s,x,y,rows,map){
+  for(let yy=0;yy<rows.length;yy++) for(let xx=0;xx<rows[yy].length;xx++){ const c=map[rows[yy][xx]]; if(c){ s.ctx.fillStyle=c; s.ctx.fillRect(x+xx,y+yy,1,1);} }
+}
+function hex2(c){ return [parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)]; }
+function railIcon(s,x,y,id,c,bg){
+  const fg=hex2(c), b=hex2(bg);
+  for(let yy=0;yy<16;yy++) for(let xx=0;xx<16;xx++){
+    const packed=FONT.icons[id*64+(yy>>2)*16+(yy%4)*4+(xx>>2)], cov=(packed>>(12-4*(xx%4)))&15; if(!cov) continue;
+    const a=cov*17/255; s.ctx.fillStyle=`rgb(${Math.round(fg[0]*a+b[0]*(1-a))},${Math.round(fg[1]*a+b[1]*(1-a))},${Math.round(fg[2]*a+b[2]*(1-a))})`;
+    s.ctx.fillRect(x+xx,y+yy,1,1);
+  }
+}
+function rail(s,active){
+  rect(s,0,0,s.w,24,C.rail);
+  for(let i=0;i<6;i++){ const x0=Math.floor(i*s.w/6), x1=Math.floor((i+1)*s.w/6), on=i===active;
+    if(on) rect(s,x0,0,x1-x0,24,C.sel); railIcon(s,x0+((x1-x0-16)>>1),4,i,on?C.text:C.accent,on?C.sel:C.rail); }
+}
+function checker(s,x,y,w,h,cell){ for(let yy=0;yy<h;yy+=cell) for(let xx=0;xx<w;xx+=cell) rect(s,x+xx,y+yy,Math.min(cell,w-xx),Math.min(cell,h-yy),((xx/cell+yy/cell)&1)?C.check1:C.check2); }
+
+/* ---------- small pixel icons (proposed) ---------- */
+const IC = {
+  dir:[".###......","#...#.....","##########","#++++++++#","#++++++++#","#++++++++#","#++++++++#","##########"],
+  pdd:["##########","#++++++++#","#+##+++++#","#+##++##+#","#+++++##+#","#+++##+++#","#+++##+++#","##########"],
+  ase:["....######","....#++++#","..######+#","..#++++#+#","######+###","#++++#+#..","#++++###..","######...."],
+  png:["##########","#++++++++#","#+++++##+#","#+++++##+#","#++#+++++#","#+###+#++#","##########"],
+  pal:["####..####","#++#..#++#","####..####","..........","####..####","#++#..#++#","####..####"],
+  all:["#.#.#.#.#.",".#.#.#.#.#","#.#.#.#.#.",".#.#.#.#.#","#.#.#.#.#.",".#.#.#.#.#","#.#.#.#.#."],
+  up:["....#....","...###...","..#####..",".#######.","...###...","...###...","...###..."],
+  chev:["#######",".#####.","..###..","...#..."],
+  chevUp:["...#...","..###..",".#####.","#######"],
+  check:["......#",".....##","#...##.","##.##..",".###...","..#...."],
+  shift:["....#....","...#.#...","..#...#..",".#.....#.","###...###","..#...#..","..#...#..","..#####.."],
+  shiftOn:["....#....","...###...","..#####..",".#######.","#########","..#####..","..#####..","..#####.."],
+  bksp:["...########","..#.#...#.#",".#...#.#..#","#.....#...#",".#...#.#..#","..#.#...#.#","...########"],
+  grip:["#.#","...","#.#","...","#.#","...","#.#"],
+  eye:["...#####...",".##.....##.","#....#....#","#...###...#","#....#....#",".##.....##.","...#####..."],
+  lock:["..#####..",".#.....#.",".#.......","#########","#.......#","#...#...#","#...#...#","#########"],
+  sliders:["...#.......","###.#######","...#.......","...........",".......#...","#######.###",".......#..."],
+};
+function typeIcon(s,x,y,t){ bmp(s,x,y,IC[t],{"#":TINT[t],"+":DIM[t]}); }
+
+/* ---------- sample artwork ---------- */
+function mapArt(rows,pal){ return { w:rows[0].length, h:rows.length, px:(x,y)=>pal[rows[y][x]]||null }; }
+const SLIME = mapArt(["................","................","................","................","......kkkk......","....kkhhggkk....","...khhggggggk...","..khgggggggggk..","..kgggwkgwkggk..","..kgggwkgwkggk..",".kggggggggggggk.",".kgGggggggggGgk.",".kGGGggggggGGGk.","..kGGGGGGGGGGk..","...kkkkkkkkkk...","................"],
+  {k:"#1b2a1f",g:"#5fd068",G:"#3fa34d",w:"#ffffff",h:"#b6f5a8"});
+const KNIGHT = mapArt(["................",".....kkkkkk.....","....kssssssk....","...ksSSSSSSsk...","...ksSkkkkSsk...","...ksSkyykSsk...","...ksSkkkkSsk...","...kssssssssk...","....kssssssk....","...kkrrrrrrkk...","..krrRRRRRRrrk..","..krRRRyyRRRrk..","..krRRRyyRRRrk..","..kkrrrrrrrrkk..","...kk.kkkk.kk...","................"],
+  {k:"#1b1f24",s:"#c9d3da",S:"#8a99a3",r:"#c0483f",R:"#8e2f2a",y:"#f2c94c"});
+function hash(x,y){ let h=(x*374761393+y*668265263)^0x5bd1e995; h=(h^(h>>>13))*1274126177; return ((h^(h>>>16))>>>0)/4294967296; }
+const FOREST = { w:32, h:32, px:(x,y)=>{ const t=hash(x>>2,y>>2); if(t>0.78){ const cx=(x&3), cy=(y&3); return (cx===0||cx===3)&&(cy===0||cy===3) ? "#2f7d3b" : (cy===3 ? "#6b4a2b" : "#1f5e2c"); } return hash(x,y)>0.85 ? "#7cc66a" : "#5aa84f"; } };
+const TITLE = { w:32, h:24, px:(x,y)=>{ const m=14+Math.round(4*Math.sin(x/4)); if(y>m) return y>20?"#2b2440":"#463a68"; if(x>22&&x<27&&y>3&&y<8) return "#ffd36b"; return ["#ff9e7a","#ff8a7a","#e8708a","#b8609a","#7a5aa8","#4c4c9c"][Math.min(5,y>>2)]; } };
+const HERO = mapArt(["................","................",".....kkkkkk.....","....kbbbbbbk....","...kbbbbbbbbk...","...kffffffffk...","...kfwkffwkfk...","...kffffffffk...","....kffffffk....","...kkggggggkk...","..kgggGGGGgggk..","..kgfGGGGGGfgk..","...kkGGGGGGkk...","....kkk..kkk....","....kk....kk....","................"],
+  {k:"#1d1b24",b:"#6b4a2b",f:"#f1c09b",w:"#ffffff",g:"#3b6fd1",G:"#2a52a3"});
+const PICO8 = ["#000000","#1D2B53","#7E2553","#008751","#AB5236","#5F574F","#C2C3C7","#FFF1E8","#FF004D","#FFA300","#FFEC27","#00E436","#29ADFF","#83769C","#FF77A8","#FFCCAA"];
+const SWEETIE = ["#1a1c2c","#5d275d","#b13e53","#ef7d57","#ffcd75","#a7f070","#38b764","#257179","#29366f","#3b5dc9","#41a6f6","#73eff7","#f4f4f4","#94b0c2","#566c86","#333c57"];
+
+function drawArt(s,art,x,y,size){
+  checker(s,x,y,size,size,4);
+  const k=Math.max(1,Math.floor(size/Math.max(art.w,art.h))), ox=x+((size-art.w*k)>>1), oy=y+((size-art.h*k)>>1);
+  for(let yy=0;yy<art.h;yy++) for(let xx=0;xx<art.w;xx++){ const c=art.px(xx,yy); if(c) rect(s,ox+xx*k,oy+yy*k,k,k,c); }
+  return k;
+}
+
+/* ---------- sample file system ---------- */
+const FS = {
+  "~/sprites": [
+    {n:"walk-cycle",t:"dir"},{n:"tiles",t:"dir"},
+    {n:"Slime.pdd",t:"pdd",kb:4,dims:"16 x 16",layers:3,fmt:"PDD8",art:SLIME},
+    {n:"slime_walk_01.pdd",t:"pdd",kb:6,dims:"16 x 16",layers:4,fmt:"PDD8",art:SLIME},
+    {n:"Knight.aseprite",t:"ase",kb:9,dims:"16 x 16",layers:5,fmt:"ASEPRITE",art:KNIGHT},
+    {n:"Forest Map.pdd",t:"pdd",kb:148,dims:"256 x 256",layers:6,fmt:"PDD9",art:FOREST},
+    {n:"title-screen.png",t:"png",kb:12,dims:"256 x 192",fmt:"PNG RGBA",art:TITLE},
+    {n:"icon.png",t:"png",kb:1,dims:"16 x 16",fmt:"PNG INDEXED",art:SLIME},
+    {n:"Pico8.gpl",t:"pal",kb:1,colors:PICO8,fmt:"GPL"},
+    {n:"sweetie16.hex",t:"pal",kb:1,colors:SWEETIE,fmt:"HEX"},
+    {n:"hero_idle.pdd",t:"pdd",kb:5,dims:"16 x 16",layers:2,fmt:"PDD8",art:HERO},
+    {n:"Boss Fight.aseprite",t:"ase",kb:31,dims:"64 x 64",layers:8,fmt:"ASEPRITE",art:KNIGHT},
+  ],
+  "~/sprites/walk-cycle": [1,2,3,4].map(i=>({n:`slime_walk_0${i}.pdd`,t:"pdd",kb:5+i,dims:"16 x 16",layers:4,fmt:"PDD8",art:SLIME})),
+  "~/sprites/tiles": [{n:"grass.png",t:"png",kb:2,dims:"32 x 32",fmt:"PNG RGBA",art:FOREST},{n:"tileset.aseprite",t:"ase",kb:22,dims:"128 x 128",layers:3,fmt:"ASEPRITE",art:FOREST}],
+};
+const FILTERS = [
+  {label:"PROJECTS",ext:"PDD ASE",icon:"pdd",types:["pdd","ase"]},
+  {label:"NATIVE PDD",ext:"PDD",icon:"pdd",types:["pdd"]},
+  {label:"ASEPRITE",ext:"ASE",icon:"ase",types:["ase"]},
+  {label:"PALETTES",ext:"GPL HEX",icon:"pal",types:["pal"]},
+  {label:"PNG IMAGES",ext:"PNG",icon:"png",types:["png"]},
+  {label:"ALL FILES",ext:"*",icon:"all",types:["pdd","ase","pal","png"]},
+];
+
+/* ---------- state ---------- */
+const S = { tab:"menu", con:"dsi", build:"private",
+  br:{ mode:"open", dir:"~/sprites", filter:0, sel:2, scroll:0, dd:false },
+  kb:{ text:"Slime_walk", cursor:10, shift:0, sym:false },
+  pressed:null, toast:null, toastUntil:0 };
+
+function listing(){
+  const f=FILTERS[S.br.filter];
+  const items=(FS[S.br.dir]||[]).filter(it=>it.t==="dir"||f.types.includes(it.t));
+  return items.sort((a,b)=> (a.t==="dir")!==(b.t==="dir") ? (a.t==="dir"?-1:1) : a.n.toLowerCase().localeCompare(b.n.toLowerCase()));
+}
+function dims(){ return S.con==="dsi" ? {tw:256,th:192,bw:256,bh:192} : {tw:400,th:240,bw:320,bh:240}; }
+function toast(msg){ S.toast=msg; S.toastUntil=performance.now()+1800; draw(); setTimeout(draw,1850); }
+
+/* ---------- top screen helpers ---------- */
+function topHeader(s,iconType,title,tag){
+  rect(s,0,0,s.w,16,C.rail);
+  let x=5; if(iconType){ typeIcon(s,5,4,iconType); x=19; }
+  const tagW=tag?tw(tag)+8:0;
+  text(s,x,5,fit(title,s.w-x-tagW-10),C.text);
+  if(tag){ const tx=s.w-tagW-4; frame(s,tx,3,tagW,11,iconType?TINT[iconType]:C.accent,C.rail); text(s,tx+4,5,tag,iconType?TINT[iconType]:C.accent); }
+}
+function topFooter(s,msg,color){
+  const now=performance.now(); const t=S.toast&&now<S.toastUntil;
+  rect(s,0,s.h-16,s.w,16,C.rail); text(s,5,s.h-11,fit(t?S.toast:msg,s.w-10),t?C.accent:(color||C.muted));
+}
+function infoRows(s,x,y,rows){
+  rows.forEach(([k,v,c],i)=>{ text(s,x,y+i*20,k,C.muted); text(s,x,y+i*20+9,fit(v,s.w-x-6),c||C.text); });
+}
+
+/* ---------- MENU ---------- */
+function menuLayout(w,h){
+  const big=w>256, bh=big?28:22, gap=big?6:5, x=4, full=w-8; let y=big?32:30; const items=[];
+  const row=(labels)=>{ const n=labels.length, bw=Math.floor((full-(n-1)*4)/n);
+    labels.forEach((l,i)=>items.push({id:l,label:l,x:x+i*(bw+4),y,w:i===n-1?full-(n-1)*(bw+4):bw,h:bh})); y+=bh+gap; };
+  row(["NEW PROJECT"]); row(["SAVE","SAVE AS","EXPORT"]); row(["OPEN / FILE BROWSER"]); row(["SETTINGS","RECOVERY"]);
+  row(S.build==="private"?["EXIT","SEND SPRITE"]:["EXIT"]);
+  return items;
+}
+const MENU_SAYS = { "NEW PROJECT":"OPENS NEW PROJECT SETUP", "SAVE":"SAVED Slime.pdd", "SAVE AS":"OPENS SAVE AS BROWSER", "EXPORT":"OPENS EXPORT: ASEPRITE OR PNG",
+  "OPEN / FILE BROWSER":"OPENS FILE BROWSER", "SETTINGS":"OPENS SETTINGS", "RECOVERY":"OPENS RECOVERY", "EXIT":"ASKS BEFORE LEAVING", "SEND SPRITE":"OPENS SEND ACTIVE LAYER / VISIBLE" };
+function drawMenu(top,bot){
+  topHeader(top,"pdd","Slime.pdd","L1 4X");
+  const size=top.h-16-16-12; drawArt(top,SLIME,(top.w-size)>>1,22,size);
+  topFooter(top,"SAVED  16 x 16  3 LAYERS");
+  rect(bot,0,0,bot.w,bot.h,C.bg); rail(bot,5);
+  menuLayout(bot.w,bot.h).forEach(b=>button(bot,b.x,b.y,b.w,b.h,b.label,S.pressed===b.id));
+  text(bot,6,bot.h-12,"Slime.pdd - SAVED",C.accent);
+}
+
+/* ---------- BROWSER ---------- */
+function brLayout(w,h){
+  const dsi=w===256, rowH=dsi?14:16, fh=dsi?20:24, footY=h-fh-4, save=S.br.mode==="save";
+  const nameH=dsi?16:18, nameY=footY-nameH-4, listTop=64, listBot=(save?nameY:footY)-3;
+  const bw=Math.floor((w-8-12)/4);
+  const labels=save?["NEW DIR","MORE","CANCEL","SAVE"]:["NEW DIR","MORE","CANCEL","OPEN"];
+  return { dsi,rowH,listTop,listBot,listH:listBot-listTop,
+    recent:{x:w-56,y:25,w:52,h:15}, up:{x:4,y:44,w:22,h:18}, dd:{x:30,y:44,w:w-34,h:18},
+    name:{x:4,y:nameY,w:w-8,h:nameH},
+    foot:labels.map((l,i)=>({id:l,label:l,x:4+i*(bw+4),y:footY,w:i===3?w-4-(4+3*(bw+4)):bw,h:fh})),
+    ddRows:{x:30,y:63,w:w-34,rh:dsi?15:16} };
+}
+function maxScroll(L){ return Math.max(0,listing().length*L.rowH-L.listH); }
+function drawBrowser(top,bot){
+  const L=brLayout(bot.w,bot.h), items=listing(), save=S.br.mode==="save";
+  rect(bot,0,0,bot.w,bot.h,C.bg); rail(bot,5);
+  const title=save?"SAVE AS":"OPEN"; text(bot,6,30,title,C.accent);
+  text(bot,6+tw(title)+8,30,fit(S.br.dir,L.recent.x-(6+tw(title)+8)-6),C.muted);
+  button(bot,L.recent.x,L.recent.y,L.recent.w,L.recent.h,"RECENT",false,{center:true});
+  frame(bot,L.up.x,L.up.y,L.up.w,L.up.h,C.edge,S.br.dir==="~/sprites"?C.deep:C.panel);
+  bmp(bot,L.up.x+7,L.up.y+5,IC.up,{"#":S.br.dir==="~/sprites"?C.edge:C.text});
+  const f=FILTERS[S.br.filter], dd=L.dd;
+  frame(bot,dd.x,dd.y,dd.w,dd.h,S.br.dd?C.accent:C.edge,C.panel);
+  typeIcon(bot,dd.x+5,dd.y+5,f.icon); text(bot,dd.x+20,dd.y+6,f.label,C.text);
+  text(bot,dd.x+20+tw(f.label)+8,dd.y+6,fit(f.ext,dd.w-tw(f.label)-50),C.muted);
+  bmp(bot,dd.x+dd.w-12,dd.y+7,S.br.dd?IC.chevUp:IC.chev,{"#":C.accent});
+  // list
+  const ctx=bot.ctx; ctx.save(); ctx.beginPath(); ctx.rect(4,L.listTop,bot.w-14,L.listH); ctx.clip();
+  items.forEach((it,i)=>{ const y=L.listTop+i*L.rowH-S.br.scroll; if(y+L.rowH<L.listTop||y>L.listBot) return;
+    const on=i===S.br.sel;
+    if(on) frame(bot,4,y,bot.w-14,L.rowH,C.accent,C.sel); else rect(bot,6,y+L.rowH-1,bot.w-18,1,C.line);
+    typeIcon(bot,8,y+((L.rowH-8)>>1),it.t);
+    const meta=it.t==="dir"?">":`${it.kb} KB`; const mx=bot.w-14-tw(meta)-4;
+    text(bot,22,y+((L.rowH-7)>>1),fit(it.n,mx-22-6),on?C.text:(it.t==="dir"?C.text:C.text));
+    text(bot,mx,y+((L.rowH-7)>>1),meta,on?C.text:C.muted);
+  });
+  if(!items.length) text(bot,10,L.listTop+8,"NO MATCHING FILES HERE",C.muted);
+  ctx.restore();
+  const total=items.length*L.rowH; rect(bot,bot.w-8,L.listTop,3,L.listH,C.deep);
+  if(total>L.listH){ const th=Math.max(10,Math.round(L.listH*L.listH/total)), ty=L.listTop+Math.round((L.listH-th)*S.br.scroll/maxScroll(L)); rect(bot,bot.w-8,ty,3,th,C.accent); }
+  else rect(bot,bot.w-8,L.listTop,3,L.listH,C.edge);
+  if(save){ const n=L.name; frame(bot,n.x,n.y,n.w,n.h,C.edge,C.panel); text(bot,n.x+6,n.y+((n.h-7)>>1),"NAME",C.muted);
+    const nm=S.kb.text||""; text(bot,n.x+36,n.y+((n.h-7)>>1),fit(nm,n.w-36-40),C.accent); text(bot,n.x+n.w-30,n.y+((n.h-7)>>1),".pdd",C.muted); }
+  L.foot.forEach(b=>button(bot,b.x,b.y,b.w,b.h,b.label,b.id==="OPEN"||b.id==="SAVE",{center:true}));
+  if(S.br.dd) drawDropdown(bot,L);
+  drawPreview(top,items[S.br.sel]);
+}
+function drawDropdown(s,L){
+  const d=L.ddRows, h=FILTERS.length*d.rh+2;
+  frame(s,d.x,d.y,d.w,h,C.accent,C.deep);
+  FILTERS.forEach((f,i)=>{ const y=d.y+1+i*d.rh, on=i===S.br.filter;
+    if(on) rect(s,d.x+1,y,d.w-2,d.rh,C.sel); else if(i) rect(s,d.x+4,y,d.w-8,1,C.line);
+    typeIcon(s,d.x+5,y+((d.rh-8)>>1),f.icon); text(s,d.x+20,y+((d.rh-7)>>1),f.label,C.text);
+    text(s,d.x+20+tw("PNG IMAGES")+8,y+((d.rh-7)>>1),f.ext,on?C.text:C.muted);
+    if(on) bmp(s,d.x+d.w-12,y+((d.rh-6)>>1),IC.check,{"#":C.accent}); });
+}
+function drawPreview(top,it){
+  if(S.br.mode==="save") return drawSaveTarget(top);
+  rect(top,0,0,top.w,top.h,C.bg);
+  if(!it){ topHeader(top,null,S.br.dir,""); topFooter(top,"CHOOSE ANOTHER TYPE ABOVE"); return; }
+  const tag=it.t==="dir"?"FOLDER":it.fmt.split(" ")[0];
+  topHeader(top,it.t,it.n,tag);
+  const size=top.h-16-16-14, px=8, py=23, ix=px+size+12;
+  if(it.t==="dir"){
+    frame(top,px,py,size,size,C.line,C.deep);
+    const k=Math.floor(size*0.5/10); const big=IC.dir.map(r=>r);
+    for(let yy=0;yy<big.length;yy++) for(let xx=0;xx<big[yy].length;xx++){ const ch=big[yy][xx]; if(ch!==".") rect(top,px+((size-10*k)>>1)+xx*k,py+((size-8*k)>>1)+yy*k,k,k,ch==="#"?TINT.dir:DIM.dir); }
+    const n=(FS[S.br.dir+"/"+it.n]||[]).length;
+    infoRows(top,ix,py+2,[["FOLDER",it.n],["CONTAINS",`${n} ITEMS`],["TAP AGAIN","TO OPEN",C.accent]]);
+    topFooter(top,"UP RETURNS TO THE PARENT FOLDER"); return;
+  }
+  if(it.t==="pal"){
+    frame(top,px,py,size,size,C.line,C.deep); const cols=4, cs=Math.floor((size-10)/cols);
+    it.colors.forEach((c,i)=>rect(top,px+5+(i%cols)*cs,py+5+Math.floor(i/cols)*cs,cs-2,cs-2,c));
+    infoRows(top,ix,py+2,[["COLORS",String(it.colors.length)],["FORMAT",it.fmt],["FILE",`${it.kb} KB`],["OPENS AS","PROJECT PALETTE",C.accent]]);
+    topFooter(top,"ARTWORK IS NOT CHANGED"); return;
+  }
+  frame(top,px-1,py-1,size+2,size+2,C.edge,C.bg); drawArt(top,it.art,px,py,size);
+  const rows=[["SIZE",it.dims],it.layers?["LAYERS",String(it.layers)]:["IMPORTS AS","1 LAYER"],["FILE",`${it.kb} KB`],["FORMAT",it.fmt]];
+  if(top.h>200) rows.push(["PALETTE",it.t==="png"?"FROM IMAGE":"32 COLORS"]);
+  infoRows(top,ix,py+2,rows);
+  topFooter(top,"OPEN REPLACES UNSAVED ART",C.warn);
+}
+function drawSaveTarget(top){
+  rect(top,0,0,top.w,top.h,C.bg);
+  const nm=(S.kb.text||"untitled")+".pdd"; topHeader(top,"pdd",nm,"SAVE AS");
+  const size=top.h-16-16-14, px=8, py=23, ix=px+size+12;
+  frame(top,px-1,py-1,size+2,size+2,C.edge,C.bg); drawArt(top,SLIME,px,py,size);
+  const exists=(FS[S.br.dir]||[]).some(it=>it.n.toLowerCase()===nm.toLowerCase());
+  infoRows(top,ix,py+2,[["NAME",nm,C.accent],["FOLDER",S.br.dir],["FORMAT","PDD8  3 LAYERS"],exists?["EXISTS","REPLACES FILE",C.warn]:["NEW FILE","NOTHING REPLACED"]]);
+  topFooter(top,exists?"BACKUP KEPT BEFORE REPLACING":"LETTERS, NUMBERS, SPACE - _",exists?C.warn:C.muted);
+}
+
+/* ---------- KEYBOARD ---------- */
+const KEYS = { lower:["qwertyuiop","asdfghjkl","zxcvbnm"], sym:["1234567890","-_()!&+',","=~$%;[]"] };
+function kbLayout(w,h){
+  const dsi=w===256, rowH=dsi?22:28, top=dsi?64:70, kw=Math.floor((w-8)/10), x0=4+((w-8-kw*10)>>1), keys=[];
+  const rows=S.kb.sym?KEYS.sym:KEYS.lower;
+  [...rows[0]].forEach((c,i)=>keys.push({k:c,x:x0+i*kw,y:top,w:kw,h:rowH}));
+  [...rows[1]].forEach((c,i)=>keys.push({k:c,x:x0+(rows[1].length===9?kw>>1:0)+i*kw,y:top+rowH,w:kw,h:rowH}));
+  const sw=Math.floor(kw*1.5); keys.push({k:"SHIFT",x:x0,y:top+2*rowH,w:sw,h:rowH});
+  [...rows[2]].forEach((c,i)=>keys.push({k:c,x:x0+sw+i*kw,y:top+2*rowH,w:kw,h:rowH}));
+  const bx=x0+sw+rows[2].length*kw; keys.push({k:"BKSP",x:bx,y:top+2*rowH,w:x0+kw*10-bx,h:rowH});
+  const r3=top+3*rowH, spec=[["SYM",1.5],["-",1],["SPACE",4],["_",1],["<",1.25],[">",1.25]]; let x=x0;
+  spec.forEach(([k,u],i)=>{ const ww=i===spec.length-1?x0+kw*10-x:Math.round(kw*u); keys.push({k,x,y:r3,w:ww,h:rowH}); x+=ww; });
+  const fh=dsi?20:24, fy=h-fh-4, half=Math.floor((w-12)/2);
+  return { keys, field:{x:4,y:dsi?40:42,w:w-8,h:dsi?20:22}, foot:[{id:"CANCEL",x:4,y:fy,w:half,h:fh},{id:"DONE",x:8+half,y:fy,w:w-12-half,h:fh}] };
+}
+function keyCap(k){ if(k.length>1) return k; return (!S.kb.sym && S.kb.shift) ? k.toUpperCase() : k; }
+function drawKeyboard(top,bot){
+  drawSaveTarget(top);
+  const L=kbLayout(bot.w,bot.h); rect(bot,0,0,bot.w,bot.h,C.bg); rail(bot,5);
+  text(bot,6,29,"FILE NAME",C.text); text(bot,6+tw("FILE NAME")+8,29,"EXTENSION ADDED",C.muted);
+  const f=L.field; frame(bot,f.x,f.y,f.w,f.h,C.accent,C.panel);
+  const shown=fit(S.kb.text,f.w-50); text(bot,f.x+6,f.y+((f.h-7)>>1),shown,C.accent);
+  rect(bot,f.x+6+Math.min(S.kb.cursor,shown.length)*6-1,f.y+3,1,f.h-6,C.text);
+  frame(bot,f.x+f.w-34,f.y+3,30,f.h-6,C.edge,C.deep); text(bot,f.x+f.w-31,f.y+((f.h-7)>>1),".pdd",C.muted);
+  L.keys.forEach(k=>{ const p=S.pressed==="key:"+k.k;
+    const active=(k.k==="SHIFT"&&S.kb.shift>0)||(k.k==="SYM"&&S.kb.sym);
+    frame(bot,k.x+1,k.y+1,k.w-2,k.h-2,C.edge,p?C.edge:(active?C.sel:(k.k.length>1?C.deep:C.panel)));
+    const cy=k.y+((k.h-7)>>1);
+    if(k.k==="SHIFT"){ bmp(bot,k.x+((k.w-9)>>1),k.y+((k.h-8)>>1),S.kb.shift?IC.shiftOn:IC.shift,{"#":C.text}); if(S.kb.shift===2) rect(bot,k.x+((k.w-9)>>1),k.y+k.h-5,9,1,C.text); }
+    else if(k.k==="BKSP") bmp(bot,k.x+((k.w-11)>>1),k.y+((k.h-7)>>1),IC.bksp,{"#":C.text});
+    else if(k.k==="SYM") text(bot,k.x+((k.w-tw(S.kb.sym?"abc":"123"))>>1),cy,S.kb.sym?"abc":"123",C.text);
+    else if(k.k==="SPACE") text(bot,k.x+((k.w-tw("SPACE"))>>1),cy,"SPACE",C.muted);
+    else { const cap=keyCap(k.k); text(bot,k.x+((k.w-tw(cap))>>1),cy,cap,C.text); } });
+  L.foot.forEach(b=>button(bot,b.x,b.y,b.w,b.h,b.id,b.id==="DONE",{center:true}));
+}
+
+/* ---------- ADJUST HOME (Layers) ---------- */
+const LAYERS=[{n:"Outline",m:"NORMAL 100%"},{n:"Shading",m:"MULTIPLY 76%",hid:false},{n:"Base colors",m:"NORMAL 100%"},{n:"Paper",m:"NORMAL 100%",hid:true}];
+function adjLayout(w,h){ const dsi=w===256, fh=dsi?20:24, fy=h-fh-4, bw=Math.floor((w-16)/3);
+  return { rowH:dsi?20:24, foot:[{id:"+ NEW LAYER",x:4,y:fy,w:bw,h:fh},{id:"ADJUST",x:8+bw,y:fy,w:bw,h:fh},{id:"DELETE",x:12+2*bw,y:fy,w:w-16-2*bw,h:fh}] }; }
+function drawAdjust(top,bot){
+  rect(top,0,0,top.w,top.h,C.bg); topHeader(top,null,"LAYERS","1 OF 4");
+  const size=Math.floor((top.w-24)/2), ps=Math.min(size,top.h-16-16-26), y=34;
+  text(top,8,22,"COMPOSITE",C.muted); text(top,16+ps,22,"ACTIVE: Outline",C.muted);
+  frame(top,7,y-1,ps+2,ps+2,C.edge,C.bg); drawArt(top,SLIME,8,y,ps);
+  frame(top,15+ps,y-1,ps+2,ps+2,C.edge,C.bg); checker(top,16+ps,y,ps,ps,4);
+  const k=Math.floor(ps/16); for(let yy=0;yy<16;yy++) for(let xx=0;xx<16;xx++){ const c=SLIME.px(xx,yy); if(c==="#1b2a1f") rect(top,16+ps+((ps-16*k)>>1)+xx*k,y+((ps-16*k)>>1)+yy*k,k,k,c); }
+  topFooter(top,"ADJUST: THIS LAYER, VISIBLE OR SELECTION");
+  const L=adjLayout(bot.w,bot.h); rect(bot,0,0,bot.w,bot.h,C.bg); rail(bot,3);
+  text(bot,6,29,"4/8 LAYERS",C.text); text(bot,6+tw("4/8 LAYERS")+12,29,"4 FREE",C.muted);
+  LAYERS.forEach((l,i)=>{ const y=40+i*(L.rowH+2), on=i===0;
+    frame(bot,4,y,bot.w-14,L.rowH,C.edge,on?C.sel:C.panel);
+    const ty=y+((L.rowH-16)>>1);
+    bmp(bot,9,y+((L.rowH-7)>>1),IC.grip,{"#":C.muted}); bmp(bot,18,y+((L.rowH-7)>>1),IC.eye,{"#":l.hid?C.edge:C.text});
+    text(bot,36,ty,l.n,C.text); text(bot,36,ty+9,l.m,C.muted);
+    bmp(bot,bot.w-42,y+((L.rowH-8)>>1),IC.lock,{"#":C.muted}); bmp(bot,bot.w-28,y+((L.rowH-7)>>1),IC.sliders,{"#":C.muted}); });
+  rect(bot,bot.w-8,40,3,L.foot[0].y-44,C.accent);
+  L.foot.forEach(b=>button(bot,b.x,b.y,b.w,b.h,b.id,b.id==="+ NEW LAYER"||S.pressed===b.id,{center:true,edge:b.id==="ADJUST"?C.accent:C.edge}));
+}
+
+/* ---------- notes ---------- */
+const NOTES = {
+  menu:`<section><h2>What changes</h2><ul>
+    <li>Rows follow your order: New Project; Save, Save As, Export; Open / File Browser; Settings, Recovery; Exit, Send Sprite.</li>
+    <li>Adjust leaves the Menu. The <em>Adjust home</em> tab shows the suggested new place.</li>
+    <li>Send Sprite exists only in private builds. Standard builds give Exit the full row (switch Build above).</li>
+    <li>The status line shows the project name as typed, in mixed case.</li></ul></section>
+    <section><h2>Engineering notes</h2><ul>
+    <li>Pure layout change in the Menu page of <code>ui/app.c</code>: button rects and hit zones move together; no new state.</li>
+    <li>Rows are 22&nbsp;px on DSi and 28&nbsp;px on 3DS, matching current touch targets.</li></ul></section>
+    <p class="try">Tap a Menu button to see what it would open.</p>`,
+  browser:`<section><h2>What changes</h2><ul>
+    <li>Seven rows on DSi and nine on 3DS, up from about three. Each file takes one line instead of a two-line box.</li>
+    <li>Every row has a type icon: folder, native project, Aseprite, PNG and palette each get their own shape and tint.</li>
+    <li>Folders sort first and end in a <code>&gt;</code>. Tap once to preview, tap again to enter. Up returns to the parent.</li>
+    <li>The type filter is a real dropdown instead of a cycling button. It lists each type with its extensions.</li>
+    <li>The path sits beside the title, so it no longer needs its own row.</li>
+    <li>Dimensions, layers and format move to the upper screen, which now has a framed preview, an info column, a type tag and an unsaved-art warning.</li>
+    <li>Save As keeps the list and adds a name row with the <code>.pdd</code> extension shown.</li></ul></section>
+    <section><h2>Engineering notes</h2><ul>
+    <li>Row metadata is the file size from the directory entry, so listing stays as cheap as today. Dimensions and layers come from the existing preview decode of the selected file only.</li>
+    <li>The dropdown can reuse the existing <code>PdDropdown</code> used for layer blend modes (touch capture, clipped rows, swipe scrolling).</li>
+    <li>Icons are 10&times;8 one-bit bitmaps with an outline and fill tint; they cost under 100 bytes in total.</li>
+    <li>Names keep their real case once <code>text()</code> stops forcing uppercase for user strings (see Keyboard).</li></ul></section>
+    <p class="try">Tap rows, drag the list to scroll, open the type dropdown, enter a folder, and switch Mode to Save As.</p>`,
+  keyboard:`<section><h2>What changes</h2><ul>
+    <li>Keys show lowercase by default. Shift (the arrow key) gives one capital; tap it again for caps lock, shown with an underline.</li>
+    <li>Backspace moves onto the keyboard beside M, like a phone. The footer keeps only Cancel and Done.</li>
+    <li>The field shows the <code>.pdd</code> extension the app adds, instead of a "without extension" label.</li>
+    <li>The upper screen shows the save target live: name, folder, format, and a warning if a file with that name exists.</li>
+    <li><code>123</code> switches to digits and filename-safe symbols.</li></ul></section>
+    <section><h2>Engineering notes</h2><ul>
+    <li>The font already has all 26 lowercase glyphs in <code>ui/menu_font.h</code>. They never show because <code>text()</code> converts letters to uppercase before drawing.</li>
+    <li>Add a <code>text_raw()</code> for user strings (file, folder, layer and palette names) and keep <code>text()</code> uppercase for labels and status messages, so messages like "Undo" keep today's look.</li>
+    <li>The six rail icons live in their own <code>uiIconAlpha</code> table, so nothing in the font needs to move.</li></ul></section>
+    <p class="try">Type on the touch keyboard or your own keyboard. Tap Shift once, then twice.</p>`,
+  adjust:`<section><h2>Suggested home: Layers</h2><ul>
+    <li>Adjust changes layer pixels, and its scopes are this layer, all visible layers, or the selection. The Layers screen already shows which layer is active and what is visible, so the scope is clear before you open it.</li>
+    <li>The footer becomes New Layer, Adjust, Delete. Delete keeps its confirmation.</li>
+    <li>The upper screen's composite and active-layer previews already match what Adjust works on.</li></ul></section>
+    <section><h2>Other places considered</h2><ul>
+    <li><strong>Color workspace tab</strong> beside Swatches, Picker and Edit. Close in subject, but that screen picks drawing colors and never touches artwork, so mixing the two could surprise.</li>
+    <li><strong>Select panel</strong> button next to Transform. Good for selection scope only; the layer scopes would still need another entry point.</li></ul></section>
+    <section><h2>Engineering notes</h2><ul>
+    <li>Footer goes from two buttons to three; Adjust opens the existing page 31 with scope preset to the active layer, or to Selection when one exists.</li></ul></section>`,
+};
+
+/* ---------- render loop ---------- */
+const topC=document.getElementById("top"), botC=document.getElementById("bottom");
+function draw(){
+  const d=dims(); topC.width=d.tw; topC.height=d.th; botC.width=d.bw; botC.height=d.bh;
+  topC.style.width="100%"; topC.style.maxWidth=(d.tw*2)+"px";
+  botC.style.width=(d.bw/d.tw*100)+"%"; botC.style.maxWidth=(d.bw*2)+"px";
+  const top={ctx:topC.getContext("2d"),w:d.tw,h:d.th}, bot={ctx:botC.getContext("2d"),w:d.bw,h:d.bh};
+  rect(top,0,0,top.w,top.h,C.bg); rect(bot,0,0,bot.w,bot.h,C.bg);
+  ({menu:drawMenu,browser:drawBrowser,keyboard:drawKeyboard,adjust:drawAdjust})[S.tab](top,bot);
+  document.getElementById("caption").textContent = S.con==="dsi" ? "DSi · 256 × 192 upper / 256 × 192 touch · drawn at native size" : "3DS · 400 × 240 upper / 320 × 240 touch · drawn at native size";
+}
+function setNotes(){ document.getElementById("notes").innerHTML=NOTES[S.tab]; }
+function syncControls(){
+  document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tab===S.tab)));
+  document.querySelectorAll("[data-console]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.console===S.con)));
+  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.mode===S.br.mode)));
+  document.querySelectorAll("[data-build]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.build===S.build)));
+  document.getElementById("ctx-browser").hidden=S.tab!=="browser"; document.getElementById("ctx-menu").hidden=S.tab!=="menu";
+}
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{ S.tab=b.dataset.tab; S.br.dd=false; try{ history.replaceState(null,"","#"+S.tab); }catch(e){} syncControls(); setNotes(); draw(); }));
+document.querySelectorAll("[data-console]").forEach(b=>b.addEventListener("click",()=>{ S.con=b.dataset.console; S.br.scroll=0; syncControls(); draw(); }));
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{ S.br.mode=b.dataset.mode; S.br.scroll=0; S.br.dd=false; syncControls(); draw(); }));
+document.querySelectorAll("[data-build]").forEach(b=>b.addEventListener("click",()=>{ S.build=b.dataset.build; syncControls(); draw(); }));
+
+/* ---------- touch input on the lower screen ---------- */
+const inside=(r,x,y)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h;
+let drag=null;
+function native(e){ const r=botC.getBoundingClientRect(); return { x:Math.floor((e.clientX-r.left)*botC.width/r.width), y:Math.floor((e.clientY-r.top)*botC.height/r.height) }; }
+function flash(id){ S.pressed=id; draw(); setTimeout(()=>{ if(S.pressed===id){ S.pressed=null; draw(); } },140); }
+botC.addEventListener("pointerdown",e=>{ const p=native(e); botC.setPointerCapture(e.pointerId);
+  if(S.tab==="browser"){ const L=brLayout(botC.width,botC.height);
+    if(!S.br.dd && p.y>=L.listTop && p.y<L.listBot && p.x<botC.width-6){ drag={y0:p.y,s0:S.br.scroll,moved:false,L}; return; } }
+  drag=null; tap(p.x,p.y); });
+botC.addEventListener("pointermove",e=>{ if(!drag) return; const p=native(e), dy=p.y-drag.y0;
+  if(Math.abs(dy)>3) drag.moved=true; if(drag.moved){ S.br.scroll=Math.max(0,Math.min(maxScroll(drag.L),drag.s0-dy)); draw(); } });
+botC.addEventListener("pointerup",e=>{ if(!drag) return; const p=native(e); if(!drag.moved) tapRow(p.y,drag.L); drag=null; });
+botC.addEventListener("wheel",e=>{ if(S.tab!=="browser"||S.br.dd) return; e.preventDefault(); const L=brLayout(botC.width,botC.height); S.br.scroll=Math.max(0,Math.min(maxScroll(L),S.br.scroll+Math.sign(e.deltaY)*L.rowH)); draw(); },{passive:false});
+
+function tapRow(y,L){ const i=Math.floor((y-L.listTop+S.br.scroll)/L.rowH), items=listing(); if(i<0||i>=items.length) return;
+  if(i===S.br.sel){ const it=items[i];
+    if(it.t==="dir"){ S.br.dir=S.br.dir+"/"+it.n; S.br.sel=0; S.br.scroll=0; toast("OPENED "+it.n.toUpperCase()); return; }
+    toast(S.br.mode==="save"?"NAME SET FROM "+it.n:"ASKS BEFORE REPLACING ART"); if(S.br.mode==="save"){ S.kb.text=it.n.replace(/\.[^.]+$/,""); S.kb.cursor=S.kb.text.length; } return; }
+  S.br.sel=i; draw(); }
+function tap(x,y){
+  if(y<24){ toast("RAIL: UNDO REDO COLOR LAYERS TOOLS MENU"); return; }
+  if(S.tab==="menu"){ const b=menuLayout(botC.width,botC.height).find(b=>inside(b,x,y)); if(b){ flash(b.id); toast(MENU_SAYS[b.id]); } return; }
+  if(S.tab==="adjust"){ const L=adjLayout(botC.width,botC.height); const b=L.foot.find(b=>inside(b,x,y));
+    if(b){ flash(b.id); toast(b.id==="ADJUST"?"OPENS ADJUST: SCOPE THIS LAYER":b.id==="DELETE"?"ASKS BEFORE DELETING":"ADDS A LAYER ABOVE"); } return; }
+  if(S.tab==="browser"){ const L=brLayout(botC.width,botC.height);
+    if(S.br.dd){ const d=L.ddRows, i=Math.floor((y-d.y-1)/d.rh);
+      if(x>=d.x&&x<d.x+d.w&&i>=0&&i<FILTERS.length){ S.br.filter=i; S.br.sel=0; S.br.scroll=0; } S.br.dd=false; draw(); return; }
+    if(inside(L.dd,x,y)){ S.br.dd=true; draw(); return; }
+    if(inside(L.up,x,y)){ if(S.br.dir!=="~/sprites"){ S.br.dir="~/sprites"; S.br.sel=0; S.br.scroll=0; draw(); } else toast("ALREADY AT THE APP FOLDER"); return; }
+    if(inside(L.recent,x,y)){ toast("OPENS EIGHT RECENT PROJECTS"); return; }
+    if(S.br.mode==="save"&&inside(L.name,x,y)){ S.tab="keyboard"; syncControls(); setNotes(); draw(); return; }
+    const b=L.foot.find(b=>inside(b,x,y)); if(b){ flash(b.id); toast({"NEW DIR":"OPENS KEYBOARD FOR A FOLDER NAME","MORE":"RENAME / DUPLICATE / DELETE","CANCEL":"BACK TO THE CANVAS","OPEN":"ASKS BEFORE REPLACING ART","SAVE":"SAVES "+(S.kb.text||"untitled")+".pdd"}[b.id]); }
+    return; }
+  if(S.tab==="keyboard"){ const L=kbLayout(botC.width,botC.height);
+    const k=L.keys.find(k=>inside(k,x,y)); if(k){ flash("key:"+k.k); press(k.k); return; }
+    const b=L.foot.find(b=>inside(b,x,y)); if(b){ flash(b.id); if(b.id==="DONE"){ S.tab="browser"; S.br.mode="save"; syncControls(); setNotes(); draw(); } else toast("NAME UNCHANGED"); }
+    if(inside(L.field,x,y)){ S.kb.cursor=Math.max(0,Math.min(S.kb.text.length,Math.round((x-L.field.x-6)/6))); draw(); } }
+}
+function press(k){ const kb=S.kb;
+  if(k==="SHIFT"){ kb.shift=(kb.shift+1)%3; }
+  else if(k==="SYM"){ kb.sym=!kb.sym; }
+  else if(k==="BKSP"){ if(kb.cursor){ kb.text=kb.text.slice(0,kb.cursor-1)+kb.text.slice(kb.cursor); kb.cursor--; } }
+  else if(k==="<"){ kb.cursor=Math.max(0,kb.cursor-1); } else if(k===">"){ kb.cursor=Math.min(kb.text.length,kb.cursor+1); }
+  else { if(kb.text.length>=55) return toast("NAMES ARE UP TO 55 CHARACTERS"); const ch=k==="SPACE"?" ":keyCap(k);
+    kb.text=kb.text.slice(0,kb.cursor)+ch+kb.text.slice(kb.cursor); kb.cursor++; if(kb.shift===1) kb.shift=0; }
+  draw(); }
+document.addEventListener("keydown",e=>{ if(S.tab!=="keyboard"||e.ctrlKey||e.metaKey||e.altKey) return; const kb=S.kb;
+  if(e.key==="Backspace"){ press("BKSP"); e.preventDefault(); }
+  else if(e.key==="ArrowLeft") press("<"); else if(e.key==="ArrowRight") press(">");
+  else if(e.key.length===1 && /[A-Za-z0-9 \-_()!&+',=~$%;\[\]]/.test(e.key)){ if(kb.text.length<55){ kb.text=kb.text.slice(0,kb.cursor)+e.key+kb.text.slice(kb.cursor); kb.cursor++; draw(); } e.preventDefault(); } });
+
+const startTab=(location.hash||"").slice(1); if(NOTES[startTab]) S.tab=startTab;
+syncControls(); setNotes(); draw();
+</script>

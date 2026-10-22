@@ -1,0 +1,461 @@
+<title>Pixel Doodle Animation Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+  /* Layout: plan and memory budget read top to bottom; interactive device mockups follow with notes beside them. */
+  :root {
+    --bg: #0f161a;
+    --surface: #172024;
+    --shell: #0a1013;
+    --line: #2a383f;
+    --fg: #eef3f5;
+    --muted: #9fb3bb;
+    --accent: #79e0d3;
+    --accent-ink: #0b2e2b;
+    --good: #8fdc8a;
+    --warn: #f2c46b;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px;
+  }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 30px; }
+  h1 { font-size: 1.75rem; line-height: 1.2; margin: 0; font-weight: 600; text-wrap: balance; }
+  h2 { font-size: 1.15rem; margin: 0 0 10px; font-weight: 600; text-wrap: balance; }
+  .lede { margin: 8px 0 0; color: var(--muted); max-width: 72ch; }
+  .verdict { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--good); border-radius: 10px; padding: 14px 18px; max-width: 80ch; }
+  .verdict p { margin: 0; }
+  .verdict p + p { margin-top: 8px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+  .card p { margin: 0 0 8px; }
+  .card ul, .card ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font: 500 0.7rem/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  tr.total td { font-weight: 600; border-bottom: 0; }
+  .gain { color: var(--good); }
+  .warnc { color: var(--warn); }
+  .small { font-size: 0.85rem; color: var(--muted); margin-top: 10px !important; }
+  code { font-family: var(--font-mono); font-size: 0.85em; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+  kbd { font-family: var(--font-mono); font-size: 0.82em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--bg); white-space: nowrap; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { font: 500 0.78rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: transparent; border: 0; padding: 10px 13px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .seg-label { font: 500 0.72rem/1 var(--font-mono); letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-right: 8px; }
+  .group { display: inline-flex; align-items: center; }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 28px; align-items: start; }
+  @media (max-width: 920px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+  .device { background: var(--shell); border: 1px solid var(--line); border-radius: 20px; padding: 20px 18px; display: flex; flex-direction: column; align-items: center; }
+  .device canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; height: auto; touch-action: none; }
+  .hinge { width: 64%; height: 14px; margin: 6px 0; border-radius: 0 0 6px 6px; background: linear-gradient(var(--surface), var(--shell)); }
+  #bottom { cursor: pointer; }
+  .caption { margin-top: 12px; font: 500 0.72rem/1.4 var(--font-mono); letter-spacing: 0.05em; color: var(--muted); text-align: center; text-transform: uppercase; }
+  .notes { min-width: 0; display: grid; gap: 18px; }
+  .notes section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .notes h3 { margin: 0 0 8px; font: 500 0.75rem/1.2 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+  .notes ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .notes p { margin: 0; }
+  .try { color: var(--muted); font-size: 0.9rem; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Pixel Doodle animation plan</h1>
+    <p class="lede">Can a DS Lite hold a real animation, how much an optimization pass frees first, how frames would be stored, and mockups of the timeline, onion skin and frame shortcuts.</p>
+  </header>
+
+  <div class="verdict">
+    <p><strong>Yes: 30+ frames fit in RAM on a DS Lite for typical sprite sizes, with no card streaming.</strong> After the optimization pass, DS mode has about 1.6&nbsp;MiB for frames. A 64&times;64 sprite with 4 layers costs about 7&nbsp;KiB per frame, so roughly 200 frames. A busy 128&times;128 piece with 4 layers holds 50 to 100. DSi and 3DS hold far more.</p>
+    <p>Card streaming is only needed for large, dense canvases (8 full layers at 128&times;128 on DS, or 512&times;512 on DSi). It should wait until a card read-speed test on your DSpico says it is needed.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Optimization pass first: DS mode memory</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Item</th><th class="n">Today</th><th class="n">After</th></tr></thead>
+        <tbody>
+          <tr><td>Program image (standard build)</td><td class="n">652 KiB</td><td class="n gain">~242 KiB</td></tr>
+          <tr><td>Layer planes + 2 working planes</td><td class="n">640 KiB</td><td class="n">640 KiB</td></tr>
+          <tr><td>Undo history (shared by all frames)</td><td class="n">512 KiB</td><td class="n">512 KiB</td></tr>
+          <tr><td>Selection and redraw masks</td><td class="n">128 KiB</td><td class="n gain">8 KiB</td></tr>
+          <tr><td>Clipboard, file preview, gallery thumbnails</td><td class="n">106 KiB</td><td class="n gain">0 until used</td></tr>
+          <tr><td>Screen buffers</td><td class="n">384 KiB</td><td class="n gain">192 KiB</td></tr>
+          <tr><td>Other app state</td><td class="n">23 KiB</td><td class="n">23 KiB</td></tr>
+          <tr><td>Reserve for loading, fill, transforms</td><td class="n">256 KiB</td><td class="n">256 KiB</td></tr>
+          <tr class="total"><td>Left for frames, of 3,584 KiB</td><td class="n">~880 KiB</td><td class="n gain">~1,710 KiB</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">Measured from the current ARM build map and struct sizes. Private builds keep the network code for Send Sprite, so they get about 410&nbsp;KiB less.</p>
+    </div>
+    <div class="card">
+      <h2>Where the savings come from</h2>
+      <ul>
+        <li><strong>Drop the network stack from standard builds.</strong> The hidden Community feature still links its certificate bundle and pairing code (216&nbsp;KiB), Mbed TLS (95&nbsp;KiB), Wi-Fi (76&nbsp;KiB) and the community client (25&nbsp;KiB).</li>
+        <li><strong>Size masks to the canvas.</strong> Four selection and redraw masks are sized for 512&times;512 (32&nbsp;KiB each) even in DS mode, where 128&times;128 needs 2&nbsp;KiB.</li>
+        <li><strong>16-bit screen buffers.</strong> The DS displays 15-bit color, but both screens render to 32-bit buffers first. Rendering at 16 bits halves them and shortens every screen copy.</li>
+        <li><strong>Allocate on use.</strong> The clipboard, file preview and gallery thumbnails stay resident even when never opened.</li>
+        <li><strong>Add measurements to Diagnostics:</strong> free heap, largest free block, card read speed and frame switch time, so DSi and DS Lite limits come from the hardware rather than estimates.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>How frames would be stored</h2>
+      <ul>
+        <li>The current frame stays exactly as today: full-color working layers, so drawing speed and every tool are unchanged.</li>
+        <li>Other frames are packed into a shared pool of 8&times;8 tiles, the same tile size undo already uses. Empty tiles cost nothing.</li>
+        <li>A tile with 256 or fewer document colors stores one byte per pixel (64 bytes) instead of 256. Tiles identical to one in another frame are stored once, which is most of an animation.</li>
+        <li>Switching frames packs the edited tiles of the old frame and unpacks the new one. Undo records which frame each edit belongs to.</li>
+        <li>Onion skin and playback use cached flattened images, so neither recomposites eight layers per frame.</li>
+        <li>Frames hold up to 256 per project. The timeline shows a memory meter like the layer memory line, and refuses a new frame with a clear message instead of failing later.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Estimated frames in RAM</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Canvas and art</th><th class="n">Per frame</th><th class="n">DS</th><th class="n">DSi</th></tr></thead>
+        <tbody>
+          <tr><td>32&times;32, 2 layers, half covered</td><td class="n">~1.2 KiB</td><td class="n">256</td><td class="n">256</td></tr>
+          <tr><td>64&times;64, 4 layers, 40% covered</td><td class="n">~7 KiB</td><td class="n">~220</td><td class="n">256</td></tr>
+          <tr><td>128&times;128, 4 layers, 40% covered</td><td class="n">16&ndash;30 KiB</td><td class="n">55&ndash;100</td><td class="n">256</td></tr>
+          <tr><td>128&times;128, 8 dense opaque layers</td><td class="n">~143 KiB</td><td class="n warnc">~11</td><td class="n">~70</td></tr>
+          <tr><td>256&times;256, 4 layers, 40% covered</td><td class="n">~119 KiB</td><td class="n">n/a</td><td class="n">~85</td></tr>
+          <tr><td>512&times;512, 2 layers, 40% covered</td><td class="n">~240 KiB</td><td class="n">n/a</td><td class="n warnc">~40</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">DS uses the 1.6&nbsp;MiB pool above; DSi assumes about 10&nbsp;MiB, to be confirmed by the heap readout. 3DS holds several times the DSi figures. Ranges depend on how much repeats between frames.</p>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Frame shortcuts</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Buttons (pen lifted, on the canvas)</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Pan</kbd> + <kbd>L</kbd> / <kbd>R</kbd></td><td>Previous / next frame. Hold to keep stepping.</td></tr>
+          <tr><td><kbd>Sample</kbd> + <kbd>L</kbd></td><td>Onion skin on / off</td></tr>
+          <tr><td><kbd>Sample</kbd> + <kbd>R</kbd></td><td>Play / pause</td></tr>
+          <tr><td><kbd>ZL</kbd> / <kbd>ZR</kbd> (New 3DS)</td><td>Previous / next frame, no modifier</td></tr>
+          <tr><td><kbd>Zoom</kbd> + <kbd>L</kbd> / <kbd>R</kbd></td><td>Undo / redo (unchanged)</td></tr>
+          <tr><td><kbd>L</kbd> / <kbd>R</kbd> alone</td><td>Temporary eraser (unchanged)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">Pan, Sample and Zoom follow your button remapping. Default Pan is A / Left and Sample is X / Up. Pan and Sample with a shoulder are unused today, so nothing existing moves. Touching the canvas or pressing B stops playback.</p>
+    </div>
+    <div class="card">
+      <h2>Build order</h2>
+      <ol>
+        <li><strong>Optimization and measurement build.</strong> The savings above, plus the Diagnostics readouts. You run it once on the DSi and DS Lite.</li>
+        <li><strong>Frames in the core.</strong> Tile pool, frame switching, undo across frames, a native file version that saves the pool directly, and the memory meter.</li>
+        <li><strong>Timeline, canvas frame strip, shortcuts and onion skin.</strong></li>
+        <li><strong>Playback</strong> with per-frame durations and loop tags.</li>
+        <li><strong>Aseprite animation</strong> import and export, read and written one frame at a time, with linked cels, durations and tags; plus PNG sprite-sheet export.</li>
+        <li><strong>Card streaming</strong>, only if step 1's numbers show it is needed.</li>
+      </ol>
+    </div>
+  </div>
+
+  <section aria-label="Interactive mockups" style="display:grid;gap:18px">
+    <h2 style="margin:0">Mockups</h2>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Screen">
+        <button type="button" id="tab-canvas" data-tab="canvas" aria-pressed="true">Canvas</button>
+        <button type="button" id="tab-timeline" data-tab="timeline" aria-pressed="false">Timeline</button>
+        <button type="button" id="tab-onion" data-tab="onion" aria-pressed="false">Onion skin</button>
+        <button type="button" id="tab-frame" data-tab="frame" aria-pressed="false">Frame sheet</button>
+      </div>
+      <div class="group"><span class="seg-label">Console</span>
+        <div class="seg" role="group" aria-label="Console">
+          <button type="button" id="con-dsi" data-console="dsi" aria-pressed="true">DSi</button>
+          <button type="button" id="con-3ds" data-console="3ds" aria-pressed="false">3DS</button>
+        </div>
+      </div>
+    </div>
+    <div class="stage">
+      <div>
+        <div class="device">
+          <canvas id="top" aria-label="Upper screen"></canvas>
+          <div class="hinge" aria-hidden="true"></div>
+          <canvas id="bottom" aria-label="Touch screen, interactive"></canvas>
+        </div>
+        <div class="caption" id="caption"></div>
+      </div>
+      <div class="notes" id="notes"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const FONT = {"glyphs":{"0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],"2":[14,17,1,2,4,8,31],"3":[30,1,1,14,1,1,30],"4":[2,6,10,18,31,2,2],"5":[31,16,16,30,1,1,30],"6":[6,8,16,30,17,17,14],"7":[31,1,2,4,8,8,8],"8":[14,17,17,14,17,17,14],"9":[14,17,17,15,1,2,12],"A":[14,17,17,31,17,17,17],"B":[30,17,17,30,17,17,30],"C":[14,17,16,16,16,17,14],"D":[30,17,17,17,17,17,30],"E":[31,16,16,30,16,16,31],"F":[31,16,16,30,16,16,16],"G":[14,17,16,23,17,17,15],"H":[17,17,17,31,17,17,17],"I":[14,4,4,4,4,4,14],"J":[7,2,2,2,18,18,12],"K":[17,18,20,24,20,18,17],"L":[16,16,16,16,16,16,31],"M":[17,27,21,21,17,17,17],"N":[17,25,21,19,17,17,17],"O":[14,17,17,17,17,17,14],"P":[30,17,17,30,16,16,16],"Q":[14,17,17,17,21,18,13],"R":[30,17,17,30,20,18,17],"S":[15,16,16,14,1,1,30],"T":[31,4,4,4,4,4,4],"U":[17,17,17,17,17,17,14],"V":[17,17,17,17,17,10,4],"W":[17,17,17,21,21,21,10],"X":[17,17,10,4,10,17,17],"Y":[17,17,10,4,4,4,4],"Z":[31,1,2,4,8,16,31],"a":[0,0,14,1,15,17,15],"b":[16,16,22,25,17,17,30],"c":[0,0,14,16,16,17,14],"d":[1,1,13,19,17,17,15],"e":[0,0,14,17,31,16,14],"f":[6,8,8,28,8,8,8],"g":[0,0,15,17,15,1,14],"h":[16,16,22,25,17,17,17],"i":[4,0,12,4,4,4,14],"j":[2,0,6,2,2,18,12],"k":[16,16,18,20,24,20,18],"l":[12,4,4,4,4,4,14],"m":[0,0,26,21,21,21,21],"n":[0,0,22,25,17,17,17],"o":[0,0,14,17,17,17,14],"p":[0,0,30,17,30,16,16],"q":[0,0,13,19,15,1,1],"r":[0,0,22,25,16,16,16],"s":[0,0,15,16,14,1,30],"t":[8,8,28,8,8,9,6],"u":[0,0,17,17,17,19,13],"v":[0,0,17,17,17,10,4],"w":[0,0,17,21,21,21,10],"x":[0,0,17,10,4,10,17],"y":[0,0,17,17,15,1,14],"z":[0,0,31,2,4,8,31],"-":[0,0,0,31,0,0,0],":":[0,4,0,0,4,0,0],".":[0,0,0,0,0,12,12],"/":[1,1,2,4,8,16,16],"<":[2,4,8,16,8,4,2],">":[8,4,2,1,2,4,8],"[":[14,8,8,8,8,8,14],"]":[14,2,2,2,2,2,14],"_":[0,0,0,0,0,0,31],"!":[4,4,4,4,4,0,4],"?":[14,17,1,2,4,0,4],",":[0,0,0,0,0,4,8],"'":[4,4,8,0,0,0,0],"\"":[10,10,20,0,0,0,0],"#":[10,31,10,10,31,10,0],"%":[25,25,2,4,8,19,19],"&":[12,18,20,8,21,18,13],"(":[2,4,8,8,8,4,2],")":[8,4,2,2,2,4,8],"*":[0,21,14,31,14,21,0],"+":[0,4,4,31,4,4,0],"=":[0,31,0,31,0,0,0],"@":[14,17,23,21,23,16,14],"|":[4,4,4,4,4,4,4],";":[0,4,0,0,4,4,8],"$":[4,15,20,14,5,30,4],"\\":[16,16,8,4,2,1,1],"^":[4,10,17,0,0,0,0],"`":[8,4,2,0,0,0,0],"{":[2,4,4,8,4,4,2],"}":[8,4,4,2,4,4,8],"~":[0,0,9,22,0,0,0],"?default":[31,17,21,21,17,17,31]},"icons":[0,0,0,0,0,0,0,0,0,2400,0,0,0,40208,0,0,9,53760,0,0,190,39048,34914,0,190,39048,35006,24576,9,53760,3,58112,0,40208,0,31232,0,2400,0,19712,0,0,0,23552,0,0,1,54784,0,3,13149,40960,0,45,56774,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1680,0,0,0,729,0,0,0,29,36864,0,9864,34953,60160,6,60296,34953,60160,62,12288,29,36864,167,0,729,0,196,0,1680,0,182,0,0,0,109,4096,0,0,10,54579,12288,0,0,27869,53760,0,0,0,0,0,0,0,0,0,0,19,12544,0,0,19454,61382,0,9,59152,365,45312,156,4096,17409,44032,1249,6976,47872,3184,2928,6976,4352,1232,7952,0,27,16626,15874,28672,27,16611,15879,57856,0,992,7952,8192,0,15728,2928,0,15582,59136,1249,0,50994,0,156,4096,43008,0,9,59152,23552,0,0,19454,59136,0,0,19,8192,0,0,2,8192,0,0,1215,64320,0,5,52865,6108,24576,1757,24576,6,56672,12112,0,0,1522,3048,4096,1,36528,58,59952,670,46080,5632,10731,48786,97,7843,22,28928,15073,654,46080,75,59680,513,32454,27879,4128,11856,108,50688,1506,1757,24576,6,56672,5,52865,6108,24576,0,1215,64320,0,0,2,8192,0,0,51,13056,0,0,3053,57008,0,0,15872,227,0,2,40584,35049,8192,62,43912,35002,58112,998,0,0,28224,7776,0,0,1761,15616,5632,97,211,15923,28211,13286,13283,24541,57309,56829,56821,15616,15616,211,211,15616,512,32,211,15616,0,0,211,7832,34952,34952,35297,632,34952,34952,34592,0,0,0,0,0,0,0,0,0,0,0,0,35,13107,13107,12800,173,56797,56797,55808,0,0,0,0,0,0,0,0,0,0,0,0,104,34952,34952,34304,104,34952,34952,34304,0,0,0,0,0,0,0,0,0,0,0,0,173,56797,56797,55808,35,13107,13107,12800,0,0,0,0,0,0,0,0]};
+const C = { bg:"#182126", panel:"#35444b", edge:"#73868f", text:"#f5f8fa", muted:"#b9cbd2", accent:"#79e0d3", sel:"#0d7a75",
+  rail:"#121a1e", line:"#25333a", deep:"#202c32", warn:"#f2c46b", check1:"#cfcfcf", check2:"#efefef", past:"#ff6b6b", future:"#5aa9ff", tag:"#c3a6ff" };
+
+/* ---------- primitives at native resolution ---------- */
+function rect(s,x,y,w,h,c){ s.ctx.fillStyle=c; s.ctx.fillRect(x|0,y|0,w|0,h|0); }
+function tw(str){ return str.length ? str.length*6-1 : 0; }
+function text(s,x,y,str,c){ s.ctx.fillStyle=c;
+  for(let i=0;i<str.length;i++){ const ch=str[i]; if(ch===" ") continue; const rows=FONT.glyphs[ch]||FONT.glyphs["?default"];
+    for(let yy=0;yy<7;yy++){ const r=rows[yy]; if(!r) continue; for(let xx=0;xx<5;xx++) if(r&(1<<(4-xx))) s.ctx.fillRect(x+i*6+xx,y+yy,1,1); } } }
+function fit(str,max){ if(tw(str)<=max) return str; return str.slice(0,Math.max(0,Math.floor((max+1)/6)-3))+"..."; }
+function frame(s,x,y,w,h,edge,fill){ rect(s,x,y,w,h,edge); rect(s,x+1,y+1,w-2,h-2,fill); }
+function button(s,x,y,w,h,label,primary,opt={}){ frame(s,x,y,w,h,opt.edge||C.edge,primary?C.sel:(opt.fill||C.panel));
+  const tx=opt.center?x+((w-tw(label))>>1):x+6; text(s,tx,y+((h-7)>>1),label,opt.color||C.text); }
+function bmp(s,x,y,rows,map){ for(let yy=0;yy<rows.length;yy++) for(let xx=0;xx<rows[yy].length;xx++){ const c=map[rows[yy][xx]]; if(c){ s.ctx.fillStyle=c; s.ctx.fillRect(x+xx,y+yy,1,1);} } }
+function hex2(c){ return [parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)]; }
+function mix(a,b,t){ const x=hex2(a),y=hex2(b); return `rgb(${Math.round(x[0]*(1-t)+y[0]*t)},${Math.round(x[1]*(1-t)+y[1]*t)},${Math.round(x[2]*(1-t)+y[2]*t)})`; }
+function railIcon(s,x,y,id,c,bg){ const fg=hex2(c), b=hex2(bg);
+  for(let yy=0;yy<16;yy++) for(let xx=0;xx<16;xx++){ const packed=FONT.icons[id*64+(yy>>2)*16+(yy%4)*4+(xx>>2)], cov=(packed>>(12-4*(xx%4)))&15; if(!cov) continue;
+    const a=cov*17/255; s.ctx.fillStyle=`rgb(${Math.round(fg[0]*a+b[0]*(1-a))},${Math.round(fg[1]*a+b[1]*(1-a))},${Math.round(fg[2]*a+b[2]*(1-a))})`; s.ctx.fillRect(x+xx,y+yy,1,1); } }
+function rail(s,active){ rect(s,0,0,s.w,24,C.rail);
+  for(let i=0;i<6;i++){ const x0=Math.floor(i*s.w/6), x1=Math.floor((i+1)*s.w/6), on=i===active; if(on) rect(s,x0,0,x1-x0,24,C.sel); railIcon(s,x0+((x1-x0-16)>>1),4,i,on?C.text:C.accent,on?C.sel:C.rail); } }
+function checker(s,x,y,w,h,cell){ for(let yy=0;yy<h;yy+=cell) for(let xx=0;xx<w;xx+=cell) rect(s,x+xx,y+yy,Math.min(cell,w-xx),Math.min(cell,h-yy),((xx/cell+yy/cell)&1)?C.check1:C.check2); }
+
+const IC = {
+  prev:["...#..#","..##.##",".######","#######",".######","..##.##","...#..#"],
+  next:["#..#...","##.##..","######.","#######","######.","##.##..","#..#..."],
+  play:["##.....","####...","######.","#######","######.","####...","##....."],
+  pause:["##..##.","##..##.","##..##.","##..##.","##..##.","##..##.","##..##."],
+  onion:["..#####..",".#.....#.","#..###..#","#.#...#.#","#..###..#",".#.....#.","..#####.."],
+  link:["#######","......."],
+  grip:["#.#","...","#.#","...","#.#","...","#.#"],
+  eye:["...#####...",".##.....##.","#....#....#","#...###...#","#....#....#",".##.....##.","...#####..."],
+};
+
+/* ---------- animated sample: an 8-frame slime hop ---------- */
+const SLIME_ROWS=["................","................","................","................","......kkkk......","....kkhhggkk....","...khhggggggk...","..khgggggggggk..","..kgggwkgwkggk..","..kgggwkgwkggk..",".kggggggggggggk.",".kgGggggggggGgk.",".kGGGggggggGGGk.","..kGGGGGGGGGGk..","...kkkkkkkkkk...","................"];
+const SLIME_PAL={k:"#1b2a1f",g:"#5fd068",G:"#3fa34d",w:"#ffffff",h:"#b6f5a8"};
+const HOP=[[1,1,0],[1.18,0.82,0],[1,1,2],[0.88,1.12,4],[0.92,1.08,5],[0.9,1.1,4],[1,1,2],[1.15,0.85,0]];
+function slimeFrame(f){ const [sx,sy,lift]=HOP[((f%8)+8)%8];
+  return { w:16,h:16, px:(x,y)=>{ const yy=Math.round(14-(14-(y+lift))/sy), xx=Math.round(8+(x-7.5)/sx-0.5); if(yy<0||yy>15||xx<0||xx>15) return null; return SLIME_PAL[SLIME_ROWS[yy][xx]]||null; } }; }
+const DUR=[100,80,80,100,120,100,80,80];
+
+/* ---------- state ---------- */
+const S={ tab:"canvas", con:"dsi", frame:3, frames:8, playing:false, onion:true, behind:1, ahead:1, opacity:35, tint:true,
+  layer:0, toast:null, toastUntil:0, durSel:100, applyAll:false, pressed:null };
+const LAYERS=[{n:"Outline",cels:"xxxxxxxx"},{n:"Body",cels:"xxxxxxxx"},{n:"Shine",cels:"x--xx--x"},{n:"Shadow",cels:"xllxxllx"}];
+function dims(){ return S.con==="dsi"?{tw:256,th:192,bw:256,bh:192}:{tw:400,th:240,bw:320,bh:240}; }
+function toast(m){ S.toast=m; S.toastUntil=performance.now()+1800; draw(); setTimeout(draw,1850); }
+function wrapF(f){ return (f%S.frames+S.frames)%S.frames; }
+
+/* ---------- shared drawing ---------- */
+function drawSprite(s,art,x,y,k,color){ for(let yy=0;yy<16;yy++) for(let xx=0;xx<16;xx++){ const c=art.px(xx,yy); if(c) rect(s,x+xx*k,y+yy*k,k,k,color?color(c):c); } }
+function drawCanvasArt(s,x,y,k,withOnion){
+  checker(s,x,y,16*k,16*k,Math.max(2,k));
+  if(withOnion&&S.onion){
+    for(let d=S.behind;d>=1;d--) drawSprite(s,slimeFrame(S.frame-d),x,y,k,c=>S.tint?mix(C.check2,C.past,S.opacity/100*(1-(d-1)*0.3)):mix(C.check2,c,S.opacity/100));
+    for(let d=S.ahead;d>=1;d--) drawSprite(s,slimeFrame(S.frame+d),x,y,k,c=>S.tint?mix(C.check2,C.future,S.opacity/100*(1-(d-1)*0.3)):mix(C.check2,c,S.opacity/100));
+  }
+  drawSprite(s,slimeFrame(S.frame),x,y,k);
+}
+function topHeader(s,title,tag){ rect(s,0,0,s.w,16,C.rail); text(s,5,5,fit(title,s.w-tw(tag)-24),C.text);
+  const tx=s.w-tw(tag)-12; frame(s,tx,3,tw(tag)+8,11,C.accent,C.rail); text(s,tx+4,5,tag,C.accent); }
+function topFooter(s,msg,color){ const t=S.toast&&performance.now()<S.toastUntil; rect(s,0,s.h-16,s.w,16,C.rail); text(s,5,s.h-11,fit(t?S.toast:msg,s.w-10),t?C.accent:(color||C.muted)); }
+function topAnimation(s,label){
+  topHeader(s,"Slime.pdd",`F ${S.frame+1}/${S.frames}`);
+  const big=s.w>256, pv=big?160:112, px=8, py=22, k=Math.floor(pv/16);
+  frame(s,px-1,py-1,pv+2,pv+2,C.edge,C.bg); checker(s,px,py,pv,pv,4); drawSprite(s,slimeFrame(S.frame),px+((pv-16*k)>>1),py+((pv-16*k)>>1),k);
+  const ix=px+pv+12; const rows=[["FRAME",`${S.frame+1} OF ${S.frames}`],["DURATION",`${DUR[S.frame]} MS`],["TAG","hop  1-8  LOOP"],["PLAYBACK",S.playing?"PLAYING":"PAUSED",S.playing?C.accent:C.text]];
+  rows.forEach(([a,b,c],i)=>{ text(s,ix,py+2+i*20,a,C.muted); text(s,ix,py+11+i*20,fit(b,s.w-ix-6),c||C.text); });
+  // filmstrip of neighbours
+  const ts=big?26:20, n=5, fy=py+pv-ts, fx=ix;
+  for(let i=0;i<n;i++){ const f=wrapF(S.frame-2+i), x=fx+i*(ts+3); if(x+ts>s.w-4) break; const on=i===2;
+    frame(s,x-1,fy-1,ts+2,ts+2,on?C.accent:C.line,C.bg); checker(s,x,fy,ts,ts,2); const kk=Math.max(1,Math.floor(ts/16)); drawSprite(s,slimeFrame(f),x+((ts-16*kk)>>1),fy+((ts-16*kk)>>1),kk); }
+  topFooter(s,label);
+}
+
+/* ---------- canvas with frame strip ---------- */
+function stripLayout(w,h){ const sh=w>256?22:18, y=h-sh, b=w>256?22:18;
+  const items=[{id:"prev",x:2,w:b},{id:"count",x:4+b,w:40},{id:"next",x:46+b,w:b},{id:"play",x:50+2*b,w:b},{id:"onion",x:54+3*b,w:b}];
+  const tx=58+4*b, cw=Math.floor((w-tx-4)/S.frames);
+  return { y, sh, items, ticks:{x:tx,w:cw} }; }
+function drawStrip(s){ const L=stripLayout(s.w,s.h); rect(s,0,L.y,s.w,L.sh,C.rail);
+  L.items.forEach(it=>{ const y=L.y+2, h=L.sh-4, on=(it.id==="play"&&S.playing)||(it.id==="onion"&&S.onion)||S.pressed===it.id;
+    frame(s,it.x,y,it.w,h,C.edge,on?C.sel:C.panel);
+    const map={"#":C.text};
+    if(it.id==="prev") bmp(s,it.x+((it.w-7)>>1),y+((h-7)>>1),IC.prev,map);
+    if(it.id==="next") bmp(s,it.x+((it.w-7)>>1),y+((h-7)>>1),IC.next,map);
+    if(it.id==="play") bmp(s,it.x+((it.w-7)>>1),y+((h-7)>>1),S.playing?IC.pause:IC.play,map);
+    if(it.id==="onion") bmp(s,it.x+((it.w-9)>>1),y+((h-7)>>1),IC.onion,map);
+    if(it.id==="count"){ const t=`${S.frame+1}/${S.frames}`; text(s,it.x+((it.w-tw(t))>>1),y+((h-7)>>1),t,C.text); } });
+  for(let f=0;f<S.frames;f++){ const x=L.ticks.x+f*L.ticks.w, on=f===S.frame, near=S.onion&&!on&&((S.frame-f+S.frames)%S.frames<=S.behind||(f-S.frame+S.frames)%S.frames<=S.ahead);
+    rect(s,x+1,L.y+4,L.ticks.w-2,L.sh-8,on?C.accent:(near?C.edge:C.panel)); }
+}
+function drawCanvas(top,bot){
+  topAnimation(top,S.onion?`ONION ${S.behind} BEHIND / ${S.ahead} AHEAD  ${S.opacity}%`:"ONION SKIN OFF");
+  rect(bot,0,0,bot.w,bot.h,C.bg); rail(bot,-1);
+  const L=stripLayout(bot.w,bot.h), area=L.y-24, k=Math.min(Math.floor(area/16)-1,bot.w>256?9:8), x=(bot.w-16*k)>>1, y=24+((area-16*k)>>1);
+  rect(bot,0,24,bot.w,area,"#2a363c"); drawCanvasArt(bot,x,y,k,true);
+  drawStrip(bot);
+}
+
+/* ---------- timeline (Layers screen, Timeline tab) ---------- */
+function tlLayout(w,h){ const big=w>256, nameW=big?70:58, cw=big?16:14, rowH=big?22:18, gx=4+nameW+2, top=44;
+  const visible=Math.floor((w-gx-10)/cw); const fh=big?24:20, fy=h-fh-4, bw=Math.floor((w-20)/4);
+  return { big,nameW,cw,rowH,gx,top,visible,tabs:[{id:"LAYERS",x:4,y:26,w:56,h:15},{id:"TIMELINE",x:62,y:26,w:62,h:15}],
+    tagY:top, numY:top+11, rowsY:top+22, meterY:top+22+LAYERS.length*rowH+6,
+    foot:["+ FRAME","DUPE","DELETE","FRAME..."].map((l,i)=>({id:l,x:4+i*(bw+4),y:fy,w:i===3?w-4-(4+3*(bw+4)):bw,h:fh})) }; }
+function drawTimeline(top,bot){
+  topAnimation(top,S.playing?"PLAYING  hop  10 FPS":"SAMPLE+R PLAYS  PAN+L/R STEPS");
+  const L=tlLayout(bot.w,bot.h); rect(bot,0,0,bot.w,bot.h,C.bg); rail(bot,3);
+  L.tabs.forEach(t=>button(bot,t.x,t.y,t.w,t.h,t.id,t.id==="TIMELINE",{center:true}));
+  const mt=`${S.frames} FRAMES`; text(bot,bot.w-tw(mt)-6,30,mt,C.muted);
+  // tag band
+  const span=Math.min(S.frames,L.visible); rect(bot,L.gx,L.tagY,span*L.cw-1,9,mix(C.bg,C.tag,0.45)); text(bot,L.gx+3,L.tagY+1,"hop",C.text);
+  text(bot,6,L.tagY+1,"TAGS",C.muted); text(bot,6,L.numY+1,"FRAMES",C.muted);
+  for(let f=0;f<span;f++){ const x=L.gx+f*L.cw, on=f===S.frame; if(on) rect(bot,x,L.numY-1,L.cw-1,L.rowsY+LAYERS.length*L.rowH-L.numY+1,C.sel);
+    const t=String(f+1); text(bot,x+((L.cw-tw(t))>>1),L.numY+1,t,on?C.text:C.muted); }
+  LAYERS.forEach((l,r)=>{ const y=L.rowsY+r*L.rowH, active=r===S.layer;
+    frame(bot,4,y,L.nameW,L.rowH-2,active?C.accent:C.edge,active?C.sel:C.panel);
+    text(bot,9,y+((L.rowH-9)>>1),fit(l.n,L.nameW-10),C.text);
+    for(let f=0;f<span;f++){ const x=L.gx+f*L.cw, c=l.cels[f], cy=y+((L.rowH-2)>>1), sel=active&&f===S.frame;
+      if(c==="x"||c==="l"){ rect(bot,x+3,cy-3,L.cw-7,7,f===S.frame?C.text:C.accent); }
+      if(c==="l"&&f>0&&l.cels[f-1]!=="-"){ rect(bot,x-4,cy,7,1,C.accent); }
+      if(c==="-") rect(bot,x+(L.cw>>1)-1,cy-1,2,2,C.edge);
+      if(sel){ rect(bot,x,y,L.cw-1,1,C.warn); rect(bot,x,y+L.rowH-3,L.cw-1,1,C.warn); rect(bot,x,y,1,L.rowH-2,C.warn); rect(bot,x+L.cw-2,y,1,L.rowH-2,C.warn); } } });
+  // memory meter
+  const used=46, pool=1600, mw=bot.w-8, my=L.meterY; text(bot,6,my,`${used} KB OF ${pool} KB FOR FRAMES`,C.muted);
+  rect(bot,6,my+10,mw-4,4,C.deep); rect(bot,6,my+10,Math.max(2,Math.round((mw-4)*used/pool)),4,C.accent);
+  L.foot.forEach(b=>button(bot,b.x,b.y,b.w,b.h,b.id,b.id==="+ FRAME"||S.pressed===b.id,{center:true}));
+}
+
+/* ---------- sheets ---------- */
+function sheetBox(s,title){ const w=s.w>256?260:216, h=s.w>256?184:150, x=(s.w-w)>>1, y=30;
+  frame(s,x,y,w,h,C.edge,C.bg); text(s,x+8,y+6,title,C.accent); text(s,x+w-14,y+6,"X",C.text); return {x,y,w,h,ix:x+8,iw:w-16}; }
+function stepper(s,x,y,w,label,val){ text(s,x,y+6,label,C.muted); const bx=x+w-96; button(s,bx,y,22,20,"-",false,{center:true}); text(s,bx+24+((48-tw(val))>>1),y+6,val,C.text); button(s,bx+74,y,22,20,"+",false,{center:true}); return {minus:{x:bx,y,w:22,h:20},plus:{x:bx+74,y,w:22,h:20}}; }
+function onionLayout(w,h){ const big=w>256, sw=big?260:216, sx=(w-sw)>>1, ix=sx+8, iw=sw-16, y=30;
+  return { toggle:{x:ix,y:y+20,w:iw,h:20}, behind:{y:y+46}, ahead:{y:y+70}, slider:{x:ix+56,y:y+98,w:iw-60,h:14}, tint:{x:ix,y:y+120,w:iw,h:20}, close:{x:sx+sw-18,y:y,w:18,h:18}, ix, iw }; }
+function drawOnion(top,bot){
+  topAnimation(top,S.onion?"RED IS BEHIND, BLUE IS AHEAD":"ONION SKIN OFF");
+  drawCanvas(top,bot); topAnimation(top,S.onion?(S.tint?"RED IS BEHIND, BLUE IS AHEAD":"NEIGHBOURS IN THEIR OWN COLORS"):"ONION SKIN OFF");
+  const b=sheetBox(bot,"ONION SKIN"), L=onionLayout(bot.w,bot.h);
+  button(bot,L.toggle.x,L.toggle.y,L.toggle.w,L.toggle.h,S.onion?"ONION SKIN: ON":"ONION SKIN: OFF",S.onion);
+  stepper(bot,L.ix,L.behind.y,L.iw,"BEHIND",String(S.behind)); stepper(bot,L.ix,L.ahead.y,L.iw,"AHEAD",String(S.ahead));
+  text(bot,L.ix,L.slider.y+4,`${S.opacity}%`,C.muted);
+  const sl=L.slider, kx=sl.x+Math.round((S.opacity-10)/80*(sl.w-4)); rect(bot,sl.x,sl.y+4,sl.w,6,C.panel); rect(bot,sl.x,sl.y+4,kx-sl.x,6,C.sel); rect(bot,kx-2,sl.y,4,14,C.text);
+  button(bot,L.tint.x,L.tint.y,L.tint.w,L.tint.h,S.tint?"TINT: RED / BLUE":"TINT: OFF",S.tint);
+}
+function frameLayout(w,h){ const big=w>256, sw=big?260:216, sx=(w-sw)>>1, ix=sx+8, iw=sw-16, y=30, half=(iw-4)>>1;
+  return { dur:{y:y+22}, presets:[50,80,100,150].map((v,i)=>({v,x:ix+i*((iw+4)>>2),y:y+46,w:((iw+4)>>2)-4,h:18})), apply:[{id:"THIS FRAME",x:ix,y:y+70,w:half,h:18},{id:"ALL FRAMES",x:ix+half+4,y:y+70,w:iw-half-4,h:18}],
+    tag:{x:ix,y:y+94,w:iw,h:20}, move:[{id:"MOVE <",x:ix,y:y+118,w:half,h:20},{id:"MOVE >",x:ix+half+4,y:y+118,w:iw-half-4,h:20}], close:{x:sx+sw-18,y,w:18,h:18}, ix, iw }; }
+function drawFrame(top,bot){
+  drawTimeline(top,bot); topAnimation(top,`DURATION ${S.durSel} MS  ${S.applyAll?"ALL FRAMES":"THIS FRAME"}`);
+  const b=sheetBox(bot,`FRAME ${S.frame+1}`), L=frameLayout(bot.w,bot.h);
+  stepper(bot,L.ix,L.dur.y,L.iw,"DURATION",`${S.durSel} MS`);
+  L.presets.forEach(p=>button(bot,p.x,p.y,p.w,p.h,String(p.v),p.v===S.durSel,{center:true}));
+  L.apply.forEach(a=>button(bot,a.x,a.y,a.w,a.h,a.id,(a.id==="ALL FRAMES")===S.applyAll,{center:true}));
+  button(bot,L.tag.x,L.tag.y,L.tag.w,L.tag.h,"TAG: hop  FRAMES 1-8",false,{edge:C.tag});
+  L.move.forEach(m=>button(bot,m.x,m.y,m.w,m.h,m.id,S.pressed===m.id,{center:true}));
+}
+
+/* ---------- notes ---------- */
+const NOTES={
+  canvas:`<section><h3>Canvas frame strip</h3><ul>
+    <li>When a project has more than one frame, an 18&nbsp;px strip sits under the canvas: previous, frame number, next, play and onion skin, then one tick per frame you can tap to jump.</li>
+    <li>Ticks near the current frame light up to show which frames the onion skin is drawing.</li>
+    <li>Single-frame projects keep today's full-height canvas; the strip appears with the second frame.</li>
+    <li>The upper screen plays or holds the animation at full size, with frame, duration, tag and a five-frame filmstrip.</li></ul></section>
+    <section><h3>Shortcuts</h3><ul>
+    <li><kbd>Pan</kbd> + <kbd>L</kbd>/<kbd>R</kbd> steps frames; hold to keep stepping.</li>
+    <li><kbd>Sample</kbd> + <kbd>L</kbd> toggles onion skin; <kbd>Sample</kbd> + <kbd>R</kbd> plays or pauses.</li>
+    <li>New 3DS: <kbd>ZL</kbd>/<kbd>ZR</kbd> step frames directly.</li></ul></section>
+    <p class="try">Tap the strip, or use your keyboard: <kbd>,</kbd> and <kbd>.</kbd> step, <kbd>space</kbd> plays, <kbd>o</kbd> toggles onion skin.</p>`,
+  timeline:`<section><h3>Timeline</h3><ul>
+    <li>The Layers screen gains Layers and Timeline tabs, the same pattern as Aseprite, where layers are rows and frames are columns.</li>
+    <li>A filled block is a cel with art, a dot is an empty cel, and a joined block is a linked cel that shares art with the frame before it.</li>
+    <li>The current frame is a highlighted column; the active cel has a yellow outline. Tap a cell to pick both frame and layer.</li>
+    <li>Tags sit in a band above the frame numbers and set loop ranges for playback.</li>
+    <li>Thirteen frames show at once on DSi and fourteen on 3DS. Drag sideways to scroll; hold a frame number to reorder, like layers.</li>
+    <li>The memory line shows how much of the frame pool is used.</li></ul></section>
+    <p class="try">Tap cells and frame numbers, then the footer buttons.</p>`,
+  onion:`<section><h3>Onion skin</h3><ul>
+    <li>Up to three frames behind and three ahead, each fading further out.</li>
+    <li>Red for frames behind and blue for frames ahead, or each frame in its own colors with the tint off.</li>
+    <li>Opacity runs from 10 to 90 percent.</li>
+    <li>Onion skin draws under the current frame and is never saved into the art, exports or sampled colors, like the pixel grid.</li>
+    <li>The neighbours come from the cached flattened frames, so drawing speed stays as today.</li></ul></section>
+    <p class="try">Change the counts, drag the opacity slider and toggle the tint.</p>`,
+  frame:`<section><h3>Frame sheet</h3><ul>
+    <li>Opened from Frame... in the timeline footer or by holding a frame number.</li>
+    <li>Duration in milliseconds with quick presets, for this frame or all frames, matching Aseprite's per-frame durations.</li>
+    <li>Tag edits the loop range the frame belongs to.</li>
+    <li>Move shifts the frame one step left or right; reordering by drag stays available in the timeline.</li></ul></section>
+    <section><h3>Aseprite</h3><ul>
+    <li>Frames, durations, linked cels and tags all round-trip with Aseprite files.</li>
+    <li>Files are read and written one frame at a time, so a long animation never needs the whole file in memory.</li></ul></section>`,
+};
+
+/* ---------- render + controls ---------- */
+const topC=document.getElementById("top"), botC=document.getElementById("bottom");
+function draw(){ const d=dims(); topC.width=d.tw; topC.height=d.th; botC.width=d.bw; botC.height=d.bh;
+  topC.style.width="100%"; topC.style.maxWidth=(d.tw*2)+"px"; botC.style.width=(d.bw/d.tw*100)+"%"; botC.style.maxWidth=(d.bw*2)+"px";
+  const top={ctx:topC.getContext("2d"),w:d.tw,h:d.th}, bot={ctx:botC.getContext("2d"),w:d.bw,h:d.bh};
+  rect(top,0,0,top.w,top.h,C.bg); rect(bot,0,0,bot.w,bot.h,C.bg);
+  ({canvas:drawCanvas,timeline:drawTimeline,onion:drawOnion,frame:drawFrame})[S.tab](top,bot);
+  document.getElementById("caption").textContent=S.con==="dsi"?"DSi · 256 × 192 upper / 256 × 192 touch · drawn at native size":"3DS · 400 × 240 upper / 320 × 240 touch · drawn at native size"; }
+function sync(){ document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tab===S.tab)));
+  document.querySelectorAll("[data-console]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.console===S.con)));
+  document.getElementById("notes").innerHTML=NOTES[S.tab]; }
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{ S.tab=b.dataset.tab; sync(); draw(); }));
+document.querySelectorAll("[data-console]").forEach(b=>b.addEventListener("click",()=>{ S.con=b.dataset.console; sync(); draw(); }));
+
+let timer=null;
+function setPlaying(p){ S.playing=p; clearTimeout(timer); if(p){ const step=()=>{ S.frame=wrapF(S.frame+1); draw(); timer=setTimeout(step,DUR[S.frame]*(matchMedia("(prefers-reduced-motion: reduce)").matches?4:1)); }; timer=setTimeout(step,DUR[S.frame]); } draw(); }
+function stepFrame(d){ if(S.playing) setPlaying(false); S.frame=wrapF(S.frame+d); draw(); }
+const inside=(r,x,y)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h;
+function flash(id){ S.pressed=id; draw(); setTimeout(()=>{ if(S.pressed===id){ S.pressed=null; draw(); } },140); }
+function native(e){ const r=botC.getBoundingClientRect(); return { x:Math.floor((e.clientX-r.left)*botC.width/r.width), y:Math.floor((e.clientY-r.top)*botC.height/r.height) }; }
+let sliding=false;
+botC.addEventListener("pointerdown",e=>{ botC.setPointerCapture(e.pointerId); const p=native(e); tap(p.x,p.y); });
+botC.addEventListener("pointermove",e=>{ if(!sliding) return; const p=native(e), L=onionLayout(botC.width,botC.height); setOpacity(p.x,L); });
+botC.addEventListener("pointerup",()=>{ sliding=false; });
+function setOpacity(x,L){ const t=Math.max(0,Math.min(1,(x-L.slider.x)/(L.slider.w-4))); S.opacity=Math.round((10+t*80)/5)*5; draw(); }
+function tap(x,y){ const w=botC.width,h=botC.height;
+  if(y<24){ toast("RAIL: UNDO REDO COLOR LAYERS TOOLS MENU"); return; }
+  if(S.tab==="canvas"){ const L=stripLayout(w,h); if(y>=L.y){
+      const it=L.items.find(i=>x>=i.x&&x<i.x+i.w);
+      if(it){ flash(it.id); if(it.id==="prev") stepFrame(-1); else if(it.id==="next") stepFrame(1); else if(it.id==="play") setPlaying(!S.playing); else if(it.id==="onion"){ S.onion=!S.onion; draw(); } else toast("OPENS THE TIMELINE"); return; }
+      const f=Math.floor((x-L.ticks.x)/L.ticks.w); if(f>=0&&f<S.frames){ if(S.playing) setPlaying(false); S.frame=f; draw(); } return; }
+    if(S.playing){ setPlaying(false); toast("TOUCH STOPS PLAYBACK"); } else toast("DRAWS ON FRAME "+(S.frame+1)); return; }
+  if(S.tab==="timeline"){ const L=tlLayout(w,h);
+    const t=L.tabs.find(t=>inside(t,x,y)); if(t){ if(t.id==="LAYERS") toast("TODAY'S LAYER LIST"); return; }
+    const b=L.foot.find(b=>inside(b,x,y)); if(b){ flash(b.id); if(b.id==="FRAME..."){ S.tab="frame"; S.durSel=DUR[S.frame]; sync(); draw(); } else toast({"+ FRAME":"ADDS A FRAME AFTER "+(S.frame+1),"DUPE":"COPIES FRAME "+(S.frame+1),"DELETE":"ASKS BEFORE DELETING FRAME "+(S.frame+1)}[b.id]); return; }
+    if(x>=L.gx&&y>=L.numY){ const f=Math.floor((x-L.gx)/L.cw); if(f>=0&&f<Math.min(S.frames,L.visible)){ if(S.playing) setPlaying(false); S.frame=f;
+        const r=Math.floor((y-L.rowsY)/L.rowH); if(y>=L.rowsY&&r>=0&&r<LAYERS.length) S.layer=r; draw(); } return; }
+    if(x<L.gx&&y>=L.rowsY){ const r=Math.floor((y-L.rowsY)/L.rowH); if(r>=0&&r<LAYERS.length){ S.layer=r; draw(); } } return; }
+  if(S.tab==="onion"){ const L=onionLayout(w,h);
+    if(inside(L.close,x,y)){ S.tab="canvas"; sync(); draw(); return; }
+    if(inside(L.toggle,x,y)){ S.onion=!S.onion; draw(); return; }
+    if(inside(L.tint,x,y)){ S.tint=!S.tint; draw(); return; }
+    if(y>=L.slider.y-4&&y<L.slider.y+18&&x>=L.slider.x-4){ sliding=true; setOpacity(x,L); return; }
+    const bx=L.ix+L.iw-96; for(const [key,row] of [["behind",L.behind.y],["ahead",L.ahead.y]]){ if(y>=row&&y<row+20){ if(x>=bx&&x<bx+22) S[key]=Math.max(1,S[key]-1); else if(x>=bx+74&&x<bx+96) S[key]=Math.min(3,S[key]+1); draw(); return; } }
+    return; }
+  if(S.tab==="frame"){ const L=frameLayout(w,h);
+    if(inside(L.close,x,y)){ S.tab="timeline"; sync(); draw(); return; }
+    const bx=L.ix+L.iw-96; if(y>=L.dur.y&&y<L.dur.y+20){ if(x>=bx&&x<bx+22) S.durSel=Math.max(10,S.durSel-10); else if(x>=bx+74&&x<bx+96) S.durSel=Math.min(2000,S.durSel+10); draw(); return; }
+    const p=L.presets.find(p=>inside(p,x,y)); if(p){ S.durSel=p.v; draw(); return; }
+    const a=L.apply.find(a=>inside(a,x,y)); if(a){ S.applyAll=a.id==="ALL FRAMES"; draw(); return; }
+    if(inside(L.tag,x,y)){ toast("EDITS TAG NAME AND RANGE"); return; }
+    const m=L.move.find(m=>inside(m,x,y)); if(m){ flash(m.id); toast(m.id==="MOVE <"?"MOVES FRAME LEFT":"MOVES FRAME RIGHT"); } }
+}
+document.addEventListener("keydown",e=>{ if(e.target.closest&&e.target.closest("button")&&e.key===" ") return;
+  if(e.key===","||e.key==="ArrowLeft"){ stepFrame(-1); } else if(e.key==="."||e.key==="ArrowRight"){ stepFrame(1); }
+  else if(e.key===" "){ e.preventDefault(); setPlaying(!S.playing); } else if(e.key==="o"){ S.onion=!S.onion; draw(); } });
+sync(); draw();
+</script>

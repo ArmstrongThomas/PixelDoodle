@@ -1,5 +1,6 @@
 #include "version.h"
 #include "app.h"
+#include "animation.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -147,6 +148,41 @@ static void color_input(PdApp *a,int x,int y,bool pressed){
     if(a->page==2&&(old!=*target||old_hue!=a->hue||old_s!=a->saturation||old_v!=a->value||old_tab!=a->color_tab||old_edit!=a->palette_edit)){a->picker_update=!a->redraw;a->redraw=true;}
 }
 static void message(PdApp *a,const char *s){a->picker_update=false;snprintf(a->notice,sizeof(a->notice),"%s",s);a->redraw=true;}
+/* Masks cover the largest canvas the profile allows: 2 KiB each in DS mode, 32 KiB at 512 square. */
+static bool masks_reserve(PdApp *a,unsigned words){
+    if(a->selection&&a->mask_words==words)return true;
+    uint32_t *m[4];for(int i=0;i<4;i++){m[i]=calloc(words,4);if(!m[i]){while(i--)free(m[i]);return false;}}
+    free(a->selection);free(a->selection_base);free(a->selection_draft);free(a->guide_damage);
+    a->selection=m[0];a->selection_base=m[1];a->selection_draft=m[2];a->guide_damage=m[3];a->mask_words=words;a->selection_valid=false;return true;
+}
+static unsigned mask_bytes(const PdApp *a){return a->mask_words*4u;}
+static bool masks_fit(PdApp *a){return (a->selection&&pd_plane(&a->doc)/32<=a->mask_words)||masks_reserve(a,pd_plane(&a->doc)/32>PD_PIXELS/32?PD_MAX_PIXELS/32:PD_PIXELS/32);}
+/* Measured by allocation, so the result is what a new buffer could really get. */
+static size_t largest_block(size_t limit){size_t lo=0,hi=limit+1;while(hi-lo>1024){size_t mid=lo+(hi-lo)/2;void *p=malloc(mid);if(p){*(volatile unsigned char *)p=0;free(p);lo=mid;}else hi=mid;}return lo;}
+static unsigned elapsed_us(const PdApp *a,uint32_t start){return (unsigned)((uint64_t)(uint32_t)(a->clock_ticks()-start)*1000000u/a->clock_hz);}
+static void diagnostics_run(PdApp *a){
+    a->free_kb=a->largest_kb=a->card_write_kbs=a->card_read_kbs=0;a->memory_measured=false;
+    if(a->memory_limit){void *held[64];unsigned n=0;size_t total=0;a->largest_kb=(unsigned)(largest_block(a->memory_limit)/1024);
+        a->memory_measured=true;while(n<64&&total<a->memory_limit){size_t s=largest_block(a->memory_limit-total);void *p=s>=4096?malloc(s):NULL;if(!p)break;held[n++]=p;total+=s;}
+        while(n)free(held[--n]);a->free_kb=(unsigned)(total/1024);}
+    if(!a->directory[0]){snprintf(a->diag_status,sizeof(a->diag_status),"NO STORAGE FOR CARD TEST");return;}
+    if(!a->clock_ticks||!a->clock_hz){snprintf(a->diag_status,sizeof(a->diag_status),"NO TIMER FOR CARD TEST");return;}
+    enum{CHUNK=64*1024,CHUNKS=4};char path[PD_PATH];unsigned char *buf=malloc(CHUNK),*back=malloc(CHUNK);bool ok=buf&&back&&pd_join(path,a->directory,".diag-speed.bin");
+    if(ok)for(unsigned i=0;i<CHUNK;i++)buf[i]=(unsigned char)(i*31u+7u);
+    FILE *f=ok?fopen(path,"wb"):NULL;uint32_t t=a->clock_ticks();
+    for(unsigned i=0;f&&ok&&i<CHUNKS;i++)ok=fwrite(buf,1,CHUNK,f)==CHUNK;
+    if(f){ok=ok&&fflush(f)==0&&SETTINGS_SYNC(f)==0;if(fclose(f))ok=false;}else ok=false;
+    unsigned write_us=ok?elapsed_us(a,t):0;f=ok?fopen(path,"rb"):NULL;t=a->clock_ticks();
+    for(unsigned i=0;f&&ok&&i<CHUNKS;i++)ok=fread(back,1,CHUNK,f)==CHUNK&&!memcmp(buf,back,CHUNK);
+    unsigned read_us=ok&&f?elapsed_us(a,t):0;if(f)fclose(f);if(ok||f)remove(path);free(buf);free(back);
+    if(!ok){snprintf(a->diag_status,sizeof(a->diag_status),"CARD TEST FILE FAILED");return;}
+    a->card_write_kbs=(unsigned)((uint64_t)CHUNK*CHUNKS/1024*1000000u/(write_us?write_us:1));a->card_read_kbs=(unsigned)((uint64_t)CHUNK*CHUNKS/1024*1000000u/(read_us?read_us:1));
+    snprintf(a->diag_status,sizeof(a->diag_status),"256 KB TEST FILE, REMOVED AFTER");
+}
+bool app_set_profile(PdApp *a,unsigned profile){a->doc.profile=profile;return masks_reserve(a,(profile<=1?PD_PIXELS:PD_MAX_PIXELS)/32);}
+bool app_reserve_gallery(PdApp *a){if(!a->gallery_thumbs)a->gallery_thumbs=calloc(6,sizeof(*a->gallery_thumbs));return a->gallery_thumbs!=NULL;}
+void app_dispose(PdApp *a){pd_frames_dispose(&a->doc);free(a->selection);free(a->selection_base);free(a->selection_draft);free(a->guide_damage);free(a->clipboard);free(a->gallery_thumbs);
+    a->selection=a->selection_base=a->selection_draft=a->guide_damage=NULL;a->clipboard=NULL;a->gallery_thumbs=NULL;a->mask_words=0;}
 static uint32_t pal_get(const unsigned char *p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static void pal_put(unsigned char *p,uint32_t n){for(unsigned i=0;i<4;i++)p[i]=(unsigned char)(n>>(8*i));}
 static unsigned palette_read(PdApp *a,unsigned slot,unsigned char b[1040]){
@@ -221,7 +257,12 @@ static bool world(PdApp *a,int x,int y,int *wx,int *wy){
     int dx=x-left+a->subx,dy=y-top+a->suby;*wx=a->ox+(dx>=0?dx/a->zoom:-((-dx+a->zoom-1)/a->zoom));*wy=a->oy+(dy>=0?dy/a->zoom:-((-dy+a->zoom-1)/a->zoom));
     return ((a->guides&4)||(*wx>=0&&*wx<(int)a->doc.width))&&((a->guides&8)||(*wy>=0&&*wy<(int)a->doc.height));
 }
-static void finish(PdApp *a){if(a->stroke){pd_commit(&a->doc);a->stroke=false;a->selection_revision=a->doc.revision;a->partial=false;a->redraw=true;}a->lastx=-4097;}
+static void finish(PdApp *a){
+    if(a->stroke){pd_commit(&a->doc);a->stroke=false;a->selection_revision=a->doc.revision;
+        if(!a->page&&!a->confirm&&!a->toolbox&&!a->zoom_overlay){a->overview_pending=true;a->overview_at=a->now_ms+80;}
+        else {a->partial=false;a->redraw=true;}}
+    a->lastx=-4097;
+}
 void app_pan(PdApp *a,int dx,int dy){
     if(!dx&&!dy)return;
     if(a->page||a->confirm||a->toolbox||a->zoom_overlay||a->touching)return;
@@ -283,7 +324,7 @@ static void save(PdApp *a){
 }
 static void open_pending(PdApp *a){
     if(a->file_mode==4){if(pd_palette_read(a->pending,a->swatches,&a->swatch_count,a->notice)){a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;project_palette(a);a->page=2;a->color_tab=1;message(a,"Project palette imported");}else a->redraw=true;return;}
-    if(pd_open_file(&a->doc,a->pending,a->notice)){a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));
+    if(pd_open_file(&a->doc,a->pending,a->notice)){a->selection_valid=false;memset(a->selection,0,mask_bytes(a));
         const char *ext=strrchr(a->pending,'.');a->project_native=ext&&!strcmp(ext,".pdd");
         snprintf(a->project,sizeof(a->project),"%s",a->pending);recent_project_add(a,a->project);snprintf(a->folder,sizeof(a->folder),"%s",a->project);char *parent=strrchr(a->folder,'/');if(parent)*parent=0;
         if(!a->project_native)a->doc.revision=++a->doc.serial;
@@ -301,21 +342,21 @@ static void recovery_tick(PdApp *a,bool touch,unsigned down){
     if(!a->recovery_enabled||a->recovery_pending||touch||a->touching||a->stroke||a->doc.editing||a->page||a->confirm||a->toolbox||a->zoom_overlay||!a->directory[0]||!pd_dirty(&a->doc))return;
     if((uint32_t)(a->now_ms-a->idle_at)<2000||(uint32_t)(a->now_ms-a->recovery_at)<120000)return;
     a->recovery_at=a->now_ms;uint32_t crc=(uint32_t)crc32(0,(const Bytef*)a->doc.palette,a->doc.palette_count*4)^a->doc.palette_count;
-    if(a->recovery_revision==a->doc.revision&&a->recovery_palette==crc)return;
+    if(a->recovery_revision==a->doc.revision&&a->recovery_palette==crc&&a->recovery_frames==pd_frames_generation(&a->doc))return;
     char folder[PD_PATH],path[PD_PATH],error[64];if(!pd_join(folder,a->directory,".recovery")||(!pd_exists(folder)&&!pd_mkdir(folder))||!recovery_path(a,path,"session.pdd")){message(a,"Recovery unavailable - save manually");return;}
-    if(pd_write_recovery(&a->doc,path,error)){a->recovery_revision=a->doc.revision;a->recovery_palette=crc;a->recovery_available=true;message(a,"Recovery snapshot saved - project still unsaved");}else message(a,error);
+    if(pd_write_recovery(&a->doc,path,error)){a->recovery_revision=a->doc.revision;a->recovery_palette=crc;a->recovery_frames=pd_frames_generation(&a->doc);a->recovery_available=true;message(a,"Recovery snapshot saved - project still unsaved");}else message(a,error);
 }
 static void recovery_restore(PdApp *a){
     char path[PD_PATH],error[64];const char *names[]={"session.pdd","session.pdd.tmp","session.pdd.bak"};bool ok=false;
     for(unsigned i=0;i<3&&!ok;i++)if(recovery_path(a,path,names[i]))ok=pd_open_file(&a->doc,path,error);
     if(!ok){message(a,"No valid recovery - current art retained");return;}
-    a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));a->project[0]=0;a->project_native=false;a->doc.revision=++a->doc.serial;a->recovery_pending=false;a->recovery_revision=0;a->recovery_at=a->now_ms;
+    a->selection_valid=false;memset(a->selection,0,mask_bytes(a));a->project[0]=0;a->project_native=false;a->doc.revision=++a->doc.serial;a->recovery_pending=false;a->recovery_revision=0;a->recovery_at=a->now_ms;
     if(a->doc.palette_count){a->swatch_count=a->doc.palette_count;memcpy(a->swatches,a->doc.palette,a->swatch_count*4);}else project_palette(a);
     a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;a->ox=a->oy=a->subx=a->suby=0;a->page=0;message(a,"Recovery restored - Save As to keep it");
 }
 static void recovery_discard(PdApp *a){char path[PD_PATH];const char *names[]={"session.pdd","session.pdd.bak","session.pdd.tmp"};bool ok=true;for(unsigned i=0;i<3;i++)if(recovery_path(a,path,names[i])&&pd_exists(path)&&remove(path))ok=false;recovery_scan(a);a->recovery_pending=a->recovery_available;a->recovery_revision=0;a->recovery_at=a->now_ms;message(a,ok?"Recovery cleared; drawing retained":"Could not clear recovery files");}
 static void new_project(PdApp *a){
-    if(a->new_layers>pd_capacity(a->new_width,a->new_height,a->doc.profile)){message(a,"Too many layers for this canvas size");return;}if(!pd_create(&a->doc,a->new_width,a->new_height,a->doc.profile)){message(a,"Not enough memory - current art retained");return;}a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));a->project[0]=0;a->project_native=false;
+    if(a->new_layers>pd_capacity(a->new_width,a->new_height,a->doc.profile)){message(a,"Too many layers for this canvas size");return;}if(!pd_create(&a->doc,a->new_width,a->new_height,a->doc.profile)){message(a,"Not enough memory - current art retained");return;}a->selection_valid=false;memset(a->selection,0,mask_bytes(a));a->project[0]=0;a->project_native=false;
     if(!a->new_current_palette){a->swatch_count=PALETTE_DEFAULT_COUNT;memcpy(a->swatches,palette,sizeof(palette));palette_load(a);}project_palette(a);
     if(a->new_background){uint32_t c=a->new_background==1?0xffffffff:a->background;for(unsigned y=0;y<a->doc.height;y++)for(unsigned x=0;x<a->doc.width;x++)pd_pixels(&a->doc.layer[0])[y*a->doc.stride+x]=c;snprintf(a->doc.names[0],64,"Background");}
     a->doc.enabled=(uint8_t)((1u<<a->new_layers)-1);a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;a->doc.revision=++a->doc.serial;a->zoom=1;while(a->zoom<32&&(int)a->doc.width*a->zoom*2<=a->width&&(int)a->doc.height*a->zoom*2<=a->height-canvas_top(a))a->zoom*=2;a->ox=a->oy=a->subx=a->suby=0;a->page=0;a->recovery_revision=0;a->recovery_at=a->now_ms;message(a,"New project - not saved");
@@ -410,7 +451,7 @@ static void browser_input(PdApp *a,int x,int y){
     }a->redraw=true;
 }
 void app_init(PdApp *a,int w,int h,const char *dir,const char *platform){
-    memset(a,0,sizeof(*a));pd_init(&a->doc);a->width=w;a->height=h;a->zoom=1;a->lastx=-4097;
+    app_dispose(a);memset(a,0,sizeof(*a));pd_init(&a->doc);masks_reserve(a,PD_MAX_PIXELS/32);a->width=w;a->height=h;a->zoom=1;a->lastx=-4097;
     a->file_hold=-1;a->layer_hold=-1;a->swatch_hold=-1;a->swatch_count=PALETTE_DEFAULT_COUNT;memcpy(a->swatches,palette,sizeof(palette));
     a->color=palette[0];a->background=0xffffffff;a->platform=platform;snprintf(a->directory,sizeof(a->directory),"%s",dir);
     palette_load(a);recent_projects_load(a);a->bindings=228;a->brush_size[0]=a->brush_size[1]=1;a->new_layers=1;a->new_width=a->new_height=128;a->recovery_enabled=true;brush_load(a);presets_load(a);
@@ -432,6 +473,7 @@ static void gallery_select(PdApp *a,unsigned index){
 static void gallery_page_load(PdApp *a){
     a->selected=-1;a->preview_attempted=false;a->preview_ready=false;memset(a->gallery_ready,0,sizeof(a->gallery_ready));
     unsigned start=a->gallery_page*6;a->gallery_count=a->listing.count>start?a->listing.count-start:0;if(a->gallery_count>6)a->gallery_count=6;
+    if(!app_reserve_gallery(a)){a->gallery_count=0;message(a,"Not enough memory for thumbnails");}
     for(unsigned i=0;i<a->gallery_count;i++){gallery_select(a,start+i);a->gallery_ready[i]=a->preview_ready;if(a->preview_ready)for(unsigned y=0;y<32;y++)for(unsigned x=0;x<32;x++)a->gallery_thumbs[i][y*32+x]=a->file_preview[y*128+x*2];}
     if(a->gallery_count)gallery_select(a,start);a->redraw=true;
 }
@@ -551,7 +593,7 @@ static void layer_input(PdApp *a,int x,int y,bool pressed){
             if(y>=58&&y<76&&x>=inner_x&&x<inner_x+inner_w){a->opacity_drag=pd_begin(&a->doc);}
             else if(y>=89&&y<111&&x>=inner_x&&x<inner_x+inner_w)pd_dropdown_open(&a->layer_blend_dropdown,ox,106,ow,10,19,4,4,a->doc.layer[a->doc.active].blend,true);
             else if(y>=117&&y<139&&x>=inner_x&&x<inner_x+inner_w){pd_begin(&a->doc);a->doc.layer[a->doc.active].flags^=(uint8_t)(x<inner_x+inner_w/2?PD_LAYER_LOCK:PD_LAYER_ALPHA_LOCK);pd_commit(&a->doc);}
-            else if(y>=145&&y<167&&x>=inner_x&&x<inner_x+inner_w){int action_w=(inner_w-8)/3;if(x<inner_x+action_w){a->name_action=2;snprintf(a->filename,sizeof(a->filename),"%s",a->doc.names[a->doc.active]);text_begin(a);a->layer_popup=false;}else if(x<inner_x+2*action_w+4){message(a,pd_duplicate_layer(&a->doc)?"Layer duplicated":"No free layer slots");a->layer_popup=false;}else{message(a,pd_merge_down(&a->doc)?"Merged down - Undo to restore":"Merge needs unlocked, visible Normal layers");a->layer_popup=false;}}
+            else if(y>=145&&y<167&&x>=inner_x&&x<inner_x+inner_w){int action_w=(inner_w-8)/3;if(x<inner_x+action_w){a->name_action=2;snprintf(a->filename,sizeof(a->filename),"%s",a->doc.names[a->doc.active]);text_begin(a);a->layer_popup=false;}else if(x<inner_x+2*action_w+4){message(a,pd_duplicate_layer(&a->doc)?"Layer duplicated":"No free layer slots");a->layer_popup=false;}else{message(a,pd_merge_down(&a->doc)?"Merged down - Undo to restore":pd_frame_count(&a->doc)>1?"Animated layer merge is not available yet":"Merge needs unlocked, visible Normal layers");a->layer_popup=false;}}
             else {a->layer_popup=false;}
             if(!a->opacity_drag)a->blocked=true;a->redraw=true;
         }
@@ -588,16 +630,16 @@ static void selection_combine(PdApp *a){
 }
 static void selection_release(PdApp *a,bool cancel){
     if(!a->selection_drag)return;
-    if(cancel){if(a->selection_move)pd_cancel(&a->doc);memcpy(a->selection,a->selection_base,sizeof(a->selection));}
-    else if(a->selection_move){pd_commit(&a->doc);memset(a->selection,0,sizeof(a->selection));for(int y=0;y<(int)a->doc.height;y++)for(int x=0;x<(int)a->doc.width;x++)if(selected(a,a->selection_base,x,y)){int i=(y+a->selection_dy)*a->doc.stride+x+a->selection_dx;a->selection[i/32]|=1u<<(i%32);}}
-    else if(a->selection_shape){if(a->lasso_overflow){memcpy(a->selection,a->selection_base,sizeof(a->selection));message(a,"Lasso too long - selection unchanged");}else{memset(a->selection_draft,0,(pd_plane(&a->doc)/8));if(a->lasso_count<3)pd_mask_rectangle_stride(a->selection_draft,a->doc.stride,a->doc.rows,a->selection_x,a->selection_y,a->selection_x,a->selection_y);else pd_mask_polygon_stride(a->selection_draft,a->lasso,a->lasso_count,a->doc.width,a->doc.height,a->doc.stride);selection_combine(a);}}
+    if(cancel){if(a->selection_move)pd_cancel(&a->doc);memcpy(a->selection,a->selection_base,mask_bytes(a));}
+    else if(a->selection_move){pd_commit(&a->doc);memset(a->selection,0,mask_bytes(a));for(int y=0;y<(int)a->doc.height;y++)for(int x=0;x<(int)a->doc.width;x++)if(selected(a,a->selection_base,x,y)){int i=(y+a->selection_dy)*a->doc.stride+x+a->selection_dx;a->selection[i/32]|=1u<<(i%32);}}
+    else if(a->selection_shape){if(a->lasso_overflow){memcpy(a->selection,a->selection_base,mask_bytes(a));message(a,"Lasso too long - selection unchanged");}else{memset(a->selection_draft,0,(pd_plane(&a->doc)/8));if(a->lasso_count<3)pd_mask_rectangle_stride(a->selection_draft,a->doc.stride,a->doc.rows,a->selection_x,a->selection_y,a->selection_x,a->selection_y);else pd_mask_polygon_stride(a->selection_draft,a->lasso,a->lasso_count,a->doc.width,a->doc.height,a->doc.stride);selection_combine(a);}}
     int x,y,w,h;a->selection_valid=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&x,&y,&w,&h);a->selection_drag=a->selection_move=false;selection_stamp(a);a->redraw=true;
 }
 static void selection_input(PdApp *a,int x,int y,bool pressed){
     int wx,wy;if(!world(a,x,y,&wx,&wy)&&!a->selection_drag)return;
     if(pressed){a->selection_offset_x=(a->guides&4)?wx-((wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width):0;a->selection_offset_y=(a->guides&8)?wy-((wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height):0;}
     wx-=a->selection_offset_x;wy-=a->selection_offset_y;if(wx<0)wx=0;if(wy<0)wy=0;if(wx>=(int)a->doc.width)wx=(int)a->doc.width-1;if(wy>=(int)a->doc.height)wy=(int)a->doc.height-1;
-    if(pressed){memcpy(a->selection_base,a->selection,sizeof(a->selection));a->selection_x=wx;a->selection_y=wy;a->selection_dx=a->selection_dy=0;a->lasso_count=0;a->lasso_overflow=false;a->selection_move=!a->selection_mode&&a->selection_valid&&selected(a,a->selection,wx,wy);
+    if(pressed){memcpy(a->selection_base,a->selection,mask_bytes(a));a->selection_x=wx;a->selection_y=wy;a->selection_dx=a->selection_dy=0;a->lasso_count=0;a->lasso_overflow=false;a->selection_move=!a->selection_mode&&a->selection_valid&&selected(a,a->selection,wx,wy);
         pd_composite(&a->doc);if(a->selection_move){if(!a->doc.layer[a->doc.active].visible||(a->doc.layer[a->doc.active].flags&(PD_LAYER_LOCK|PD_LAYER_ALPHA_LOCK))||!pd_begin(&a->doc)){a->selection_move=false;a->blocked=true;message(a,"Move requires a visible unlocked layer");return;}}a->selection_drag=true;
     }
     if(!a->selection_drag)return;
@@ -608,11 +650,11 @@ static void selection_input(PdApp *a,int x,int y,bool pressed){
 }
 static void selection_action(PdApp *a,int action){
     int x=0,y=0,w=0,h=0;bool has=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&x,&y,&w,&h);
-    if((action==0||action==1)&&(w>128||h>128)){message(a,"Copy/cut limit: 128 x 128 selection");return;}if(action==0||action==1){if(!has){message(a,"Select pixels first");return;}if(action==1&&(!a->doc.layer[a->doc.active].visible||(a->doc.layer[a->doc.active].flags&(PD_LAYER_LOCK|PD_LAYER_ALPHA_LOCK)))){message(a,"Cut requires a visible unlocked layer");return;}pd_copy_selection(&a->doc,a->selection,&a->clipboard);if(action==1&&pd_begin(&a->doc)){pd_move_selection(&a->doc,a->selection,0,0,true);pd_commit(&a->doc);}message(a,action?"Cut - clipboard ready":"Copied active-layer pixels");}
-    if(action==2){if(!a->clipboard.width){message(a,"Clipboard is empty");return;}if(a->clipboard.width>a->doc.width||a->clipboard.height>a->doc.height){message(a,"Clipboard is larger than this canvas");return;}if(!has){x=a->ox;y=a->oy;}if(x<0)x=0;if(y<0)y=0;if(x+(int)a->clipboard.width>(int)a->doc.width)x=(int)a->doc.width-(int)a->clipboard.width;if(y+(int)a->clipboard.height>(int)a->doc.height)y=(int)a->doc.height-(int)a->clipboard.height;
-        if(!pd_paste_selection(&a->doc,&a->clipboard,x,y)){message(a,"Paste made no change - check layer locks");return;}memset(a->selection,0,sizeof(a->selection));for(unsigned yy=0;yy<a->clipboard.height;yy++)for(unsigned xx=0;xx<a->clipboard.width;xx++)if((a->clipboard.mask[(yy*128+xx)/32]&(1u<<((yy*128+xx)%32)))&&(a->clipboard.pixels[yy*128+xx]>>24)){unsigned i=(unsigned)(y+(int)yy)*a->doc.stride+(unsigned)x+xx;a->selection[i/32]|=1u<<(i%32);}a->selection_valid=true;message(a,"Pasted - drag inside selection to move");}
-    if(action==3){memset(a->selection,0,sizeof(a->selection));pd_mask_rectangle_stride(a->selection,a->doc.stride,a->doc.rows,0,0,(int)a->doc.width-1,(int)a->doc.height-1);a->selection_valid=true;}
-    if(action==4){memset(a->selection,0,sizeof(a->selection));a->selection_valid=false;}
+    if((action==0||action==1)&&(w>128||h>128)){message(a,"Copy/cut limit: 128 x 128 selection");return;}if(action==0||action==1){if(!has){message(a,"Select pixels first");return;}if(action==1&&(!a->doc.layer[a->doc.active].visible||(a->doc.layer[a->doc.active].flags&(PD_LAYER_LOCK|PD_LAYER_ALPHA_LOCK)))){message(a,"Cut requires a visible unlocked layer");return;}if(!a->clipboard&&!(a->clipboard=calloc(1,sizeof(*a->clipboard)))){message(a,"Not enough memory to copy");return;}pd_copy_selection(&a->doc,a->selection,a->clipboard);if(action==1&&pd_begin(&a->doc)){pd_move_selection(&a->doc,a->selection,0,0,true);pd_commit(&a->doc);}message(a,action?"Cut - clipboard ready":"Copied active-layer pixels");}
+    if(action==2){if(!a->clipboard||!a->clipboard->width){message(a,"Clipboard is empty");return;}if(a->clipboard->width>a->doc.width||a->clipboard->height>a->doc.height){message(a,"Clipboard is larger than this canvas");return;}if(!has){x=a->ox;y=a->oy;}if(x<0)x=0;if(y<0)y=0;if(x+(int)a->clipboard->width>(int)a->doc.width)x=(int)a->doc.width-(int)a->clipboard->width;if(y+(int)a->clipboard->height>(int)a->doc.height)y=(int)a->doc.height-(int)a->clipboard->height;
+        if(!pd_paste_selection(&a->doc,a->clipboard,x,y)){message(a,"Paste made no change - check layer locks");return;}memset(a->selection,0,mask_bytes(a));for(unsigned yy=0;yy<a->clipboard->height;yy++)for(unsigned xx=0;xx<a->clipboard->width;xx++)if((a->clipboard->mask[(yy*128+xx)/32]&(1u<<((yy*128+xx)%32)))&&(a->clipboard->pixels[yy*128+xx]>>24)){unsigned i=(unsigned)(y+(int)yy)*a->doc.stride+(unsigned)x+xx;a->selection[i/32]|=1u<<(i%32);}a->selection_valid=true;message(a,"Pasted - drag inside selection to move");}
+    if(action==3){memset(a->selection,0,mask_bytes(a));pd_mask_rectangle_stride(a->selection,a->doc.stride,a->doc.rows,0,0,(int)a->doc.width-1,(int)a->doc.height-1);a->selection_valid=true;}
+    if(action==4){memset(a->selection,0,mask_bytes(a));a->selection_valid=false;}
     if(action==5&&has){if(pd_begin(&a->doc)){if(pd_move_selection(&a->doc,a->selection,0,0,true))pd_commit(&a->doc);else{pd_cancel(&a->doc);message(a,"Delete requires a visible unlocked layer");return;}}}
     selection_stamp(a);a->page=0;a->redraw=true;
 }
@@ -678,17 +720,30 @@ static void tool_options_input(PdApp *a,int x,int y,bool pressed){
     }
     a->blocked=!a->brush_drag;a->redraw=true;
 }
+static int timeline_slot(const PdApp *a,unsigned row){unsigned seen=0;for(unsigned i=0;i<PD_LAYERS;i++){unsigned slot=a->doc.order[PD_LAYERS-1-i];if(a->doc.enabled&(1u<<slot)){if(seen++==row)return (int)slot;}}return -1;}
 void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
+    if(!masks_fit(a)){message(a,"Not enough memory for selection masks");return;}
 #ifdef PD_PRIVATE_BUILD
     if(a->share_tick)a->share_tick(a);
 #else
     if((a->page==28||a->page==29)&&a->online_tick)a->online_tick(a);
 #endif
+    if(a->playback.active){
+        bool stop=down!=0||(touch&&!a->touching);
+        if(stop){pd_playback_stop(&a->doc,&a->playback);a->blocked=touch;a->redraw=true;}
+        else if(pd_playback_tick(&a->doc,&a->playback,a->now_ms)){
+            unsigned f=pd_frame_index(&a->doc),cols=(unsigned)(a->width-96)/28;
+            if(f<a->timeline_first||f>=a->timeline_first+cols)a->timeline_first=f;
+            a->redraw=true;
+        }
+        a->touching=touch;a->partial=false;return;
+    }
     a->pan_frame=false;
+    if(a->overview_pending&&!touch&&!a->touching&&(int32_t)(a->now_ms-a->overview_at)>=0){a->overview_pending=false;a->partial=false;a->redraw=true;}
     if(a->shape_drag&&(!touch||down||(held&(PD_PAN|PD_SAMPLE|PD_ZOOM|PD_ERASE))||(touch&&y<24)))shape_release(a,touch||down);
 
     if(a->selection_drag&&(!touch||down||(held&(PD_PAN|PD_ERASE|PD_SAMPLE))||(touch&&y<(a->tool==4?50:24))))selection_release(a,touch||down);
-    if(a->selection_valid&&(a->selection_layer!=a->doc.active||a->selection_revision!=a->doc.revision)){memset(a->selection,0,sizeof(a->selection));a->selection_valid=false;a->redraw=true;}
+    if(a->selection_valid&&(a->selection_layer!=a->doc.active||a->selection_revision!=a->doc.revision)){memset(a->selection,0,mask_bytes(a));a->selection_valid=false;a->redraw=true;}
 
     recovery_tick(a,touch,down);
     if(!touch&&a->swatch_hold>=0){
@@ -743,12 +798,18 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
         a->blocked=touch;a->touching=touch;a->redraw=true;return;
     }
     /* Edge-triggered history chords are canvas-only, with the pen fully lifted. */
+    if(!touch&&!a->touching&&!a->page&&!a->confirm&&!a->toolbox&&!a->doc.editing&&!(down&(PD_MENU|PD_SAVE|PD_TOOLS))){
+        unsigned prev=down&PD_FRAME_PREV,next=down&PD_FRAME_NEXT;
+        if((held&PD_PAN)&&!(held&(PD_SAMPLE|PD_ZOOM))){prev|=down&PD_SHOULDER_L;next|=down&PD_SHOULDER_R;}
+        if((prev!=0)!=(next!=0)){unsigned frame=pd_frame_index(&a->doc),count=pd_frame_count(&a->doc);bool ok=next?frame+1<count&&pd_frame_switch(&a->doc,frame+1):frame>0&&pd_frame_switch(&a->doc,frame-1);
+            if(ok){a->selection_valid=false;memset(a->selection,0,mask_bytes(a));a->partial=false;a->overview_pending=false;a->redraw=true;}else message(a,"Frame limit or not enough memory");}
+    }
     if(!touch&&!a->touching&&!a->page&&!a->confirm&&!a->toolbox&&!a->doc.editing&&(held&PD_ZOOM)&&!(down&(PD_MENU|PD_SAVE|PD_TOOLS))){
         unsigned shoulders=held&(PD_SHOULDER_L|PD_SHOULDER_R),pressed_shoulder=down&(PD_SHOULDER_L|PD_SHOULDER_R);
         if(pressed_shoulder&&shoulders!= (PD_SHOULDER_L|PD_SHOULDER_R)){
             bool redo=pressed_shoulder==PD_SHOULDER_R;
             bool changed=redo?pd_redo(&a->doc):pd_undo(&a->doc);
-            if(changed){a->selection_valid=false;memset(a->selection,0,sizeof(a->selection));}
+            if(changed){a->selection_valid=false;memset(a->selection,0,mask_bytes(a));}
             message(a,changed?(redo?"Redo":"Undo"):(redo?"No redo":"No more undo"));a->partial=false;a->redraw=true;
         }
     }
@@ -832,6 +893,32 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             a->blocked=!a->brush_drag;a->redraw=true;
         }
     }else if(a->page){
+        if(a->page>=32&&a->page<=34&&touch){
+            if(pressed){
+                if(a->page==34){if(y>=100&&y<128){if(x<a->width/2){pd_frame_delete(&a->doc);a->selection_valid=false;message(a,"Frame deleted; undo history cleared");}a->page=32;}}
+                else if(a->page==33){unsigned ms=pd_frame_duration(&a->doc);if(y>=60&&y<132){unsigned row=(unsigned)(y-60)/24,col=x>=a->width/2,values[]={50,100,150,200,300,500};pd_frame_set_duration(&a->doc,values[row*2+col]);}
+                    else if(y>=136&&y<158){if(x<a->width/2&&ms>10)pd_frame_set_duration(&a->doc,ms-10);else if(x>=a->width/2&&ms<60000)pd_frame_set_duration(&a->doc,ms+10);}else if(y>=a->height-24)a->page=32;}
+                else {unsigned count=pd_frame_count(&a->doc),current=pd_frame_index(&a->doc),cols=(unsigned)(a->width-96)/28,rows=a->height==192?6:8;int footer=a->height-48,row_h=(footer-72)/(int)rows;
+                    bool changed=false,ok=true;
+                    if(y>=30&&y<58&&x>=96&&x<a->width-80){
+                        ok=pd_playback_start(&a->doc,&a->playback,a->now_ms);
+                        if(ok){a->overview_pending=false;a->selection_valid=false;}
+                        else message(a,count<2?"Add a second frame to play":"Not enough memory to start playback");
+                    }
+                    else if(y>=a->height-24)a->page=0;
+                    else if(y>=footer){unsigned pick=(unsigned)(x*3/a->width);if(pick<2){ok=pd_frame_add(&a->doc,pick==1);changed=ok;}else if(count>1)a->page=34;}
+                    else if(y>=42&&y<58&&x>=a->width-76)a->page=33;
+                    else if(y>=58&&y<72){if(x<46){if(a->timeline_first)a->timeline_first--;}else if(x<92){if(a->timeline_first+cols<count)a->timeline_first++;}else {unsigned f=a->timeline_first+(unsigned)(x-96)/28;if(x>=96&&f<count){ok=pd_frame_switch(&a->doc,f);changed=ok;}}}
+                    else if(y>=72&&y<footer){unsigned row=(unsigned)(y-72)/(unsigned)row_h,layerrow=a->timeline_layer_first+row;int slot=timeline_slot(a,layerrow);
+                        if(x>=86&&x<96){unsigned layers=0;for(unsigned l=0;l<8;l++)if(a->doc.enabled&(1u<<l))layers++;if(y<(72+footer)/2){if(a->timeline_layer_first)a->timeline_layer_first--;}else if(a->timeline_layer_first+rows<layers)a->timeline_layer_first++;}
+                        else if(slot>=0){if(x<86){a->doc.active=(unsigned)slot;}else if(x>=96){unsigned f=a->timeline_first+(unsigned)(x-96)/28;if(f<count){ok=pd_frame_switch(&a->doc,f);if(ok){a->doc.active=slot;changed=true;}}}}}
+                    if(changed){a->selection_valid=false;memset(a->selection,0,mask_bytes(a));a->overview_pending=false;current=pd_frame_index(&a->doc);if(current<a->timeline_first)a->timeline_first=current;if(current>=a->timeline_first+cols)a->timeline_first=current-cols+1;}
+                    if(!ok)message(a,"Not enough frame memory; art retained");
+                }
+                a->blocked=true;a->partial=false;a->redraw=true;
+            }a->touching=true;return;
+        }
+        if(a->page==7&&touch){if(pressed&&y>=a->height-28){diagnostics_run(a);}a->blocked=true;a->redraw=true;a->touching=true;return;}
         if(a->page==26&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;if(xx<0||xx>=224||y>=184)a->page=0;
             else if(y>=48&&y<72){a->fill_global=!a->fill_global;a->brush_dirty=true;}
             else if(y>=76&&y<100){a->fill_visible=!a->fill_visible;a->brush_dirty=true;}
@@ -846,7 +933,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             if(a->brush_drag){int left=a->handed?a->width-224:0,px=x-left-16;if(px<0)px=0;if(px>191)px=191;a->brush_size[0]=1+(unsigned)(px*15/191);a->brush_dirty=true;a->redraw=true;}a->touching=true;return;}
         if(a->page==25&&touch){if(pressed){int sx=advanced_sheet_x(a),sw=advanced_sheet_w(a),ix=sx+8,iw=sw-16,xx=x-ix;
             if(x<sx||x>=sx+sw||y<28||y>=(int)a->height-8||(y<46&&x>=sx+sw-18)){a->page=0;a->toolbox=true;a->tool_options_open=true;a->tool_panel=4;}
-            else if(y>=52&&y<152){unsigned row=(unsigned)(y-52)/25,col=xx>=iw/2?1u:0u,op=row*2+col;bool ok=false;if(op>=8)op=7;if(a->selection_valid){if(op<3)ok=pd_transform_selection(&a->doc,a->selection,op,a->selection_draft);else if(op==3)ok=pd_duplicate_selection(&a->doc,a->selection);else ok=pd_scale_selection(&a->doc,a->selection,op==7?-2:(int)op-2,a->selection_draft);}if(ok){if(op!=3)memcpy(a->selection,a->selection_draft,sizeof(a->selection));int bx,by,bw,bh;a->selection_valid=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&bx,&by,&bw,&bh);selection_stamp(a);a->page=0;a->toolbox=true;a->tool_options_open=true;a->tool_panel=4;message(a,op==3?"Duplicated to layer - drag to move":"Selection transformed");}else message(a,op==3?"Select pixels; needs a free layer":"Needs <=128 selection, fit, unlocked");}
+            else if(y>=52&&y<152){unsigned row=(unsigned)(y-52)/25,col=xx>=iw/2?1u:0u,op=row*2+col;bool ok=false;if(op>=8)op=7;if(a->selection_valid){if(op<3)ok=pd_transform_selection(&a->doc,a->selection,op,a->selection_draft);else if(op==3)ok=pd_duplicate_selection(&a->doc,a->selection);else ok=pd_scale_selection(&a->doc,a->selection,op==7?-2:(int)op-2,a->selection_draft);}if(ok){if(op!=3)memcpy(a->selection,a->selection_draft,mask_bytes(a));int bx,by,bw,bh;a->selection_valid=pd_mask_bounds_stride(a->selection,a->doc.width,a->doc.height,a->doc.stride,&bx,&by,&bw,&bh);selection_stamp(a);a->page=0;a->toolbox=true;a->tool_options_open=true;a->tool_panel=4;message(a,op==3?"Duplicated to layer - drag to move":"Selection transformed");}else message(a,op==3?"Select pixels; needs a free layer":"Needs <=128 selection, fit, unlocked");}
             else if(y>=158&&y<180){a->page=0;a->toolbox=true;a->tool_options_open=true;a->tool_panel=4;}a->blocked=true;a->redraw=true;}a->touching=true;return;}
 
         if(a->page==23&&touch){if(pressed){int left=a->handed?a->width-224:0,xx=x-left;if(xx<0||xx>=224||y>=186)a->page=0;
@@ -873,7 +960,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             else if(y>=78&&y<110&&a->pairing_state!=1&&a->pairing_state!=6){if(a->online_begin)a->online_begin(a);else{a->pairing_state=4;snprintf(a->pairing_message,sizeof(a->pairing_message),"VERIFIED PAIRING UNAVAILABLE HERE");}}
             a->blocked=true;a->redraw=true;}a->touching=true;return;}
 #ifdef PD_PRIVATE_BUILD
-        if(a->page==30&&touch){if(pressed){if(y>=a->height-32){a->page=0;}else if(y>=52&&y<92){a->page=0;if(a->share_current)a->share_current(a,false);else message(a,"Sprite sharing is unavailable");}else if(y>=100&&y<140){a->page=0;if(a->share_current)a->share_current(a,true);else message(a,"Sprite sharing is unavailable");}a->blocked=true;a->redraw=true;}a->touching=true;return;}
+        if(a->page==30&&touch){if(pressed){if(y>=a->height-32){a->page=0;}else if(y>=52&&y<80){a->share_animation=false;a->page=0;if(a->share_current)a->share_current(a,false);else message(a,"Sprite sharing is unavailable");}else if(y>=86&&y<114){a->share_animation=false;a->page=0;if(a->share_current)a->share_current(a,true);else message(a,"Sprite sharing is unavailable");}else if(y>=120&&y<148){a->share_animation=true;a->page=0;if(a->share_current)a->share_current(a,true);else message(a,"Sprite sharing is unavailable");}a->blocked=true;a->redraw=true;}a->touching=true;return;}
 #endif
         if(a->page==31&&touch){adjustment_input(a,x,y,pressed);a->touching=touch;return;}
         if(a->page==27&&touch){if(pressed){int sx=advanced_sheet_x(a),sw=advanced_sheet_w(a),ix=sx+8,iw=sw-16,xx=x-ix;
@@ -944,7 +1031,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             else if(a->page==17){if(y>=a->height-28){if(x>=a->width/2){a->page=4;a->preview_attempted=false;}else if(a->recent_project_selected>=0){int n=snprintf(a->pending,sizeof(a->pending),"%s/%s",a->directory,a->recent_projects[a->recent_project_selected]);if(n<(int)sizeof(a->pending)){a->file_mode=0;a->confirm=4;message(a,"Open replaces current drawing");}}}else if(y>=30&&y<158){unsigned i=(unsigned)(y-30)/16;if(i<a->recent_project_count){a->recent_project_selected=(int)i;char path[PD_PATH];if(snprintf(path,sizeof(path),"%s/%s",a->directory,a->recent_projects[i])<(int)sizeof(path))preview_file(a,path);}}a->blocked=true;a->redraw=true;}
             else if(a->page==4||a->page==5)browser_input(a,x,y);
             else if(a->page==6){if(y>=45&&y<85)browse(a,2);else if(y>=95&&y<135)browse(a,3);}
-            else if(a->page==3){if(y>=156){unsigned col=(unsigned)(x*3/a->width);action(a,col==0?7:col==1?8:9);}else if(y>=30){int i=(y-30)/18;if(i<7)action(a,i);}}
+            else if(a->page==3){if(y>=156){unsigned col=(unsigned)(x*3/a->width);action(a,col==0?7:col==1?8:9);}else if(y>=30){int i=(y-30)/18;if(i==4&&x>=a->width/2){a->page=32;unsigned columns=(unsigned)(a->width-96)/28,frame=pd_frame_index(&a->doc);a->timeline_first=frame>=columns?frame-columns+1:0;a->timeline_layer_first=0;a->redraw=true;a->blocked=true;}else if(i<7)action(a,i);}}
             else {int i=(y-30)/24;if(y>=30&&i<6)action(a,i);}
         }
     }else if(a->tool==4&&touch&&y<50){
@@ -964,13 +1051,14 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             bool changed=pd_fill_pattern(&a->doc,wx,wy,a->color,a->guides,a->selection_valid?a->selection:NULL,a->fill_global,a->fill_tolerance,a->fill_visible,a->fill_pattern);message(a,changed?(a->fill_global?"Replaced matching colors on active layer":"Filled active layer"):(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)?"Layer locked":!a->doc.layer[a->doc.active].visible?"Layer hidden":"Fill made no change");if(changed){recent_add(a,false);selection_stamp(a);}a->blocked=true;a->redraw=true;
         }
         else if(world(a,x,y,&wx,&wy)){
+            bool started=false;
             if(!a->stroke){
                 if(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK){message(a,"Layer locked - unlock in layer options");a->blocked=true;}
                 else if(!a->doc.layer[a->doc.active].visible){message(a,"Layer hidden - enable in Layers");a->blocked=true;}
-                else {a->stroke=pd_begin(&a->doc);memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));a->lastx=wx;a->lasty=wy;}
+                else {a->stroke=pd_begin(&a->doc);started=a->stroke;if(started)a->ink_starts++;memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));a->lastx=wx;a->lasty=wy;}
             }
             bool erase=(held&PD_ERASE)!=0||a->tool==1;
-            if(a->stroke&&(pressed||wx!=a->lastx||wy!=a->lasty||erase!=a->last_erase)){if(a->lastx==-4097){memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));a->lastx=wx;a->lasty=wy;}
+            if(a->stroke&&(started||pressed||wx!=a->lastx||wy!=a->lasty||erase!=a->last_erase)){if(a->lastx==-4097){memset(&a->perfect_stroke,0,sizeof(a->perfect_stroke));a->lastx=wx;a->lasty=wy;}
                 a->partial=!a->redraw;
                 a->dx0=a->lastx<wx?a->lastx:wx;a->dx1=(a->lastx>wx?a->lastx:wx)+1;
                 a->dy0=a->lasty<wy?a->lasty:wy;a->dy1=(a->lasty>wy?a->lasty:wy)+1;
@@ -985,19 +1073,19 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
     }
     a->touching=touch;
 }
-static void rect(uint32_t *p,int w,int h,int x,int y,int rw,int rh,uint32_t c){
-    for(int yy=y;yy<y+rh;yy++)for(int xx=x;xx<x+rw;xx++)if(xx>=0&&xx<w&&yy>=0&&yy<h)p[yy*w+xx]=c;
+static void rect(PdFb *p,int w,int h,int x,int y,int rw,int rh,uint32_t c){
+    for(int yy=y;yy<y+rh;yy++)for(int xx=x;xx<x+rw;xx++)if(xx>=0&&xx<w&&yy>=0&&yy<h)p[yy*w+xx]=pd_fb(c);
 }
-static void text(uint32_t *p,int w,int h,int x,int y,const char *s,uint32_t c){
+static void text(PdFb *p,int w,int h,int x,int y,const char *s,uint32_t c){
     for(;*s;s++,x+=6){unsigned char rows[7];char ch=*s;if(ch>='a'&&ch<='z')ch=(char)(ch-'a'+'A');glyphRows(ch,rows);
         for(int yy=0;yy<7;yy++)for(int xx=0;xx<5;xx++)if(rows[yy]&(1<<(4-xx)))rect(p,w,h,x+xx,y+yy,1,1,c);
     }
 }
-static void button(uint32_t *p,int w,int h,int x,int y,int bw,int bh,const char *label,bool primary){
+static void button(PdFb *p,int w,int h,int x,int y,int bw,int bh,const char *label,bool primary){
     rect(p,w,h,x,y,bw,bh,UI_EDGE);rect(p,w,h,x+1,y+1,bw-2,bh-2,primary?UI_SELECTED:UI_PANEL);
     text(p,w,h,x+6,y+(bh-7)/2,label,UI_TEXT);
 }
-static void community_dropdown_draw(PdApp *a,uint32_t *p,int w,int h){
+static void community_dropdown_draw(PdApp *a,PdFb *p,int w,int h){
     PdDropdown *m=&a->community_dropdown;if(!m->open)return;static const char *names[]={"CACHED","RECENT","FAVORITES","MY UPLOADS"};
     int total=m->header_h+m->row_h*m->visible_rows;rect(p,w,h,m->x+2,m->y+3,m->w,total,0x111820);rect(p,w,h,m->x,m->y,m->w,total,UI_ACCENT);rect(p,w,h,m->x+1,m->y+1,m->w-2,total-2,UI_BG);
     char header[40];unsigned pages=m->count>(unsigned)m->visible_rows?m->count-(unsigned)m->visible_rows+1:1;snprintf(header,sizeof(header),"CHOOSE VIEW  %u/%u",m->first+1,pages);text(p,w,h,m->x+7,m->y+5,header,UI_ACCENT);
@@ -1005,7 +1093,7 @@ static void community_dropdown_draw(PdApp *a,uint32_t *p,int w,int h){
     for(int row=0;row<m->visible_rows;row++){unsigned i=m->first+(unsigned)row;if(i>=m->count)break;int yy=m->y+m->header_h+row*m->row_h;rect(p,w,h,m->x+2,yy,m->w-4,m->row_h-1,i==m->selected?UI_SELECTED:UI_PANEL);char label[32];snprintf(label,sizeof(label),"%.*s",max_chars,names[i]);text(p,w,h,m->x+8,yy+(m->row_h-7)/2,label,i==m->selected?UI_TEXT:UI_MUTED);if(i==m->selected)text(p,w,h,m->x+m->w-16,yy+(m->row_h-7)/2,">",UI_ACCENT);}
     if(m->first)text(p,w,h,m->x+m->w-13,m->y+5,"^",UI_TEXT);if(m->first+(unsigned)m->visible_rows<m->count)text(p,w,h,m->x+m->w-13,m->y+total-9,"v",UI_TEXT);
 }
-static void layer_blend_dropdown_draw(PdApp *a,uint32_t *p,int w,int h){
+static void layer_blend_dropdown_draw(PdApp *a,PdFb *p,int w,int h){
     PdDropdown *m=&a->layer_blend_dropdown;if(!m->open)return;static const char *names[]={"NORMAL","MULTIPLY","SCREEN","OVERLAY"};
     int total=m->header_h+m->row_h*m->visible_rows;
     rect(p,w,h,m->x-2,m->y-2,m->w+4,total+4,UI_EDGE);rect(p,w,h,m->x,m->y,m->w,total,UI_BG);
@@ -1023,9 +1111,9 @@ static uint32_t displayed(uint32_t p,int x,int y){unsigned a=p>>24,bg=((x/8+y/8)
     if(a==255)return p&0xffffff;if(!a)return bg*0x010101;
     unsigned r=(((p>>16)&255)*a+bg*(255-a)+127)/255,g=(((p>>8)&255)*a+bg*(255-a)+127)/255,b=((p&255)*a+bg*(255-a)+127)/255;return (r<<16)|(g<<8)|b;
 }
-static void brush_tip_preview(uint32_t *p,int w,int h,int x,int y,int bw,int bh,unsigned size,unsigned round,unsigned pattern,uint32_t color){
+static void brush_tip_preview(PdFb *p,int w,int h,int x,int y,int bw,int bh,unsigned size,unsigned round,unsigned pattern,uint32_t color){
     rect(p,w,h,x-1,y-1,bw+2,bh+2,UI_EDGE);
-    for(int yy=0;yy<bh;yy++)for(int xx=0;xx<bw;xx++)p[(y+yy)*w+x+xx]=(((xx/8)+(yy/8))&1)?0xcdcdcd:0xeeeeee;
+    for(int yy=0;yy<bh;yy++)for(int xx=0;xx<bw;xx++)p[(y+yy)*w+x+xx]=pd_fb((((xx/8)+(yy/8))&1)?0xcdcdcd:0xeeeeee);
     if(size<1)size=1;if(size>16)size=16;if(size>(unsigned)bh-2)size=(unsigned)bh-2;
     int left=x+(bw-(int)size)/2,top=y+(bh-(int)size)/2;
     for(unsigned yy=0;yy<size;yy++)for(unsigned xx=0;xx<size;xx++){
@@ -1034,10 +1122,10 @@ static void brush_tip_preview(uint32_t *p,int w,int h,int x,int y,int bw,int bh,
         if(pattern==1&&!((xx+yy)&1))ink=false;
         else if(pattern==2&&(xx&1))ink=false;
         else if(pattern==3&&(xx&1)&&(yy&1))ink=false;
-        if(ink)p[(top+(int)yy)*w+left+(int)xx]=displayed(color,x+xx,y+yy);
+        if(ink)p[(top+(int)yy)*w+left+(int)xx]=pd_fb(displayed(color,x+xx,y+yy));
     }
 }
-static void render_layer_top(PdApp *a,uint32_t *p,int w,int h){
+static void render_layer_top(PdApp *a,PdFb *p,int w,int h){
     char label[96];rect(p,w,h,0,0,w,h,UI_BG);rect(p,w,h,0,0,w,20,0x11191d);
     text(p,w,h,8,6,"LAYER PREVIEW",UI_ACCENT);
     text(p,w,h,w-8-(int)strlen("GRIP HOLD + DRAG")*6,6,"GRIP HOLD + DRAG",UI_MUTED);
@@ -1051,11 +1139,11 @@ static void render_layer_top(PdApp *a,uint32_t *p,int w,int h){
         int x=margin+(int)panel*(panel_w+gap);
         text(p,w,h,x+2,25,labels[panel],panel?UI_TEXT:UI_MUTED);
         rect(p,w,h,x-1,preview_top-1,panel_w+2,image_h+2,UI_EDGE);
-        for(int yy=0;yy<image_h;yy++)for(int xx=0;xx<panel_w;xx++)p[(preview_top+yy)*w+x+xx]=UI_BG;
+        for(int yy=0;yy<image_h;yy++)for(int xx=0;xx<panel_w;xx++)p[(preview_top+yy)*w+x+xx]=pd_fb(UI_BG);
         int left=x+(panel_w-mw)/2,top=preview_top+(image_h-mh)/2;
         for(int y=0;y<mh;y++)for(int xx=0;xx<mw;xx++){
             int wx=xx*(int)dw/mw,wy=y*(int)dh/mh;
-            p[(top+y)*w+left+xx]=displayed(sources[panel][wy*a->doc.stride+wx],wx,wy);
+            p[(top+y)*w+left+xx]=pd_fb(displayed(sources[panel][wy*a->doc.stride+wx],wx,wy));
         }
         if(panel&&!a->doc.layer[a->doc.active].visible)text(p,w,h,x+6,preview_top+6,"HIDDEN",UI_ACCENT);
     }
@@ -1066,7 +1154,7 @@ static void render_layer_top(PdApp *a,uint32_t *p,int w,int h){
     const char *hint="TOUCH TO SELECT  /  HOLD TO REORDER";
     snprintf(label,sizeof(label),"%.*s",chars,hint);text(p,w,h,8,h-15,label,UI_MUTED);
 }
-static void render_palette(PdApp *a,uint32_t *p,int w,int h){
+static void render_palette(PdApp *a,PdFb *p,int w,int h){
     int top=palette_content_y(a),fh=palette_view_height(a),pitch=palette_row_pitch(a),tile=palette_tile(a),cols=(int)palette_cols(a);
     unsigned first=(unsigned)(a->palette_scroll[1]/pitch)*cols;
     unsigned end=first+(unsigned)((fh+pitch-1)/pitch+1)*cols;if(end>a->swatch_count)end=a->swatch_count;
@@ -1075,18 +1163,18 @@ static void render_palette(PdApp *a,uint32_t *p,int w,int h){
         if(py+tile<=top||py>=top+fh)continue;
         bool moving=a->swatch_drag&&(unsigned)a->swatch_target==i;uint32_t color=moving?a->swatches[a->swatch_hold]:a->swatches[i];
         for(int yy=py;yy<py+tile;yy++)if(yy>=top&&yy<top+fh)for(int xx=px;xx<px+tile;xx++){
-            bool edge=xx<px+2||xx>=px+tile-2||yy<py+2||yy>=py+tile-2;p[yy*w+xx]=edge?(moving||i==a->swatch_selected?UI_ACCENT:UI_EDGE):displayed(color,xx,yy);
+            bool edge=xx<px+2||xx>=px+tile-2||yy<py+2||yy>=py+tile-2;p[yy*w+xx]=pd_fb(edge?(moving||i==a->swatch_selected?UI_ACCENT:UI_EDGE):displayed(color,xx,yy));
         }
         if(moving&&py>=top&&py+14<top+fh){rect(p,w,h,px+2,py+2,26,11,UI_BG);text(p,w,h,px+4,py+4,"MOVE",UI_TEXT);}
     }
     int total=((int)a->swatch_count+cols-1)/cols*pitch;if(total>fh){int thumb=fh*fh/total;if(thumb<8)thumb=8;int sy=top+a->palette_scroll[1]*(fh-thumb)/(total-fh);rect(p,w,h,w-4,top,3,fh,UI_PANEL);rect(p,w,h,w-4,sy,3,thumb,UI_ACCENT);}
 }
-static void palette_swatch(uint32_t *p,int w,int h,int x,int y,int sw,int sh,uint32_t color,bool selected){
+static void palette_swatch(PdFb *p,int w,int h,int x,int y,int sw,int sh,uint32_t color,bool selected){
     rect(p,w,h,x-1,y-1,sw+2,sh+2,selected?UI_ACCENT:UI_EDGE);
     for(int yy=y;yy<y+sh;yy++)for(int xx=x;xx<x+sw;xx++)
-        if(xx>=0&&xx<w&&yy>=0&&yy<h)p[yy*w+xx]=displayed(color,xx,yy);
+        if(xx>=0&&xx<w&&yy>=0&&yy<h)p[yy*w+xx]=pd_fb(displayed(color,xx,yy));
 }
-static void render_palette_top(PdApp *a,uint32_t *p,int w,int h){
+static void render_palette_top(PdApp *a,PdFb *p,int w,int h){
     char label[96];uint32_t active=*palette_color_target(a);bool compact=w<340;
     int outer=compact?12:16;
     rect(p,w,h,0,0,w,h,UI_BG);rect(p,w,h,0,0,w,20,0x11191d);
@@ -1143,7 +1231,7 @@ static void render_palette_top(PdApp *a,uint32_t *p,int w,int h){
     snprintf(label,sizeof(label),"%.*s",max_chars,a->notice);text(p,w,h,outer,notice_y,label,UI_TEXT);
 }
 /* Original 8x8 UI glyphs, rendered at 2x for native stylus screens. */
-static void icon(uint32_t *p,int w,int h,int x,int y,unsigned id,uint32_t c){
+static void icon(PdFb *p,int w,int h,int x,int y,unsigned id,uint32_t c){
     static const unsigned char bits[][8]={
         {0x20,0x60,0xfe,0x61,0x21,0x01,0x02,0x1c}, /* undo */
         {0x04,0x06,0x7f,0x86,0x84,0x80,0x40,0x38}, /* redo */
@@ -1172,7 +1260,7 @@ static void icon(uint32_t *p,int w,int h,int x,int y,unsigned id,uint32_t c){
     };
     for(int yy=0;yy<8;yy++)for(int xx=0;xx<8;xx++)if(bits[id][yy]&(128>>xx))rect(p,w,h,x+xx*2,y+yy*2,2,2,c);
 }
-static void icon_coverage(uint32_t *p,int w,int h,int x,int y,const unsigned short rows[4][16],uint32_t c,uint32_t bg){
+static void icon_coverage(PdFb *p,int w,int h,int x,int y,const unsigned short rows[4][16],uint32_t c,uint32_t bg){
     for(int yy=0;yy<16;yy++)for(int xx=0;xx<16;xx++){
         unsigned packed=rows[yy/4][(yy%4)*4+xx/4],coverage=(packed>>(12-4*(xx%4)))&15;
         if(!coverage)continue;
@@ -1184,11 +1272,11 @@ static void icon_coverage(uint32_t *p,int w,int h,int x,int y,const unsigned sho
         rect(p,w,h,x+xx,y+yy,1,1,(r<<16)|(g<<8)|b);
     }
 }
-static void icon16(uint32_t *p,int w,int h,int x,int y,unsigned id,uint32_t c,uint32_t bg){
+static void icon16(PdFb *p,int w,int h,int x,int y,unsigned id,uint32_t c,uint32_t bg){
     if(id<=5)icon_coverage(p,w,h,x,y,uiIconAlpha[id],c,bg);
 }
 /* Border is a one-screen-pixel overlay, clipped below the toolbar. */
-static void canvas_border(PdApp *a,uint32_t *bottom){
+static void canvas_border(PdApp *a,PdFb *bottom){
     if(!(a->guides&12))return;int w=a->width,h=a->height,z=a->zoom;
     int x=((int)a->doc.width*z<w?(w-(int)a->doc.width*z)/2:0)-a->ox*z-a->subx;
     int y=canvas_top(a)+((int)a->doc.height*z<h-canvas_top(a)?(h-canvas_top(a)-(int)a->doc.height*z)/2:0)-a->oy*z-a->suby;
@@ -1198,11 +1286,11 @@ static void canvas_border(PdApp *a,uint32_t *bottom){
     if(lower>=24)rect(bottom,w,h,x,lower,right-x+1,1,0xffbf47);
     if(bottomy>=top){rect(bottom,w,h,x,top,1,bottomy-top+1,0xffbf47);rect(bottom,w,h,right,top,1,bottomy-top+1,0xffbf47);}
 }
-static void selection_line(uint32_t *p,int w,int h,int x0,int y0,int x1,int y1){
+static void selection_line(PdFb *p,int w,int h,int x0,int y0,int x1,int y1){
     int dx=abs(x1-x0),sx=x0<x1?1:-1,dy=-abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;
-    for(;;){if(x0>=0&&x0<w&&y0>=24&&y0<h)p[y0*w+x0]=((x0+y0)/3)&1?0xffffff:0x141b20;if(x0==x1&&y0==y1)break;int twice=2*err;if(twice>=dy){err+=dy;x0+=sx;}if(twice<=dx){err+=dx;y0+=sy;}}
+    for(;;){if(x0>=0&&x0<w&&y0>=24&&y0<h)p[y0*w+x0]=pd_fb(((x0+y0)/3)&1?0xffffff:0x141b20);if(x0==x1&&y0==y1)break;int twice=2*err;if(twice>=dy){err+=dy;x0+=sx;}if(twice<=dx){err+=dx;y0+=sy;}}
 }
-static void selection_overlay(PdApp *a,uint32_t *bottom){
+static void selection_overlay(PdApp *a,PdFb *bottom){
     if(!a->selection_valid&&!a->selection_drag)return;int w=a->width,h=a->height,z=a->zoom,dw=(int)a->doc.width,dh=(int)a->doc.height;
     int left=(dw*z<w?(w-dw*z)/2:0)-a->ox*z-a->subx,upper=canvas_top(a)+(dh*z<h-canvas_top(a)?(h-canvas_top(a)-dh*z)/2:0)-a->oy*z-a->suby;
     const uint32_t *mask=a->selection_move?a->selection_base:a->selection;int dx=a->selection_move?a->selection_dx:0,dy=a->selection_move?a->selection_dy:0;
@@ -1212,11 +1300,11 @@ static void selection_overlay(PdApp *a,uint32_t *bottom){
     }
     if(a->selection_drag&&!a->selection_move&&a->selection_shape&&a->lasso_count){int ox=left+a->selection_offset_x*z,oy=upper+a->selection_offset_y*z;for(unsigned i=0;i<a->lasso_count;i++){unsigned j=(i+1)%a->lasso_count;selection_line(bottom,w,h,ox+a->lasso[i][0]*z+z/2,oy+a->lasso[i][1]*z+z/2,ox+a->lasso[j][0]*z+z/2,oy+a->lasso[j][1]*z+z/2);}}
 }
-static void selection_toolbar(PdApp *a,uint32_t *bottom){
+static void selection_toolbar(PdApp *a,PdFb *bottom){
     if(a->tool!=4||a->page||a->toolbox||a->confirm||a->zoom_overlay)return;int w=a->width,h=a->height;
     rect(bottom,w,h,0,24,w,26,UI_BG);for(int i=0;i<8;i++){int x=i*w/8,width=(i+1)*w/8-x;bool on=i>=1&&i<=3&&a->selection_mode==(unsigned)(i-1);rect(bottom,w,h,x+1,25,width-2,24,on?UI_SELECTED:UI_PANEL);unsigned glyph=i==0?(a->selection_shape?13:12):(unsigned)(13+i);icon(bottom,w,h,x+width/2-8,29,glyph,UI_TEXT);}
 }
-static void guided_render(PdApp *a,uint32_t *bottom){
+static void guided_render(PdApp *a,PdFb *bottom){
     int w=a->width,h=a->height,z=a->zoom,dw=(int)a->doc.width,dh=(int)a->doc.height;
     int left=dw*z<w?(w-dw*z)/2:0,upper=canvas_top(a)+(dh*z<h-canvas_top(a)?(h-canvas_top(a)-dh*z)/2:0);
     /* A 2 KiB bitset records actual writes, including reflected/wrapped pixels.
@@ -1228,20 +1316,21 @@ static void guided_render(PdApp *a,uint32_t *bottom){
             int firstx=originx,firsty=originy;if(a->guides&4){firstx=(originx%(dw*z)+dw*z)%(dw*z);if(firstx>0)firstx-=dw*z;}if(a->guides&8){firsty=24+((originy-24)%(dh*z)+dh*z)%(dh*z);if(firsty>24)firsty-=dh*z;}
             for(int y=firsty;y<h;y+=(a->guides&8)?dh*z:h+dh*z){for(int x=firstx;x<w;x+=(a->guides&4)?dw*z:w+dw*z){
                 int x0=x<0?0:x,y0=y<24?24:y,x1=x+z>w?w:x+z,y1=y+z>h?h:y+z;
-                for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=(a->pixel_grid&&z>=4&&(yy==y||xx==x))?grid_color(c):c;
+                for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=pd_fb((a->pixel_grid&&z>=4&&(yy==y||xx==x))?grid_color(c):c);
             }}
         }
     }
     canvas_border(a,bottom);selection_overlay(a,bottom);selection_toolbar(a,bottom);a->px0=0;a->py0=24;a->px1=w;a->py1=h;a->present_top=false;a->partial=false;a->redraw=false;
 }
-void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
+void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
+    if(!masks_fit(a))return;
     int w=a->width,h=a->height;char label[80];
     bool pan_only=a->pan_frame&&!a->page&&!a->confirm&&!a->doc.editing; a->pan_frame=false;
     bool picker_only=a->picker_update&&a->page==2&&!a->confirm;
     bool keep_field=picker_only&&a->picker_field&&!a->color_tab&&a->painted_hue==a->hue;
     a->picker_update=false;
     a->present_top=true;a->px0=0;a->py0=0;a->px1=w;a->py1=h;
-    if(a->partial&&(a->stroke||a->shape_drag)&&!a->page&&!a->confirm){
+    if(a->partial&&(a->stroke||a->shape_drag||a->overview_pending)&&!a->page&&!a->confirm){
         if(a->guides||a->shape_drag){guided_render(a,bottom);return;}
         pd_composite_rect(&a->doc,a->dx0,a->dy0,a->dx1,a->dy1);
         int left=(int)a->doc.width*a->zoom<w?(w-(int)a->doc.width*a->zoom)/2:0;
@@ -1255,7 +1344,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
             int x0=x<0?0:x,y0=y<24?24:y,x1=x+a->zoom,y1=y+a->zoom;
             if(x1>w)x1=w;if(y1>h)y1=h;
             uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);
-            for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=(a->pixel_grid&&a->zoom>=4&&(yy==y||xx==x))?grid_color(c):c;
+            for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)bottom[yy*w+xx]=pd_fb((a->pixel_grid&&a->zoom>=4&&(yy==y||xx==x))?grid_color(c):c);
         }
         selection_overlay(a,bottom);selection_toolbar(a,bottom);
         /* Overview and text catch up on lift; no top-screen work while inking. */
@@ -1266,7 +1355,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
         /* Keep the existing HSV field, restoring only the previous cursor pixels. */
         int fw=h-88,fh=fw;
         for(int yy=a->painted_sy-3;yy<=a->painted_sy+3;yy++)for(int xx=a->painted_sx-3;xx<=a->painted_sx+3;xx++)
-            if(xx>=8&&xx<8+fw&&yy>=32&&yy<32+fh)bottom[yy*w+xx]=hsv(a->hue,(unsigned)((xx-8)*255/(fw-1)),(unsigned)(255-(yy-32)*255/(fh-1)))&0xffffffu;
+            if(xx>=8&&xx<8+fw&&yy>=32&&yy<32+fh)bottom[yy*w+xx]=pd_fb(hsv(a->hue,(unsigned)((xx-8)*255/(fw-1)),(unsigned)(255-(yy-32)*255/(fh-1)))&0xffffffu);
         rect(bottom,w,h,0,0,w,32,UI_BG);rect(bottom,w,h,0,32,8,fh,UI_BG);
         rect(bottom,w,h,8+fw,32,w-8-fw,fh,UI_BG);rect(bottom,w,h,0,32+fh,w,h-32-fh,UI_BG);
     }else rect(bottom,w,h,0,0,w,h,UI_BG);
@@ -1333,7 +1422,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
         uint32_t target_color=*palette_color_target(a);
         if(a->palette_edit){
             rect(bottom,w,h,6,48,w-12,28,UI_EDGE);rect(bottom,w,h,7,49,w-14,26,UI_PANEL);
-            for(int yy=52;yy<72;yy++)for(int xx=12;xx<32;xx++)bottom[yy*w+xx]=displayed(target_color,xx,yy);
+            for(int yy=52;yy<72;yy++)for(int xx=12;xx<32;xx++)bottom[yy*w+xx]=pd_fb(displayed(target_color,xx,yy));
             snprintf(label,sizeof(label),"#%06X  SWATCH %u",(unsigned)(target_color&0xffffff),a->swatch_selected+1);text(bottom,w,h,38,58,label,UI_TEXT);
             const char *actions[]={"ADD","REPLACE","REMOVE","MOVE","LOAD","SAVE"};
             for(unsigned i=0;i<6;i++)button(bottom,w,h,(int)(i%3)*w/3+2,80+(int)(i/3)*28,w/3-4,26,actions[i],false);
@@ -1350,7 +1439,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
             rect(bottom,w,h,106,46,w-110,20,UI_EDGE);rect(bottom,w,h,107,47,w-112,18,UI_PANEL);snprintf(label,sizeof(label),"#%06X  HEX",(unsigned)(target_color&0xffffff));text(bottom,w,h,112,52,label,UI_TEXT);
             unsigned char sat[128];uint32_t ramp[256];for(unsigned c=0;c<256;c++)ramp[c]=hsv(a->hue,255,c)&0xffffffu;for(int xx=0;xx<size;xx++)sat[xx]=(unsigned char)(xx*255/(size-1));
             rect(bottom,w,h,5,top-1,size+2,size+2,UI_EDGE);
-            for(int yy=0;yy<size;yy++){unsigned val=(unsigned)(255-yy*255/(size-1));for(int xx=0;xx<size;xx++){unsigned c=(val*sat[xx]+127)/255;bottom[(top+yy)*w+xx+6]=ramp[c]+(val-c)*0x010101u;}}
+            for(int yy=0;yy<size;yy++){unsigned val=(unsigned)(255-yy*255/(size-1));for(int xx=0;xx<size;xx++){unsigned c=(val*sat[xx]+127)/255;bottom[(top+yy)*w+xx+6]=pd_fb(ramp[c]+(val-c)*0x010101u);}}
             int sx=6+(int)a->saturation*(size-1)/255,sy=top+(255-(int)a->value)*(size-1)/255;a->painted_sx=sx;a->painted_sy=sy;a->painted_hue=a->hue;
             rect(bottom,w,h,sx-3,sy-3,7,7,0);rect(bottom,w,h,sx-2,sy-2,5,5,UI_TEXT);rect(bottom,w,h,sx-1,sy-1,3,3,hsv(a->hue,a->saturation,a->value)&0xffffffu);
             rect(bottom,w,h,hue_x,top-1,14,size+2,UI_EDGE);for(int yy=0;yy<size;yy++)rect(bottom,w,h,hue_x+1,top+yy,12,1,hsv((unsigned)(yy*359/(size-1)),255,255)&0xffffffu);
@@ -1363,16 +1452,18 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
                 int panel_bottom=top+picker_main_height(a);if(py+tile<=top||py>=panel_bottom)continue;
                 int y0=py>top?py:top,y1=py+tile<panel_bottom?py+tile:panel_bottom;
                 int x0=px>side?px:side,x1=px+tile<w-6?px+tile:w-6;
-                for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++){bool edge=xx<px+2||xx>=px+tile-2||yy<py+2||yy>=py+tile-2;bottom[yy*w+xx]=edge?(i==a->swatch_selected?UI_ACCENT:UI_EDGE):displayed(a->swatches[i],xx,yy);}
+                for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++){bool edge=xx<px+2||xx>=px+tile-2||yy<py+2||yy>=py+tile-2;bottom[yy*w+xx]=pd_fb(edge?(i==a->swatch_selected?UI_ACCENT:UI_EDGE):displayed(a->swatches[i],xx,yy));}
             }
             int total=((int)a->swatch_count+cols-1)/cols*(tile+2);if(total>picker_main_height(a)){int thumb=picker_main_height(a)*picker_main_height(a)/total;if(thumb<8)thumb=8;int sy2=top+a->palette_scroll[0]*(picker_main_height(a)-thumb)/(total-picker_main_height(a));rect(bottom,w,h,w-4,top,3,picker_main_height(a),UI_PANEL);rect(bottom,w,h,w-4,sy2,3,thumb,UI_ACCENT);}
             button(bottom,w,h,4,h-28,w/2-8,22,"CANCEL",false);button(bottom,w,h,w/2+4,h-28,w/2-8,22,"USE COLOR",true);
         }
     }else if(a->page==30){
         text(bottom,w,h,8,30,"SEND SPRITE TO DISCORD",UI_ACCENT);
-        text(bottom,w,h,8,44,"CHOOSE WHICH LAYERS TO INCLUDE",UI_MUTED);
-        button(bottom,w,h,8,52,w-16,36,"SEND ACTIVE LAYER",false);
-        button(bottom,w,h,8,100,w-16,36,"SEND VISIBLE COMPOSITE",false);
+        text(bottom,w,h,8,44,"GIF: VISIBLE LAYERS / BINARY ALPHA",UI_MUTED);
+        button(bottom,w,h,8,52,w-16,28,"SEND ACTIVE LAYER PNG",false);
+        button(bottom,w,h,8,86,w-16,28,"SEND VISIBLE PNG",false);
+        button(bottom,w,h,8,120,w-16,28,"SEND ANIMATION GIF",false);
+        text(bottom,w,h,8,150,"GIF COLORS MAY BE REDUCED",UI_MUTED);
         button(bottom,w,h,4,h-32,w-8,26,"BACK",false);
     }else if(a->page==31){
         int scope_y=adjustment_scope_y(h);
@@ -1387,11 +1478,11 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
             button(bottom,w,h,w-84,sy-1,36,22,"-",false);button(bottom,w,h,w-42,sy-1,36,22,"+",false);
         }
         uint32_t before=a->color,after=pd_adjust_color(before,a->adjust_hue,a->adjust_saturation,a->adjust_brightness);
-        int py=h>=220?h-46:h-45;rect(bottom,w,h,8,py,24,14,UI_EDGE);for(int yy=py+2;yy<py+12;yy++)for(int xx=10;xx<30;xx++)bottom[yy*w+xx]=before&0xffffff;text(bottom,w,h,38,py+3,">",UI_MUTED);rect(bottom,w,h,48,py,24,14,UI_EDGE);for(int yy=py+2;yy<py+12;yy++)for(int xx=50;xx<70;xx++)bottom[yy*w+xx]=after&0xffffff;
+        int py=h>=220?h-46:h-45;rect(bottom,w,h,8,py,24,14,UI_EDGE);for(int yy=py+2;yy<py+12;yy++)for(int xx=10;xx<30;xx++)bottom[yy*w+xx]=pd_fb(before&0xffffff);text(bottom,w,h,38,py+3,">",UI_MUTED);rect(bottom,w,h,48,py,24,14,UI_EDGE);for(int yy=py+2;yy<py+12;yy++)for(int xx=50;xx<70;xx++)bottom[yy*w+xx]=pd_fb(after&0xffffff);
         button(bottom,w,h,4,h-28,w/2-8,24,"APPLY",true);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"CANCEL",false);
     }else if(a->page==3){
         const char *items[]={"SAVE","SAVE AS","OPEN / FILE BROWSER","EXPORT","NEW PROJECT","EXIT","SETTINGS"};
-        for(int i=0;i<7;i++)button(bottom,w,h,4,30+i*18,w-8,16,items[i],false);
+        for(int i=0;i<7;i++){if(i==4){button(bottom,w,h,4,30+i*18,w/2-8,16,items[i],false);button(bottom,w,h,w/2+4,30+i*18,w/2-8,16,"FRAMES",false);}else button(bottom,w,h,4,30+i*18,w-8,16,items[i],false);}
         button(bottom,w,h,4,156,w/3-5,16,"RECOVERY",false);button(bottom,w,h,w/3+1,156,w/3-5,16,"ADJUST",false);
 #ifdef PD_PRIVATE_BUILD
         button(bottom,w,h,2*w/3+1,156,w/3-5,16,"SEND",false);
@@ -1466,37 +1557,59 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
     }else if(a->page==12){
         const char *items[]={"NUMERIC COLOR","SWAP FOREGROUND / BACKGROUND","RECENT COLORS","IMPORT PALETTE","EXPORT PALETTE","DEFAULT PALETTE"};for(int i=0;i<6;i++)button(bottom,w,h,4,30+i*22,w-8,20,items[i],false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO PICKER",false);
     }else if(a->page==13){
-        text(bottom,w,h,8,27,"RECENT COLORS - THIS SESSION",UI_MUTED);for(unsigned i=0;i<a->recent_count;i++){int x=(int)(i%4)*w/4+4,y=40+(int)(i/4)*32;rect(bottom,w,h,x,y,w/4-8,28,UI_EDGE);for(int yy=y+3;yy<y+25;yy++)for(int xx=x+3;xx<x+w/4-11;xx++)bottom[yy*w+xx]=displayed(a->recent[i],xx,yy);}button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
+        text(bottom,w,h,8,27,"RECENT COLORS - THIS SESSION",UI_MUTED);for(unsigned i=0;i<a->recent_count;i++){int x=(int)(i%4)*w/4+4,y=40+(int)(i/4)*32;rect(bottom,w,h,x,y,w/4-8,28,UI_EDGE);for(int yy=y+3;yy<y+25;yy++)for(int xx=x+3;xx<x+w/4-11;xx++)bottom[yy*w+xx]=pd_fb(displayed(a->recent[i],xx,yy));}button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
     }else if(a->page==14){const char *items[]={"GPL - OPAQUE RGB ONLY","HEX - RRGGBBAA","PNG - RGBA COLOR STRIP"};for(int i=0;i<3;i++)button(bottom,w,h,4,40+i*32,w-8,28,items[i],false);button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
     }else if(a->page==15){button(bottom,w,h,4,40,w-8,28,"SAVE AS MY DEFAULT",false);button(bottom,w,h,4,76,w-8,28,"USE MY DEFAULT",false);button(bottom,w,h,4,112,w-8,28,"RESTORE BUILT-IN COLORS",false);text(bottom,w,h,8,146,"RESTORE CHANGES THIS PROJECT ONLY",UI_MUTED);button(bottom,w,h,4,h-28,w-8,24,"BACK",false);
     }else if(a->page==16){
         const char *base=strrchr(a->file_source,'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->file_source);text(bottom,w,h,8,27,label,UI_MUTED);const char *items[]={"RENAME FILE","DUPLICATE FILE","DELETE FILE"};for(int i=0;i<3;i++)button(bottom,w,h,4,40+i*32,w-8,28,items[i],false);button(bottom,w,h,4,h-28,w-8,24,"BACK TO FILES",false);
     }else if(a->page==17){
         for(unsigned i=0;i<a->recent_project_count;i++){const char *base=strrchr(a->recent_projects[i],'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->recent_projects[i]);button(bottom,w,h,4,30+(int)i*16,w-8,15,label,a->recent_project_selected==(int)i);}if(!a->recent_project_count)text(bottom,w,h,8,50,"NO RECENT PROJECTS YET",UI_MUTED);button(bottom,w,h,4,h-28,w/2-8,24,"OPEN",a->recent_project_selected>=0);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"BACK TO FILES",false);
+    }else if(a->page>=32&&a->page<=34){
+        unsigned current=pd_frame_index(&a->doc),count=pd_frame_count(&a->doc);snprintf(label,sizeof(label),"FRAME %u / %u",current+1,count);text(bottom,w,h,8,30,label,UI_ACCENT);
+        if(a->page==34){text(bottom,w,h,8,60,"DELETE CURRENT FRAME?",UI_TEXT);text(bottom,w,h,8,76,"CLEARS UNDO HISTORY",UI_MUTED);button(bottom,w,h,4,100,w/2-8,28,"DELETE",false);button(bottom,w,h,w/2+4,100,w/2-8,28,"CANCEL",true);}
+        else if(a->page==33){snprintf(label,sizeof(label),"DURATION %u MS",pd_frame_duration(&a->doc));text(bottom,w,h,8,44,label,UI_TEXT);unsigned values[]={50,100,150,200,300,500};for(int i=0;i<6;i++){snprintf(label,sizeof(label),"%u MS",values[i]);button(bottom,w,h,4+(i%2)*w/2,60+(i/2)*24,w/2-8,22,label,pd_frame_duration(&a->doc)==values[i]);}button(bottom,w,h,4,136,w/2-8,22,"- 10 MS",false);button(bottom,w,h,w/2+4,136,w/2-8,22,"+ 10 MS",false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO FRAMES",true);}
+        else {unsigned cols=(unsigned)(w-96)/28,rows=h==192?6:8;int footer=h-48,row_h=(footer-72)/(int)rows;if(a->timeline_first>=count)a->timeline_first=count-1;
+            snprintf(label,sizeof(label),"POOL %u/%u KB",(unsigned)((pd_frame_memory(&a->doc)+1023)/1024),(unsigned)(pd_frame_budget(&a->doc)/1024));text(bottom,w,h,8,44,label,UI_MUTED);rect(bottom,w,h,8,54,76,2,UI_PANEL);rect(bottom,w,h,8,54,(int)(pd_frame_memory(&a->doc)*76/pd_frame_budget(&a->doc)),2,UI_ACCENT);snprintf(label,sizeof(label),"%u MS",pd_frame_duration(&a->doc));button(bottom,w,h,w-76,40,72,18,label,false);
+            button(bottom,w,h,96,30,w-176,26,a->playback.active?"STOP":"PLAY",a->playback.active);
+            button(bottom,w,h,4,58,40,14,"<",false);button(bottom,w,h,48,58,40,14,">",false);
+            for(unsigned c=0;c<cols;c++){unsigned f=a->timeline_first+c;if(f>=count)break;snprintf(label,sizeof(label),"%u",f+1);button(bottom,w,h,96+(int)c*28,58,26,14,label,f==current);}
+            unsigned layers=0;for(unsigned l=0;l<8;l++)if(a->doc.enabled&(1u<<l))layers++;if(a->timeline_layer_first>=layers)a->timeline_layer_first=0;
+            for(unsigned visible=0;visible<rows;visible++){int found=timeline_slot(a,a->timeline_layer_first+visible);if(found<0)break;unsigned slot=(unsigned)found;int yy=72+(int)visible*row_h;snprintf(label,sizeof(label),"%.12s",a->doc.names[slot]);button(bottom,w,h,4,yy,80,row_h-1,label,slot==a->doc.active);
+                for(unsigned c=0;c<cols;c++){unsigned f=a->timeline_first+c;if(f>=count)break;int xx=96+(int)c*28;rect(bottom,w,h,xx,yy,26,row_h-1,(f==current&&slot==a->doc.active)?UI_SELECTED:UI_PANEL);if(pd_frame_has_cel(&a->doc,f,slot))rect(bottom,w,h,xx+11,yy+row_h/2-2,4,4,UI_TEXT);else rect(bottom,w,h,xx+11,yy+row_h/2,4,1,UI_MUTED);}}
+            if(layers>rows){int track=footer-72,thumb=track*(int)rows/(int)layers,pos=(int)a->timeline_layer_first*(track-thumb)/(int)(layers-rows);rect(bottom,w,h,89,72,4,track,UI_PANEL);rect(bottom,w,h,89,72+pos,4,thumb,UI_ACCENT);}
+            button(bottom,w,h,4,footer,w/3-6,22,"NEW",false);button(bottom,w,h,w/3+2,footer,w/3-4,22,"DUPE",false);button(bottom,w,h,2*w/3+2,footer,w/3-6,22,"DELETE",false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO CANVAS",true);
+        }
     }else if(a->page==7){
-        text(bottom,w,h,8,45,"DRAW MAX MICROSECONDS",UI_TEXT);
-        snprintf(label,sizeof(label),"IN %u RENDER %u COPY %u",a->input_us,a->render_us,a->present_us);text(bottom,w,h,8,65,label,UI_TEXT);
-        snprintf(label,sizeof(label),"SAMPLE GAP %u / N %u",a->gap_us,a->samples);text(bottom,w,h,8,85,label,UI_TEXT);
+        text(bottom,w,h,8,30,"DRAWING  MAX MICROSECONDS",UI_ACCENT);text(bottom,w,h,w-8-(int)strlen(PD_BUILD_LABEL)*6,30,PD_BUILD_LABEL,UI_ACCENT);
+        snprintf(label,sizeof(label),"IN %u RENDER %u COPY %u",a->input_us,a->render_us,a->present_us);text(bottom,w,h,8,41,label,UI_TEXT);
+        snprintf(label,sizeof(label),"SAMPLE GAP %u / N %u",a->gap_us,a->samples);text(bottom,w,h,8,51,label,UI_TEXT);
+        text(bottom,w,h,8,68,"MEMORY",UI_ACCENT);snprintf(label,sizeof(label),"%s  MASKS %u KB",a->platform?a->platform:"",a->mask_words*16u/1024u);text(bottom,w,h,8,79,label,UI_MUTED);
+        if(a->memory_measured){snprintf(label,sizeof(label),"FREE %u KB  LARGEST %u KB",a->free_kb,a->largest_kb);text(bottom,w,h,8,89,label,UI_TEXT);}else text(bottom,w,h,8,89,a->memory_limit?"NOT MEASURED YET":"MEMORY PROBE UNAVAILABLE",UI_MUTED);
+        text(bottom,w,h,8,106,"CARD",UI_ACCENT);if(a->card_read_kbs){snprintf(label,sizeof(label),"WRITE %u KB/S  READ %u KB/S",a->card_write_kbs,a->card_read_kbs);text(bottom,w,h,8,117,label,UI_TEXT);}else if(!a->diag_status[0])text(bottom,w,h,8,117,"NOT MEASURED YET",UI_MUTED);
+        if(a->diag_status[0])text(bottom,w,h,8,127,a->diag_status,UI_MUTED);
+        text(bottom,w,h,8,140,"INPUT DIRECT",UI_MUTED);
+        snprintf(label,sizeof(label),"PEN %u  INK %u",a->input_contacts,a->ink_starts);text(bottom,w,h,8,150,label,UI_MUTED);
+        button(bottom,w,h,4,h-28,w-8,24,"RUN MEMORY + CARD TEST",true);
     }else{
         /* Map once per row/column: ARM9 has no hardware integer divide. */
         int left=(int)a->doc.width*a->zoom<w?(w-(int)a->doc.width*a->zoom)/2:0;
         int upper=canvas_top(a)+((int)a->doc.height*a->zoom<h-canvas_top(a)?(h-canvas_top(a)-(int)a->doc.height*a->zoom)/2:0);
         left-=a->subx;upper-=a->suby;
         if(!(a->guides&12)&&!a->subx&&!a->suby){
-            for(int y=24;y<h;y++){uint32_t *row=bottom+y*w;int wy=a->oy+(y-upper)/a->zoom;
-                if(y<upper||wy>=(int)a->doc.height){for(int x=0;x<w;x++)row[x]=0x53616b;continue;}
-                for(int x=0;x<left;x++)row[x]=0x53616b;int x=left;
-                for(int wx=a->ox;x<w&&wx<(int)a->doc.width;wx++){uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);int end=x+a->zoom;if(end>w)end=w;int start=x;bool gridrow=a->pixel_grid&&a->zoom>=4&&(y-upper)%a->zoom==0;while(x<end){row[x]=(a->pixel_grid&&a->zoom>=4&&(gridrow||x==start))?grid_color(c):c;x++;}}
-                while(x<w)row[x++]=0x53616b;
+            for(int y=24;y<h;y++){PdFb *row=bottom+y*w;int wy=a->oy+(y-upper)/a->zoom;
+                if(y<upper||wy>=(int)a->doc.height){for(int x=0;x<w;x++)row[x]=pd_fb(0x53616b);continue;}
+                for(int x=0;x<left;x++)row[x]=pd_fb(0x53616b);int x=left;
+                for(int wx=a->ox;x<w&&wx<(int)a->doc.width;wx++){uint32_t c=displayed(pd_image(&a->doc)[wy*a->doc.stride+wx],wx,wy);int end=x+a->zoom;if(end>w)end=w;int start=x;bool gridrow=a->pixel_grid&&a->zoom>=4&&(y-upper)%a->zoom==0;while(x<end){row[x]=pd_fb((a->pixel_grid&&a->zoom>=4&&(gridrow||x==start))?grid_color(c):c);x++;}}
+                while(x<w)row[x++]=pd_fb(0x53616b);
             }
         }else for(int y=24;y<h;y++){
-            uint32_t *row=bottom+y*w;int dy=y-upper,wy=a->oy+(dy>=0?dy/a->zoom:-((-dy+a->zoom-1)/a->zoom));
-            if(!(a->guides&8)&&(y<upper||wy<0||wy>=(int)a->doc.height)){for(int x=0;x<w;x++)row[x]=0x53616b;continue;}
+            PdFb *row=bottom+y*w;int dy=y-upper,wy=a->oy+(dy>=0?dy/a->zoom:-((-dy+a->zoom-1)/a->zoom));
+            if(!(a->guides&8)&&(y<upper||wy<0||wy>=(int)a->doc.height)){for(int x=0;x<w;x++)row[x]=pd_fb(0x53616b);continue;}
             int sy=(wy%(int)a->doc.height+(int)a->doc.height)%(int)a->doc.height;
             for(int x=0;x<w;){int dx=x-left,wx=a->ox+(dx>=0?dx/a->zoom:-((-dx+a->zoom-1)/a->zoom));int phase=(dx%a->zoom+a->zoom)%a->zoom,end=x+a->zoom-phase;if(end>w)end=w;
                 bool valid=(a->guides&4)||(x>=left&&wx>=0&&wx<(int)a->doc.width);int sx=(wx%(int)a->doc.width+(int)a->doc.width)%(int)a->doc.width;
                 uint32_t c=valid?displayed(pd_image(&a->doc)[sy*a->doc.stride+sx],sx,sy):0x53616b;
-                bool gridrow=a->pixel_grid&&a->zoom>=4&&dy%a->zoom==0;int start=x;while(x<end){row[x]=(valid&&a->pixel_grid&&a->zoom>=4&&(gridrow||(x==start&&!phase)))?grid_color(c):c;x++;}
+                bool gridrow=a->pixel_grid&&a->zoom>=4&&dy%a->zoom==0;int start=x;while(x<end){row[x]=pd_fb((valid&&a->pixel_grid&&a->zoom>=4&&(gridrow||(x==start&&!phase)))?grid_color(c):c);x++;}
             }
         }
     }
@@ -1512,12 +1625,12 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
     if(a->page==28&&!a->confirm){
         rect(bottom,w,h,0,24,w,h-24,UI_BG);
         const char *modes[]={"CACHED","RECENT","FAVORITES","MY UPLOADS"};char mode_label[32];snprintf(mode_label,sizeof(mode_label),"VIEW: %s v",modes[a->community_mode]);button(bottom,w,h,4,28,50,18,"PAIR",false);button(bottom,w,h,58,28,w-116,18,mode_label,true);button(bottom,w,h,w-58,28,54,18,"REFRESH",false);
-        int cw=w/3;if(a->community_mode){for(unsigned i=0;i<a->community_page.count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;PdCommunityArt *art=&a->community_page.items[i];rect(bottom,w,h,xx+3,yy,cw-6,46,a->selected==(int)i?UI_SELECTED:UI_PANEL);if(a->community_mode!=3&&a->gallery_ready[i])for(int ty=0;ty<32;ty++)for(int tx=0;tx<32;tx++)bottom[(yy+2+ty)*w+xx+(cw-32)/2+tx]=displayed(a->gallery_thumbs[i][ty*32+tx],tx,ty);else{const char *tag=a->community_mode==3&&art->status[0]?art->status:"LOADING";text(bottom,w,h,xx+8,yy+14,tag,UI_MUTED);}snprintf(label,sizeof(label),"%.*s",(cw-12)/6,art->title);text(bottom,w,h,xx+6,yy+36,label,UI_TEXT);}
+        int cw=w/3;if(a->community_mode){for(unsigned i=0;i<a->community_page.count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;PdCommunityArt *art=&a->community_page.items[i];rect(bottom,w,h,xx+3,yy,cw-6,46,a->selected==(int)i?UI_SELECTED:UI_PANEL);if(a->community_mode!=3&&a->gallery_ready[i])for(int ty=0;ty<32;ty++)for(int tx=0;tx<32;tx++)bottom[(yy+2+ty)*w+xx+(cw-32)/2+tx]=pd_fb(displayed(a->gallery_thumbs[i][ty*32+tx],tx,ty));else{const char *tag=a->community_mode==3&&art->status[0]?art->status:"LOADING";text(bottom,w,h,xx+8,yy+14,tag,UI_MUTED);}snprintf(label,sizeof(label),"%.*s",(cw-12)/6,art->title);text(bottom,w,h,xx+6,yy+36,label,UI_TEXT);}
             if(!a->community_page.count)text(bottom,w,h,8,68,a->community_loading?"LOADING COMMUNITY PAGE...":a->community_page.profile_required?"CREATE AN ARTIST PROFILE ON WEBSITE":a->community_status[0]?a->community_status:"NO ITEMS",UI_TEXT);
             if(a->community_page.has_total)snprintf(label,sizeof(label),"%u ITEMS / PAGE %u",a->community_page.total,a->gallery_page+1);else snprintf(label,sizeof(label),"PAGE %u - %s",a->gallery_page+1,a->community_mode==3?"YOUR SUBMISSIONS":"COMMUNITY");
         }else{for(unsigned i=0;i<a->gallery_count;i++){int xx=(int)(i%3)*cw,yy=48+(int)(i/3)*48;
             rect(bottom,w,h,xx+3,yy,cw-6,46,a->selected==(int)(a->gallery_page*6+i)?UI_SELECTED:UI_PANEL);
-            if(a->gallery_ready[i])for(int y=0;y<32;y++)for(int x=0;x<32;x++)bottom[(yy+2+y)*w+xx+(cw-32)/2+x]=displayed(a->gallery_thumbs[i][y*32+x],x,y);
+            if(a->gallery_ready[i])for(int y=0;y<32;y++)for(int x=0;x<32;x++)bottom[(yy+2+y)*w+xx+(cw-32)/2+x]=pd_fb(displayed(a->gallery_thumbs[i][y*32+x],x,y));
             else text(bottom,w,h,xx+8,yy+14,"UNREADABLE",UI_MUTED);
             snprintf(label,sizeof(label),"%.*s",(cw-12)/6,a->listing.entries[a->gallery_page*6+i].name);text(bottom,w,h,xx+6,yy+36,label,UI_TEXT);
         }
@@ -1628,8 +1741,8 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
         unsigned dw=a->doc.width,dh=a->doc.height,max=dw>dh?dw:dh;int avail=panel_w-8;int size=image_h<avail?image_h:avail;int mw=(int)(dw*(unsigned)size/max),mh=(int)(dh*(unsigned)size/max);if(mw<1)mw=1;if(mh<1)mh=1;
         int before_left=8+(panel_w-mw)/2,after_left=tw-8-panel_w+(panel_w-mw)/2,image_center_y=image_y+image_h/2-mh/2;
         for(int y=0;y<mh;y++)for(int x=0;x<mw;x++){int wx=x*(int)dw/mw,wy=y*(int)dh/mh;unsigned i=wy*a->doc.stride+wx;
-            top[(image_center_y+y)*tw+before_left+x]=displayed(pd_image(&a->doc)[i],wx,wy);
-            if(a->adjust_preview_ready)top[(image_center_y+y)*tw+after_left+x]=displayed(pd_before(&a->doc)[i],wx,wy);
+            top[(image_center_y+y)*tw+before_left+x]=pd_fb(displayed(pd_image(&a->doc)[i],wx,wy));
+            if(a->adjust_preview_ready)top[(image_center_y+y)*tw+after_left+x]=pd_fb(displayed(pd_before(&a->doc)[i],wx,wy));
         }
         if(!a->adjust_preview_ready)text(top,tw,th,tw-8-panel_w+12,image_center_y+image_h/2-4,"NO PREVIEW",UI_MUTED);
         snprintf(label,sizeof(label),"H %+d   S %+d   B %+d",a->adjust_hue,a->adjust_saturation,a->adjust_brightness);text(top,tw,th,8,th-44,label,UI_TEXT);
@@ -1637,10 +1750,10 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
         text(top,tw,th,8,th-18,"APPLY COMMITS ONE UNDO STEP",UI_TEXT);
         text(top,tw,th,8,th-8,"CANCEL LEAVES EVERY PIXEL UNCHANGED",UI_MUTED);a->redraw=false;return;
     }
-    if(a->page==28&&a->community_mode&&a->preview_attempted&&a->selected>=0&&(unsigned)a->selected<a->community_page.count){PdCommunityArt *art=&a->community_page.items[a->selected];text(top,tw,th,8,6,a->community_mode==3?"MY UPLOAD / REVIEW STATUS":"ONLINE GALLERY / APPROVED ART",UI_ACCENT);text(top,tw,th,8,24,art->title,UI_TEXT);if(a->community_mode==3){snprintf(label,sizeof(label),"STATUS: %.15s",art->status);text(top,tw,th,8,44,label,UI_ACCENT);snprintf(label,sizeof(label),"%.54s",art->reason[0]?art->reason:"No review note");text(top,tw,th,8,62,label,UI_MUTED);}else{snprintf(label,sizeof(label),"BY %.35s",art->artist);text(top,tw,th,8,44,label,UI_MUTED);}snprintf(label,sizeof(label),"%u X %u PIXELS",art->width,art->height);text(top,tw,th,8,a->community_mode==3?84:60,label,UI_TEXT);if(a->community_mode!=3&&a->gallery_ready[a->selected]){int size=th-112;if(size>128)size=128;if(size<32)size=32;int left=(tw-size)/2;for(int py=0;py<size;py++)for(int px=0;px<size;px++)top[(84+py)*tw+left+px]=displayed(a->gallery_thumbs[a->selected][(py*32/size)*32+(px*32/size)],px,py);}text(top,tw,th,8,th-24,a->community_mode==3?"STATUS AND REVIEW REASON FROM SERVER":"PUBLIC PREVIEW; DOWNLOAD TO IMPORT",UI_MUTED);a->redraw=false;return;}
+    if(a->page==28&&a->community_mode&&a->preview_attempted&&a->selected>=0&&(unsigned)a->selected<a->community_page.count){PdCommunityArt *art=&a->community_page.items[a->selected];text(top,tw,th,8,6,a->community_mode==3?"MY UPLOAD / REVIEW STATUS":"ONLINE GALLERY / APPROVED ART",UI_ACCENT);text(top,tw,th,8,24,art->title,UI_TEXT);if(a->community_mode==3){snprintf(label,sizeof(label),"STATUS: %.15s",art->status);text(top,tw,th,8,44,label,UI_ACCENT);snprintf(label,sizeof(label),"%.54s",art->reason[0]?art->reason:"No review note");text(top,tw,th,8,62,label,UI_MUTED);}else{snprintf(label,sizeof(label),"BY %.35s",art->artist);text(top,tw,th,8,44,label,UI_MUTED);}snprintf(label,sizeof(label),"%u X %u PIXELS",art->width,art->height);text(top,tw,th,8,a->community_mode==3?84:60,label,UI_TEXT);if(a->community_mode!=3&&a->gallery_ready[a->selected]){int size=th-112;if(size>128)size=128;if(size<32)size=32;int left=(tw-size)/2;for(int py=0;py<size;py++)for(int px=0;px<size;px++)top[(84+py)*tw+left+px]=pd_fb(displayed(a->gallery_thumbs[a->selected][(py*32/size)*32+(px*32/size)],px,py));}text(top,tw,th,8,th-24,a->community_mode==3?"STATUS AND REVIEW REASON FROM SERVER":"PUBLIC PREVIEW; DOWNLOAD TO IMPORT",UI_MUTED);a->redraw=false;return;}
     if((a->page==4||a->page==17||a->page==28)&&a->preview_attempted){
         text(top,tw,th,8,6,a->page==28?"CACHED ART - OFFLINE PREVIEW":"FILE PREVIEW - CURRENT ART RETAINED",UI_ACCENT);text(top,tw,th,8,24,a->preview_name,UI_TEXT);
-        int size=th-80;if(size>128)size=128;int left=(tw-size)/2;if(a->preview_ready){for(int y=0;y<size;y++)for(int x=0;x<size;x++)top[(42+y)*tw+left+x]=displayed(a->file_preview[(y*64/size)*64+x*64/size],x,y);}else text(top,tw,th,8,60,a->preview_error,UI_MUTED);
+        int size=th-80;if(size>128)size=128;int left=(tw-size)/2;if(a->preview_ready){for(int y=0;y<size;y++)for(int x=0;x<size;x++)top[(42+y)*tw+left+x]=pd_fb(displayed(a->file_preview[(y*64/size)*64+x*64/size],x,y));}else text(top,tw,th,8,60,a->preview_error,UI_MUTED);
         if(a->preview_palette_count){snprintf(label,sizeof(label),"PALETTE: %u COLORS",a->preview_palette_count);text(top,tw,th,8,th-34,label,UI_ACCENT);}
         text(top,tw,th,8,th-22,a->preview_palette_count?"IMPORT FROM THE PALETTE MENU":a->page==17&&a->recent_files_unsaved?"RECENT LIST NOT SAVED TO DISK":"SELECT OPEN TO REPLACE CURRENT ART",UI_MUTED);a->redraw=false;return;
     }
@@ -1650,12 +1763,14 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
     bool solo=a->page==5&&a->name_action==2;
     rect(top,tw,th,0,0,tw,20,0x182126);
     const char *project_name=strrchr(a->project,'/');project_name=project_name?project_name+1:a->project;
-    snprintf(label,sizeof(label),solo?"LAYER: %.28s":"%.30s",solo?a->doc.names[a->doc.active]:project_name[0]?project_name:"PIXEL DOODLE");text(top,tw,th,8,6,label,0xffffff);
     snprintf(label,sizeof(label),"L%u  %dX",a->doc.active+1,a->zoom);int badge_x=tw-8-(int)strlen(label)*6;text(top,tw,th,badge_x,6,label,UI_MUTED);
+    text(top,tw,th,8,6,PD_BUILD_LABEL,UI_ACCENT);
+    int title_x=16+(int)strlen(PD_BUILD_LABEL)*6,title_chars=(badge_x-title_x-8)/6;if(title_chars<0)title_chars=0;
+    snprintf(label,sizeof(label),"%.*s",title_chars,solo?a->doc.names[a->doc.active]:project_name[0]?project_name:"PIXEL DOODLE");text(top,tw,th,title_x,6,label,0xffffff);
     int size=th-76;if(size>128)size=128;unsigned dw=a->doc.width,dh=a->doc.height,max=dw>dh?dw:dh;
     int mw=(int)(dw*(unsigned)size/max),mh=(int)(dh*(unsigned)size/max);if(mw<1)mw=1;if(mh<1)mh=1;int left=(tw-mw)/2;
     rect(top,tw,th,left-2,22,mw+4,mh+4,UI_EDGE);rect(top,tw,th,left-1,23,mw+2,mh+2,UI_BG);
-    for(int y=0;y<mh;y++)for(int x=0;x<mw;x++){int wx=x*(int)dw/mw,wy=y*(int)dh/mh;uint32_t p=solo?pd_pixels(&a->doc.layer[a->doc.active])[wy*a->doc.stride+wx]:pd_image(&a->doc)[wy*a->doc.stride+wx];top[(24+y)*tw+left+x]=displayed(p,wx,wy);}
+    for(int y=0;y<mh;y++)for(int x=0;x<mw;x++){int wx=x*(int)dw/mw,wy=y*(int)dh/mh;uint32_t p=solo?pd_pixels(&a->doc.layer[a->doc.active])[wy*a->doc.stride+wx]:pd_image(&a->doc)[wy*a->doc.stride+wx];top[(24+y)*tw+left+x]=pd_fb(displayed(p,wx,wy));}
     int vx=left+a->ox*mw/(int)dw,vy=24+a->oy*mh/(int)dh;
     int vw=w/a->zoom,vh=(h-canvas_top(a))/a->zoom;if(vw>(int)dw)vw=(int)dw;if(vh>(int)dh)vh=(int)dh;
     vw=vw*mw/(int)dw;vh=vh*mh/(int)dh;if(vw<1)vw=1;if(vh<1)vh=1;
@@ -1663,7 +1778,7 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
     if(!solo&&vw>0&&vh>0){rect(top,tw,th,vx,vy,vw,1,0x0d7a75);rect(top,tw,th,vx,vy+vh-1,vw,1,0x0d7a75);
     rect(top,tw,th,vx,vy,1,vh,0x0d7a75);rect(top,tw,th,vx+vw-1,vy,1,vh,0x0d7a75);}
     rect(top,tw,th,0,th-50,tw,1,UI_EDGE);
-    bool dirty=pd_dirty(&a->doc)||a->stroke;snprintf(label,sizeof(label),"%s  L%u  %uPX",a->platform,a->doc.active+1,a->doc.width);text(top,tw,th,8,th-45,label,UI_ACCENT);
+    bool dirty=pd_dirty(&a->doc)||a->stroke;if(pd_frame_count(&a->doc)>1)snprintf(label,sizeof(label),"F%u/%u  L%u  %uPX",pd_frame_index(&a->doc)+1,pd_frame_count(&a->doc),a->doc.active+1,a->doc.width);else snprintf(label,sizeof(label),"%s  L%u  %uPX",a->platform,a->doc.active+1,a->doc.width);text(top,tw,th,8,th-45,label,UI_ACCENT);
     const char *state=dirty?"UNSAVED":"SAVED";int state_x=tw-8-(int)strlen(state)*6;text(top,tw,th,state_x,th-45,state,dirty?0xffaaa0:UI_ACCENT);
     text(top,tw,th,8,th-32,a->notice,UI_TEXT);
     if(solo)snprintf(label,sizeof(label),"UNDO %u/%u  %u/%u KIB",a->doc.cursor,a->doc.count,(a->doc.history_used+1023)/1024,a->doc.history_capacity/1024);

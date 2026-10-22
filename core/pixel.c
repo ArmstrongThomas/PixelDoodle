@@ -1,4 +1,5 @@
 #include "pixel.h"
+#include "animation.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,7 +9,7 @@ void pd_init(PdDocument *d) {
     d->enabled=1;d->width=d->height=d->stride=d->rows=128;d->capacity=8;d->history_capacity=PD_HISTORY_BYTES;
     for (unsigned i=0;i<PD_LAYERS;i++) { d->order[i]=(uint8_t)i;d->layer[i].visible=1; d->layer[i].opacity=255; snprintf(d->names[i],64,"Layer %u",i+1); }
 }
-void pd_dispose(PdDocument *d){free(d->allocation);d->allocation=NULL;}
+void pd_dispose(PdDocument *d){pd_frames_dispose(d);free(d->allocation);d->allocation=NULL;}
 unsigned pd_capacity(unsigned width,unsigned height,unsigned profile){
     if(!width||!height||width>(profile>=2?512u:128u)||height>(profile>=2?512u:128u))return 0;
     if(width<=128&&height<=128)return 8;
@@ -34,7 +35,7 @@ bool pd_create(PdDocument *d,unsigned width,unsigned height,unsigned profile){
     if(block&&bytes){for(unsigned i=0;i<capacity;i++)d->layer[i].large=(uint32_t *)(block+i*bytes);d->large_before=(uint32_t *)(block+capacity*bytes);d->large_composite=(uint32_t *)(block+(capacity+1)*bytes);}if(block)d->large_history=block+(capacity+2)*bytes;return true;
 }
 static uint8_t *history_data(PdDocument *d){return d->large_history?d->large_history:d->history_data;}
-bool pd_dirty(const PdDocument *d) { return d->revision != d->saved_revision || d->palette_count != d->saved_palette_count || memcmp(d->palette,d->saved_palette,d->palette_count*sizeof(uint32_t)); }
+bool pd_dirty(const PdDocument *d) { return pd_frames_dirty(d) || d->revision != d->saved_revision || d->palette_count != d->saved_palette_count || memcmp(d->palette,d->saved_palette,d->palette_count*sizeof(uint32_t)); }
 bool pd_begin(PdDocument *d) {
     if(d->editing || d->active>=d->capacity) return false;
     memcpy(pd_before(d),pd_pixels(&d->layer[d->active]),pd_bytes(d));
@@ -73,7 +74,7 @@ bool pd_commit(PdDocument *d) {
         memmove(d->history,d->history+1,(d->count-1)*sizeof(PdEdit));d->count--;d->cursor--;
         for(unsigned i=0;i<d->count;i++)d->history[i].offset-=removed;
     }
-    PdEdit *e=&d->history[d->count];e->offset=d->history_used;e->bytes=bytes;e->tiles=dense?UINT32_MAX:tiles;
+    PdEdit *e=&d->history[d->count];e->frame=(uint16_t)pd_frame_index(d);e->offset=d->history_used;e->bytes=bytes;e->tiles=dense?UINT32_MAX:tiles;
     if(d->history_group){e->group=d->history_group;e->group_active=d->history_group_active;}
     else{if(++d->next_history_group==0)++d->next_history_group;e->group=d->next_history_group;e->group_active=(uint8_t)d->active;}
     unsigned char *out=history_data(d)+e->offset;
@@ -111,15 +112,15 @@ bool pd_move_layer(PdDocument *d,unsigned position){
 }
 bool pd_duplicate_layer(PdDocument *d){
     if(d->editing||d->enabled==((1u<<d->capacity)-1))return false;unsigned source=d->active;
-    for(unsigned i=0;i<d->capacity;i++)if(!(d->enabled&(1u<<i))){
-        d->active=i;if(!pd_begin(d))return false;d->enabled|=(uint8_t)(1u<<i);memcpy(pd_pixels(&d->layer[i]),pd_pixels(&d->layer[source]),pd_bytes(d));d->layer[i].visible=d->layer[source].visible;d->layer[i].opacity=d->layer[source].opacity;d->layer[i].blend=d->layer[source].blend;d->layer[i].flags=d->layer[source].flags;
+    for(unsigned i=0;i<d->capacity;i++)if(!(d->enabled&(1u<<i))&&pd_frame_slot_unused(d,i)){
+        if(!pd_frame_duplicate_layer_cels(d,source,i))return false;d->active=i;if(!pd_begin(d))return false;d->enabled|=(uint8_t)(1u<<i);memcpy(pd_pixels(&d->layer[i]),pd_pixels(&d->layer[source]),pd_bytes(d));d->layer[i].visible=d->layer[source].visible;d->layer[i].opacity=d->layer[source].opacity;d->layer[i].blend=d->layer[source].blend;d->layer[i].flags=d->layer[source].flags;
         char name[64];snprintf(name,sizeof(name),"%.58s COPY",d->names[source]);memset(d->names[i],0,64);memcpy(d->names[i],name,strlen(name)+1);
         move_slot(d,i,PD_LAYERS-1);unsigned pos=0;while(d->order[pos]!=source)pos++;move_slot(d,i,pos+1);return pd_commit(d);
     }return false;
 }
 bool pd_add_layer(PdDocument *d){
     if(d->editing||d->enabled==((1u<<d->capacity)-1))return false;
-    for(unsigned i=0;i<d->capacity;i++)if(!(d->enabled&(1u<<i))){
+    for(unsigned i=0;i<d->capacity;i++)if(!(d->enabled&(1u<<i))&&pd_frame_slot_unused(d,i)){
         d->active=i;if(!pd_begin(d))return false;d->enabled|=(uint8_t)(1u<<i);
         memset(pd_pixels(&d->layer[i]),0,pd_bytes(d));d->layer[i].blend=d->layer[i].flags=0;d->layer[i].visible=1;d->layer[i].opacity=255;
         memset(d->names[i],0,64);snprintf(d->names[i],64,"Layer %u",i+1);move_slot(d,i,PD_LAYERS-1);return pd_commit(d);
@@ -137,6 +138,7 @@ bool pd_rename_layer(PdDocument *d,const char *name){
 }
 bool pd_undo(PdDocument *d) {
     if(d->editing || !d->cursor) return false;
+    if(!pd_frame_switch(d,d->history[d->cursor-1].frame))return false;
     uint32_t group=d->history[d->cursor-1].group;
     uint8_t active=d->history[d->cursor-1].group_active;
     do { const PdEdit *e=&d->history[--d->cursor];toggle(d,e);d->revision=e->before; } while(d->cursor&&d->history[d->cursor-1].group==group);
@@ -144,6 +146,7 @@ bool pd_undo(PdDocument *d) {
 }
 bool pd_redo(PdDocument *d) {
     if(d->editing || d->cursor==d->count) return false;
+    if(!pd_frame_switch(d,d->history[d->cursor].frame))return false;
     uint32_t group=d->history[d->cursor].group;uint8_t active=d->history[d->cursor].group_active;
     do { const PdEdit *e=&d->history[d->cursor++];toggle(d,e);d->revision=e->after; } while(d->cursor<d->count&&d->history[d->cursor].group==group);
     d->active=active;return true;
@@ -332,6 +335,7 @@ bool pd_adjust_preview(PdDocument *d,unsigned scope,const uint32_t *mask,int hue
     return true;
 }
 bool pd_merge_down(PdDocument *d){
+    if(pd_frame_count(d)>1)return false;
     if(d->editing)return false;unsigned source=d->active,target=PD_LAYERS;
     for(unsigned k=0;k<PD_LAYERS;k++){unsigned i=d->order[k];if(i==source)break;if(d->enabled&(1u<<i))target=i;}
     if(target==PD_LAYERS||(d->layer[source].flags&PD_LAYER_LOCK)||(d->layer[target].flags&(PD_LAYER_LOCK|PD_LAYER_ALPHA_LOCK))||!d->layer[source].visible||!d->layer[target].visible||d->layer[source].blend||d->layer[target].blend)return false;

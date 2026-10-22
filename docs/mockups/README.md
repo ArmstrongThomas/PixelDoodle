@@ -10,6 +10,23 @@ in `vendor/lucide-subset.js`, so the mockup works without network access.
 Lucide is distributed under the ISC license. See
 [`vendor/LUCIDE-LICENSE.txt`](vendor/LUCIDE-LICENSE.txt).
 
-The mockup is a design reference. The implemented C UI and
+[pixel-doodle-files-menu.html](pixel-doodle-files-menu.html) proposes the
+reordered Menu, the file browser with type icons and a type dropdown, the
+top-screen file preview, a lowercase keyboard and a Layers home for Adjust. It
+draws each screen at native DSi/3DS resolution with the glyphs from
+`ui/menu_font.h` and colors from `ui/app.c`, and also opens without a server.
+
+[pixel-doodle-animation.html](pixel-doodle-animation.html) holds the animation
+plan: the measured DS memory budget, the optimization pass that frees memory for
+frames, the tile-pool frame storage design with frame-count estimates, frame
+shortcuts, and interactive timeline, onion skin and frame-sheet mockups.
+
+The mockups are design references. The implemented C UI and
 [`HANDS-ON-CHECKLIST.md`](../HANDS-ON-CHECKLIST.md) are authoritative for
 behavior and acceptance status.
+
+0.16.0 implements the animation core and an initial Aseprite-inspired layer/frame
+grid. The older memory/frame-count estimates remain estimates; hardware free
+heap must be measured again with corrected diagnostics. Playback, onion skin
+and animated ASE I/O in the mockups are future work. See
+[animation core](../ANIMATION-CORE.md) for current behavior.

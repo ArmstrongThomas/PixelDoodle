@@ -1,4 +1,5 @@
 #include "pixel.h"
+#include "animation.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,7 +59,7 @@ int pd_load(PdDocument *d,const char *dir) {
     d->save_sequence=seq[slot];free(p);pd_composite(d);return 1;
 }
 bool pd_save(PdDocument *d,const char *dir) {
-    if(d->width!=128||d->height!=128)return false;
+    if(d->animation||d->width!=128||d->height!=128)return false;
     /* Legacy writer cannot represent layer existence; named saves use PDD3. */
     if(d->editing||d->palette_count||d->enabled!=15)return false;
     for(unsigned i=0;i<4;i++)if(d->order[i]!=i||(d->layer[i].blend||d->layer[i].flags))return false;

@@ -15,7 +15,7 @@ bool pd_preview_file_profile(const char *path,uint32_t preview[64*64],unsigned p
 bool pd_preview_file(const char *path,uint32_t preview[64*64],char error[64]);
 bool pd_write_recovery(PdDocument *d,const char *path,char error[64]);
 bool pd_open_file(PdDocument *d,const char *path,char error[64]);
-/* kind: 0 native PDD8/PDD9, 1 Aseprite, 2 transparent PNG. Explicit overwrite only. */
+/* kind: 0 native PDD8/PDD9/PDDA, 1 Aseprite, 2 transparent PNG. Explicit overwrite only. */
 bool pd_write_file(PdDocument *d,const char *path,unsigned kind,bool overwrite,char error[64]);
 bool pd_color_parse(const char *text,uint32_t *color);
 bool pd_palette_read(const char *path,uint32_t colors[256],unsigned *count,char error[64]);

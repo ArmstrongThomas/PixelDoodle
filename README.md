@@ -1,3 +1,157 @@
+
+## 0.18.0 animated GIF webhook candidate (2026-10-22)
+
+User accepted 0.17.0 playback on hardware and requested GIF sending through the
+private Discord webhook. Rapid separate-stroke work stays deferred. Frames and
+Layers remain separate; direct input remains unchanged.
+
+Private Send Sprite keeps active-layer PNG and visible-composite PNG, and adds
+SEND ANIMATION GIF. GIF includes visible layers in every frame, starts at frame
+1 regardless of selection, loops forever and uses per-frame delays rounded to
+10 ms. It restores the editing frame/pixels and preserves undo, revision and
+structural dirty state. GIF has binary transparency (alpha below 128 becomes
+transparent), not partial RGBA. Each frame keeps exact RGB when it fits 255
+opaque colors plus transparency; otherwise it uses a nearest 216-color RGB
+cube. The send screen explains binary alpha and possible color reduction.
+PNG and native project pixels remain full RGBA and are not quantized.
+
+Encoder streams to a private share.gif.tmp then renames on success. Existing
+output/temp files are refused by the encoder; the sender owns cleanup of its
+private share files. Output is capped at the existing 2 MiB application limit;
+oversize/write failure removes the partial file and sends nothing. One indexed
+frame buffer plus bounded dictionary/palette scratch is used, not all frames
+in memory. A snapshot must fit before multi-frame export; later frame seeking
+and restoration allocate nothing. GIF uses local palettes, disposal 2 and a
+Netscape infinite-loop extension. No delta frames or dithering in this slice.
+
+Both native transports use one shared multipart prefix builder with .gif /
+image/gif or .png / image/png. allowed_mentions disables mention expansion.
+NDS keeps streaming its staged file; 3DS retains its existing buffered upload.
+Private credentials/config, TLS validation, endpoint and retry behavior stay
+unchanged. Standard builds do not expose the private sender. No server change.
+
+Host tests cover state restoration, existing-file refusal, bounded output and
+cleanup, RGB palette overflow, alpha threshold, and PNG/GIF multipart metadata.
+An independent Pillow decoder checks all pixels of three frames, including an
+empty frame after opaque art, disposal/transparency, exact colors, loop and
+110/250/500 ms delays, plus fallback colors. DS and 3DS send layouts inspected.
+Native builds and hardware webhook delivery results are recorded separately.
+
+### Verified 0.18.0 candidates
+
+Private and standard host/native builds pass, including independent GIF decode,
+16-bit UI checks, 131072 composite comparisons and 16436 incremental render
+comparisons. Five candidates staged with SHA-256 readback. Standard builds
+retain sender exclusion. No 3DS transfer. Live Discord GIF acceptance pending.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.18.0\PixelDoodle.3dsx`: 848472 bytes; SHA-256 `B7CF5DEB4D46B8B165394AE4DBFD9801897F441B28A36382B73EE66BAA61A18E`
+- `G:\dev\3ds\PixelDoodle\build\test-0.18.0\PixelDoodle.cia`: 686016 bytes; SHA-256 `209503D20128BE933813CE7D6602CDA36327CCC4ED32D2E28262DB1F3E12E304`
+- `G:\dev\3ds\PixelDoodle\build\test-0.18.0\PixelDoodle.nds`: 349696 bytes; SHA-256 `86D84193A2D132411843EE02971D49D9DF71B9792066754BE7889A60E58C8A13`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.18.0\PixelDoodle-Private.3dsx`: 856156 bytes; SHA-256 `EFB27C8CBB37CF5BF821730C1267D0D8FB6850242027DC56DBA7036C1417DD6F`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.18.0\PixelDoodle-Private.nds`: 738816 bytes; SHA-256 `A8D33ECE8921B2F3154D139F1C4C8218E1E352DF8831D0A694FD13C34CF3B6B0`
+
+### 0.18.0 private delivery
+
+Private NDS and 3DSX builds pass host/native checks. DSi Link at 192.168.1.162
+reports OK SAVED for the private NDS: 738816 bytes, CRC-32 F14150C6 (save-only).
+ARM9 V0.18.0P, GIF option/encoder and direct-input strings verified; staged
+SHA-256 readback matches. No 3DS transfer or live webhook post was performed
+by the agent. User must test device-generated GIF delivery/playback in Discord.
+
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.18.0\PixelDoodle-Private.3dsx`: 856156 bytes; SHA-256 `EFB27C8CBB37CF5BF821730C1267D0D8FB6850242027DC56DBA7036C1417DD6F`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.18.0\PixelDoodle-Private.nds`: 738816 bytes; SHA-256 `A8D33ECE8921B2F3154D139F1C4C8218E1E352DF8831D0A694FD13C34CF3B6B0`
+
+
+
+## 0.17.0 animation playback candidate (2026-10-22)
+
+User explicitly deferred the quick separate-stroke issue and requested animation
+work to continue. Keep direct input; do not reintroduce the rejected queued
+capture. Photo 143534.jpg confirms V0.16.2P / INPUT DIRECT: input 16856 us,
+render 1459 us, copy 8814 us, sample gap 16717 us / N150. FREE/LARGEST
+14139 KB, card write 1226/read 1434 KB/s, PEN16 / INK12. This establishes
+improved measured timings, not a claim that rapid strokes are fixed.
+
+Menu > FRAMES now has PLAY / STOP. Playback loops all frames using their
+individual durations and follows the active frame column. Any new touch or
+button stops playback and consumes that action, returning to the original
+editing frame. Editing, navigation, file actions and recovery are suspended
+while playing. Start requires two frames and a successful snapshot of current
+pixels. A failed snapshot leaves the editor unchanged. After start, ticking
+and stopping restore immutable stored frames without allocations or repacking.
+Clock rollover and delayed-loop catch-up are bounded; complete elapsed cycles
+are skipped before choosing the visible frame. Playback does not change pixels,
+undo history, dirty generation or durations. Frame buffers still render at the
+existing display cadence; actual hardware playback performance needs testing.
+
+
+### Verified 0.17.0 candidates
+
+Private and standard host/native builds pass. Five artifacts staged with exact
+SHA-256 readback; NDS ARM9 build/PLAY/STOP/direct-input labels verified.
+Private NDS sent by DSi Link to 192.168.1.162: OK SAVED, 734720 bytes,
+CRC-32 857075AF (save-only). No 3DS transfer. Hardware playback acceptance
+is pending.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.17.0\PixelDoodle.nds`: 349696 bytes; SHA-256 `38D6DBDDD9143AA68D62A7BF1CBECFBE1B6B778D76780899F89894BB9F16EDFB`
+- `G:\dev\3ds\PixelDoodle\build\test-0.17.0\PixelDoodle.3dsx`: 848320 bytes; SHA-256 `941E95DA6C7695C5FE27C50630AB368C17C0693AE858DE507A7A8BA817417A43`
+- `G:\dev\3ds\PixelDoodle\build\test-0.17.0\PixelDoodle.cia`: 686016 bytes; SHA-256 `1E058AEE955B1AD91C30EA20300E502AA8881DDBAAABDF40A009E0996C29753C`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.17.0\PixelDoodle-Private.nds`: 734720 bytes; SHA-256 `F4EA86A239BE84804572242FDEFD0C033A8138F532CE4E01949D917F7D1D6268`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.17.0\PixelDoodle-Private.3dsx`: 851144 bytes; SHA-256 `602D49028F3A19ABD8EEF8BCD0B4CBFC0276FB1F640442A97DEB9CB3AA11A359`
+
+Frames and Layers remain separate. Onion skin, linked cels, tags, animated ASE
+and sprite sheets remain future work. Historical sections describing playback
+as pending are superseded by this candidate. No hardware transfer is implied.
+
+
+## 0.16.2 latency rollback (2026-10-22)
+
+0.16.1 is rejected on DSi hardware. Photo 143533.jpg shows V0.16.1P,
+input 17315 us, render 219991 us, copy 19938 us, sample gap 267440 us
+(N 10), queue peak 16 with zero overflows, PEN 9 / INK 5. These independent
+maxima must not be summed. User reports massively increased drawing latency.
+
+0.16.2 removes the queued IRQ/worker capture experiment from both platform
+adapters and restores one direct SDK scan and one app_input call per display
+loop. The queue consumer called app_input again before rendering, invalidating
+pending partial damage and forcing expensive full renders. Queue-only host
+tests did not exercise this platform/render interaction and were insufficient.
+The unused queue implementation and its tests are removed. Diagnostics now
+show INPUT DIRECT. The visible V0.16.2 / V0.16.2P label, heap probe correction,
+animation core and separate FRAMES page remain. Frames and Layers must stay
+separate until the user accepts thorough testing. Playback/onion skin remain
+pending. This is a latency rollback candidate; the original missing quick
+strokes are still unresolved. Hardware responsiveness must be retested.
+
+### 0.16.2 private delivery
+
+Private NDS saved successfully to DSi Link 192.168.1.162 (734720 bytes,
+CRC-32 34C9A12E). Save-only transfer; no remote launch. Private build passes
+host, native build, NDS header/DLDI and pinned TLS checks. ARM9 V0.16.2P,
+INPUT DIRECT and FRAMES strings and staged SHA-256 readback verified.
+Both platform loops contain exactly one app_input call. Hardware retest pending.
+
+- `PixelDoodle-Private.3dsx`: 850268 bytes, SHA-256 `F905DBCABE3253B1586E24E6BDB7DBA9A4DD467EC6BD9584AE3FBD0E2619BAA5`
+- `PixelDoodle-Private.nds`: 734720 bytes, SHA-256 `AA1AB8610D914CA193089232BB702FE6DCD3DF225195A2D3A859366F149B4329`
+
+No 3DS transfer performed. Standard artifacts are staged below.
+
+
+### Verified 0.16.2 artifacts
+
+Private and standard native builds and host suites pass. Standard NDS, 3DSX
+and CIA staged with SHA-256 readback verification; no standard or 3DS transfer
+performed. Private NDS delivery is recorded above. Hardware acceptance pending.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.16.2\PixelDoodle.3dsx`: 847796 bytes; SHA-256 `615EC45CDCB5BAB2ABCFBF1CE1BFF5544EB0CF335AB5E8C3B91F5E46660A416B`
+- `G:\dev\3ds\PixelDoodle\build\test-0.16.2\PixelDoodle.cia`: 686016 bytes; SHA-256 `1E25BFE1401FBB2A019407C8D9ECC959907F9D8889123E815119A72332FB1E22`
+- `G:\dev\3ds\PixelDoodle\build\test-0.16.2\PixelDoodle.nds`: 348672 bytes; SHA-256 `0547CFE9834F8AC6D0CABAADA7095D24604992050730EC6944E7F808C771566A`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.16.2\PixelDoodle-Private.3dsx`: 850268 bytes; SHA-256 `F905DBCABE3253B1586E24E6BDB7DBA9A4DD467EC6BD9584AE3FBD0E2619BAA5`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.16.2\PixelDoodle-Private.nds`: 734720 bytes; SHA-256 `AA1AB8610D914CA193089232BB702FE6DCD3DF225195A2D3A859366F149B4329`
+
+Historical 0.16.1 delivery notes below describe a rejected build, not the
+current input path. No 3DS transfer is authorized while its receiver is absent.
+
 ## Hands-on testing and setup
 
 Running queue: [docs/HANDS-ON-CHECKLIST.md](docs/HANDS-ON-CHECKLIST.md).
@@ -10,9 +164,29 @@ Current developer handoff: [docs/HANDOFF.md](docs/HANDOFF.md).
 Local PHP work includes schema-5 scoped favorites and resumable PNG upload APIs. Previously prepared 0.3.5 server archives remain local under `build/`; this increment produced no new server package. Fresh native build and verification results are recorded in `docs/HANDS-ON-CHECKLIST.md`.
 
 The native Community page now has Cached, Recent, Favorites and My Uploads modes on both handhelds, with a reusable touch-scroll dropdown, bounded remote thumbnails, favorite toggles, moderation status/reason and confirmed import of the device-sized PNG derivative. Grant errors distinguish invalid/revoked grants (401, clear and re-pair) from missing scopes (403, preserve and explicitly re-pair). NDS DNS resolution is nonblocking and bounded. Console submission metadata, immutable preview and resumable chunk upload are still unimplemented. Host and PHP checks pass; 3DSX/CIA and NDS builds pass. On 2026-10-21, Docker Desktop 4.82's stale runtime sockets were quarantined without deleting them, then Docker Desktop was updated in place to 4.96.0; Linux Engine 29.9.1 is running. DSi pairing and online-gallery hardware acceptance are the next tests. No device transfer or card write occurred.
-# Pixel Doodle 0.14.9 candidate
+# Pixel Doodle 0.18.0 candidate
 
 Offline solo pixel art for Nintendo DS/DSi and Nintendo 3DS. **One repository, one shared C engine and UI, three outputs: NDS, 3DSX and CIA.**
+
+Historical 0.16.1 notes (capture rejected and removed in 0.16.2): The
+main upper-screen header and Diagnostics now show **V0.16.1**, or **V0.16.1P**
+for private builds. Drawing input is captured independently of rendering using
+a bounded queue (NDS VBlank capture; 3DS input worker). Diagnostics reports
+queue status/depth/overflow and contact/stroke counts. The 0.16.0 redraw change
+did not eliminate missed strokes on hardware; 0.16.1 needs a fresh test.
+
+0.16.0 adds the first animation core and timeline: **Menu > Frames** beside New
+Project. Create empty or duplicate frames, choose cels in the layer/frame grid,
+set durations, and save/reopen native animations. Layer properties are shared
+across frames. Pan+L/R and New 3DS ZL/ZR step frames. The frame cap is 256,
+subject to memory. See [animation core](docs/ANIMATION-CORE.md) for controls,
+file compatibility and limits. Playback, onion skin and animated Aseprite I/O
+are not implemented yet. Frame deletion confirms and clears undo history.
+
+The handwriting candidate retains displayed ink on lift and defers full
+preview redraw until a brief pause. New strokes always stamp their first point.
+Diagnostics fixes an optimized-build bug that previously left FREE/LARGEST
+unmeasured. Hardware acceptance on all three devices is pending.
 
 ## Current build profiles
 
@@ -61,16 +235,29 @@ Pencil. Tap **DITHER** in the Fill panel or the shape panel to cycle Solid,
 with Pencil dither on the canvas. Fill and the shapes keep separate settings,
 which persist with the other tool preferences.
 
-Standard 0.14.9 artifacts: `PixelDoodle.nds` SHA-256
-`E60066BC7CEA7D201701B80768F25A4A39270D2935917DD03614DF9B1EF49EBD`;
-`build/3ds/PixelDoodle.3dsx` SHA-256
-`2DF45E0E94F349973EB669DB1A6094F6EA43B06F8946565C2CD4E50137D2AAFA`;
-and `build/3ds/PixelDoodle.cia` SHA-256
-`B911E8AA932052D5765F8F1B212495D92D644A770BA233906C1441F60A1F0CC8`.
-Private NDS SHA-256:
-`E180B9BF011BB1045E1246CF104F56FFF8A405268720B0251A702A281713906D`;
-private 3DSX SHA-256:
-`E10F775CBD55854C5E54E8E2F5A94C51ED28DB4EF2A286F9E086363C4A959DF7`.
+0.15.0 frees DS memory ahead of animation support. Standard NDS builds leave
+out the network code (Send Sprite stays in private builds), DS mode sizes its
+selection masks to 128 x 128, the clipboard is created on first copy, and the
+DS screens use 16-bit buffers. **Settings > Diagnostics > Run Memory + Card
+Test** shows free memory, the largest free block and card read/write speed;
+it writes a 256 KB test file in the app folder and removes it.
+
+Standard/private 0.16.1 artifact SHA-256 (CIA version 257):
+
+- `PixelDoodle.nds` (349696 bytes):
+  `EE13BB94BE1B06DC043DA5943F08299FCF69A935413CE9DF2110A76F63B2018E`
+- `build/3ds/PixelDoodle.3dsx` (848876 bytes):
+  `F05ABD654499EA0752353101F786DBB096F27AAC516718CF264813D6DE836C3E`
+- `build/3ds/PixelDoodle.cia` (686528 bytes):
+  `67A7B4ED50340722C8B80D482B3908EC88DFE0F3731CAA2AF113F0C9CCA601F8`
+- `build/private/nds/PixelDoodle-Private.nds` (735744 bytes):
+  `B1056C48CBD2C685B190FDAE3356CF6BC659C2BF37C312871EC929061E98CA60`
+- `build/private/3ds/PixelDoodle-Private.3dsx` (851608 bytes):
+  `47063D796B6A4623F8C8D37FFE2E5535F298862D32C08C221E8E752556B6BE1C`
+
+Staged standard copies: `build/test-0.16.1`; private: `build/private/test-0.16.1`.
+Both NDS variants were sent to the DSi on 2026-10-22 (OK SAVED); 0.16.1 was
+not sent to the 3DS. Hardware drawing acceptance is pending.
 
 Private builds embed the webhook URL from the ignored, one-line `discord-webhook.txt` in the repository root at build time. The URL supplied for this candidate is already in that local build input; no webhook file needs to be copied to either console. A one-line `sdmc:/3ds/PixelDoodle/private/discord-webhook.txt` on 3DS or `fat:/PixelDoodle/private/discord-webhook.txt` on DSi overrides the embedded URL when present. An invalid override stops the send. Treat the private binaries and any override file as credentials. The app temporarily writes `share.png` in its private app folder and removes it after the upload finishes. A connection error is shown in the app and does not trigger a second upload automatically.
 
@@ -125,7 +312,7 @@ Host checks (including 16,316 incremental/full drawing comparisons), native UI i
 
 **Menu > Open** now previews and imports PNG artwork as one RGBA layer, with transparency and indexed palettes preserved. Use Save As to keep a layered native project. Non-interlaced RGB/RGBA, gray/gray-alpha and indexed PNGs are supported; APNG, 16-bit channels, interlacing and embedded ICC profiles are explicitly rejected. Palette import remains separate. Existing device limits and 0.9.1 smooth panning remain.
 
-Automated, independent PNG, desktop Aseprite, and all platform build checks pass. Open in Azahar and melonDS for interaction testing. [NDS candidate](build/test-0.10.0/PixelDoodle.nds) · [3DSX candidate](build/test-0.10.0/PixelDoodle.3dsx). User accepted 0.9.1 on New 3DS XL, noting manageable lag at extreme 512-square layer/guide settings; 0.10.0 interaction acceptance is pending.
+Automated, independent PNG, desktop Aseprite, and all platform build checks pass. Open in Azahar and melonDS for interaction testing. [NDS candidate](build/test-0.10.0/PixelDoodle.nds) Ã‚Â· [3DSX candidate](build/test-0.10.0/PixelDoodle.3dsx). User accepted 0.9.1 on New 3DS XL, noting manageable lag at extreme 512-square layer/guide settings; 0.10.0 interaction acceptance is pending.
 
 ## 0.9.1 panning follow-up
 
@@ -154,7 +341,7 @@ The sections below retain the development history; this profile table supersedes
 
 Slice 2 candidate adds numeric HEX/R/G/B/A entry, FG/BG swap, recent colors, GPL/HEX/PNG-strip palettes, explicit defaults and project palettes preserved in PDD5/Aseprite. Read [color/palette workflow and limits](docs/COLORS-SLICE2.md). Slice 2 is locally accepted, with its hardware test waived by the user. Slice 3 uses a custom keyboard on both consoles: staggered QWERTY, case/symbols, wide space, cursor movement/tap positioning and hold-to-delete. Select a browser file then tap ... for rename, verified duplicate or confirmed deletion; these new actions await local acceptance.
 
-1–128 pixels per side RGBA canvas, up to eight layers and up to 32 undo/redo transactions within a fixed 512 KiB pixel-history budget. New projects start with one layer. Layers shows six rows on NDS and all eight on 3DS, with direct grip, visibility, lock and options controls. The touch screen retains rename, confirmed deletion, duplicate, opacity, a Normal/Multiply/Screen/Overlay dropdown, Alpha Lock, restricted Normal merge-down and 150 ms hold-to-reorder. Dedicated footer Delete uses a confirmation. The top screen shows composite and active-layer previews side by side, even when the active layer is hidden. Closing Layers restores the artwork overview. Memory indicators report allocated document memory and slot capacity, not free heap. See [layer behavior and compatibility](docs/LAYERS-SLICE1.md).
+1Ã¢â‚¬â€œ128 pixels per side RGBA canvas, up to eight layers and up to 32 undo/redo transactions within a fixed 512 KiB pixel-history budget. New projects start with one layer. Layers shows six rows on NDS and all eight on 3DS, with direct grip, visibility, lock and options controls. The touch screen retains rename, confirmed deletion, duplicate, opacity, a Normal/Multiply/Screen/Overlay dropdown, Alpha Lock, restricted Normal merge-down and 150 ms hold-to-reorder. Dedicated footer Delete uses a confirmation. The top screen shows composite and active-layer previews side by side, even when the active layer is hidden. Closing Layers restores the artwork overview. Memory indicators report allocated document memory and slot capacity, not free heap. See [layer behavior and compatibility](docs/LAYERS-SLICE1.md).
 
 The palette workspace uses Swatches, Picker, and Edit tabs. The square Picker
 has a vertical hue rail, alpha, foreground/background targets and swap, direct
@@ -228,18 +415,18 @@ Startup offers recovery when a snapshot, backup or interrupted temporary exists.
 
 Slice 4 history foundation (2026-10-14): browser/palette previews/project setup/recovery accepted locally by user; slice 3 hardware acceptance remains pending. Shared undo now stores changed 8x8 XOR tiles in a fixed 512 KiB arena, up to 32 transactions. Dense edits fall back to 64 KiB raw XOR, preserving eight full-layer transactions. Property-only edits consume metadata only. Oldest transactions are evicted by byte/entry limits; branching discards redo. No allocation during drawing or commit. Layers preview reports actual undo cursor/count and used pixel-history KiB. PdDocument is 923288 bytes on the host (2560 bytes above prior metadata size); arena remains fully reserved. Canvas remains 128x128, four layers. Variable dimensions/more layers and measured hardware performance remain outstanding. Host sparse/dense eviction/branch/cancel/metadata and drawing-oracle checks pass; emulator acceptance pending.
 
-Variable dimensions (2026-10-14): user caps canvases at 128 per side; larger profiles are no longer planned. New Project > Size offers 16/32/64/128 square presets and custom independent width/height 1–128. Tap W/H, type digits, tap Set, then Done. New small projects fit at an integer zoom; drawing, panning and overview respect dimensions. PDD6 adds validated dimensions in the existing width/height header fields while retaining the PDD5 fixed-stride payload and CRC; legacy PDD1–5 load as 128x128. Aseprite and PNG serialize only actual dimensions; recovery uses PDD6 too. Smaller canvases currently retain the same preallocated RAM capacity. Native/ASE roundtrip, bounds, rectangular drawing and desktop PNG dimensions/pixels are checked. Local/hardware acceptance pending.
+Variable dimensions (2026-10-14): user caps canvases at 128 per side; larger profiles are no longer planned. New Project > Size offers 16/32/64/128 square presets and custom independent width/height 1Ã¢â‚¬â€œ128. Tap W/H, type digits, tap Set, then Done. New small projects fit at an integer zoom; drawing, panning and overview respect dimensions. PDD6 adds validated dimensions in the existing width/height header fields while retaining the PDD5 fixed-stride payload and CRC; legacy PDD1Ã¢â‚¬â€œ5 load as 128x128. Aseprite and PNG serialize only actual dimensions; recovery uses PDD6 too. Smaller canvases currently retain the same preallocated RAM capacity. Native/ASE roundtrip, bounds, rectangular drawing and desktop PNG dimensions/pixels are checked. Local/hardware acceptance pending.
 
 Eight-layer candidate (2026-10-14): shared capacity is eight layers on NDS, DSi and 3DS, still defaulting to one. New Project supports one through eight starting layers. Quick vertical drag scrolls the layer list; hold 150 ms then drag reorders, with edge scrolling. Visibility/options remain per-row. Core uses eight stable slots and an eight-bit enabled mask; undo pixel budget stays 512 KiB. PdDocument is 1185976 host bytes; extra slots add about 256 KiB. Calculated NDS app/document + two presentation buffers + native import staging/file buffer is about 2.6 MiB before code/SDK/stack overhead; this is not measured free RAM. Hardware full-document stress/performance acceptance remains pending.
 
-PDD7 writes eight property pairs, eight 64-byte names, eight fixed 128-stride pixel planes, eight blend bytes, eight order bytes, then the existing count/256-color palette payload. Header layer capacity is 8; width/height remain 1–128. CRC and atomic-write workflow unchanged. PDD1–6 reads preserve their four-slot wire layouts and expand into eight-slot memory. Recovery also uses PDD7; Aseprite import/export supports up to eight flat single-frame RGBA layers. Higher counts reject transactionally. Preserve existing projects and recovery files; old builds cannot read PDD7. User accepted variable sizes locally; this candidate awaits local/hardware tests.
+PDD7 writes eight property pairs, eight 64-byte names, eight fixed 128-stride pixel planes, eight blend bytes, eight order bytes, then the existing count/256-color palette payload. Header layer capacity is 8; width/height remain 1Ã¢â‚¬â€œ128. CRC and atomic-write workflow unchanged. PDD1Ã¢â‚¬â€œ6 reads preserve their four-slot wire layouts and expand into eight-slot memory. Recovery also uses PDD7; Aseprite import/export supports up to eight flat single-frame RGBA layers. Higher counts reject transactionally. Preserve existing projects and recovery files; old builds cannot read PDD7. User accepted variable sizes locally; this candidate awaits local/hardware tests.
 
-Layer protections (2026-10-14): layer options now have undoable Lock and Alpha Lock toggles, with X to close. Lock blocks pixel writes, erase, deletion and destructive merges; visibility, opacity, rename and reorder remain available. Alpha Lock preserves existing per-pixel alpha, blends brush RGB by brush alpha, skips empty pixels and ignores erase. Merge into alpha-locked layers is refused. PDD8 appends eight validated protection bytes (bits 0/1) after the PDD7 palette payload; PDD1–7 remain readable. Native recovery preserves both flags. Aseprite editable bit preserves layer lock; alpha lock is native-only and export reports this. Document memory size unchanged. Host protection/UI/persistence checks pass. Eight-layer candidate and protection hardware acceptance remain pending before closing slice 4 and starting brush size/grid.
+Layer protections (2026-10-14): layer options now have undoable Lock and Alpha Lock toggles, with X to close. Lock blocks pixel writes, erase, deletion and destructive merges; visibility, opacity, rename and reorder remain available. Alpha Lock preserves existing per-pixel alpha, blends brush RGB by brush alpha, skips empty pixels and ignores erase. Merge into alpha-locked layers is refused. PDD8 appends eight validated protection bytes (bits 0/1) after the PDD7 palette payload; PDD1Ã¢â‚¬â€œ7 remain readable. Native recovery preserves both flags. Aseprite editable bit preserves layer lock; alpha lock is native-only and export reports this. Document memory size unchanged. Host protection/UI/persistence checks pass. Eight-layer candidate and protection hardware acceptance remain pending before closing slice 4 and starting brush size/grid.
 
-Brush/grid candidate (2026-10-14): toolbox > Brush/Grid offers independent pencil/eraser sizes 1–16, square/round tips and pixel-grid toggle. Grid shows at 4x+ only on the editing canvas, never in artwork, exports or sampled colors. Both render paths preserve the grid. Brush footprints clip to canvas bounds and contribute to incremental damage. Even sizes extend one extra pixel left/up. Alpha-locked paint samples the pre-stroke pixel so overlapping stamps do not repeatedly accumulate color within a stroke. Protection applies to all stamps. Tool preferences persist on pen release in tools0.bin/tools1.bin (PDB1, 20 bytes, sequence, two size/tip fields, grid flag, CRC at byte 16; dual-slot readback). Preserve these files during deployment. Host tests cover tips/sizes/edges/undo/preferences and 1455 incremental/full render frames. User accepted protections locally and requested continuing tools; slice 4 hardware acceptance remains pending. Fill is the next tool after brush/grid acceptance.
+Brush/grid candidate (2026-10-14): toolbox > Brush/Grid offers independent pencil/eraser sizes 1Ã¢â‚¬â€œ16, square/round tips and pixel-grid toggle. Grid shows at 4x+ only on the editing canvas, never in artwork, exports or sampled colors. Both render paths preserve the grid. Brush footprints clip to canvas bounds and contribute to incremental damage. Even sizes extend one extra pixel left/up. Alpha-locked paint samples the pre-stroke pixel so overlapping stamps do not repeatedly accumulate color within a stroke. Protection applies to all stamps. Tool preferences persist on pen release in tools0.bin/tools1.bin (PDB1, 20 bytes, sequence, two size/tip fields, grid flag, CRC at byte 16; dual-slot readback). Preserve these files during deployment. Host tests cover tips/sizes/edges/undo/preferences and 1455 incremental/full render frames. User accepted protections locally and requested continuing tools; slice 4 hardware acceptance remains pending. Fill is the next tool after brush/grid acceptance.
 
 
-Guides and brush popup (2026-10-14): user accepted brush drawing on physical 3DS. Top pencil/eraser icon now opens a compact size 1–16 / square-round popup over the canvas. Tap outside to dismiss without drawing; Tools or B opens the toolbox. Selecting Pencil/Eraser also opens its popup. Toolbox # Guides separates pixel grid, Symmetry X/Y and Tile X/Y. Symmetry reflects actual stamped pixels about canvas center (including even tips). Tile axes both wrap brush footprints and allow drawing on repeated previews; unwrapped input coordinates prevent seam-crossing chords. Preview/grid do not alter exports. Tools slots now write PDB2, retaining PDB1 reads; byte 13 stores four guide bits, existing CRC/dual-slot workflow retained. Preferences are device-local, not project fields. Ordinary drawing retains its incremental render path; guided strokes currently redraw the full canvas, so guided-mode DS performance needs user testing. Core seam/mirror/undo, UI repeated-copy input, repeated-preview oracle, preference reload and prior 1455 incremental-frame checks pass; NDS/3DSX/CIA build and header checks pass. Local and hardware acceptance of this candidate pending.
+Guides and brush popup (2026-10-14): user accepted brush drawing on physical 3DS. Top pencil/eraser icon now opens a compact size 1Ã¢â‚¬â€œ16 / square-round popup over the canvas. Tap outside to dismiss without drawing; Tools or B opens the toolbox. Selecting Pencil/Eraser also opens its popup. Toolbox # Guides separates pixel grid, Symmetry X/Y and Tile X/Y. Symmetry reflects actual stamped pixels about canvas center (including even tips). Tile axes both wrap brush footprints and allow drawing on repeated previews; unwrapped input coordinates prevent seam-crossing chords. Preview/grid do not alter exports. Tools slots now write PDB2, retaining PDB1 reads; byte 13 stores four guide bits, existing CRC/dual-slot workflow retained. Preferences are device-local, not project fields. Ordinary drawing retains its incremental render path; guided strokes currently redraw the full canvas, so guided-mode DS performance needs user testing. Core seam/mirror/undo, UI repeated-copy input, repeated-preview oracle, preference reload and prior 1455 incremental-frame checks pass; NDS/3DSX/CIA build and header checks pass. Local and hardware acceptance of this candidate pending.
 
 
 ## 0.3.0 guided drawing follow-up (2026-10-14)
@@ -288,7 +475,7 @@ Host checks cover line/rectangle/ellipse rasterization, ellipse symmetry, fill/o
 
 ## 0.7.0 existing Fill options (2026-10-15)
 
-User accepted 0.6.0 locally and explicitly confirmed these belong in the existing Fill tool. Toolbox > Fill now opens one popup: Contiguous Region / Global (Replace Color), Match Active Layer / Visible Image, tolerance 0–255 with minus/plus and captured slider, Done. Default remains contiguous/exact/active layer. Global changes all matching pixels within the selection and canvas; contiguous traverses four-neighbor connectivity with enabled tile wrapping. Visible mode matches the unchanged composited image but writes only the active layer. Layer lock/visibility/alpha lock, mirrored seed points and one transaction per fill remain. No extra toolbox tool.
+User accepted 0.6.0 locally and explicitly confirmed these belong in the existing Fill tool. Toolbox > Fill now opens one popup: Contiguous Region / Global (Replace Color), Match Active Layer / Visible Image, tolerance 0Ã¢â‚¬â€œ255 with minus/plus and captured slider, Done. Default remains contiguous/exact/active layer. Global changes all matching pixels within the selection and canvas; contiguous traverses four-neighbor connectivity with enabled tile wrapping. Visible mode matches the unchanged composited image but writes only the active layer. Layer lock/visibility/alpha lock, mirrored seed points and one transaction per fill remain. No extra toolbox tool.
 
 Tolerance compares each canonical RGBA channel to the original seed (maximum channel difference, not a drifting neighbor-to-neighbor threshold). Fully transparent RGB is ignored by canonicalizing zero-alpha colors. For visible matching, composite is snapshotted before any fill writes. Each mirrored region traverses independently to avoid tolerance-dependent bridge omissions; repeated writes use pre-fill values so alpha lock does not accumulate. Fixed 34 KiB temporary fill scratch remains. No project format changes.
 
@@ -300,7 +487,7 @@ Tool preferences now write PDB3 in the same 20-byte dual slots; PDB1/PDB2 read c
 
 User accepted 0.7.0 locally. Pencil popup adds Pixel Perfect, off by default, active only for size-1 pencil strokes. Larger brushes, eraser and shape tools retain their raster behavior. The shared bounded stroke state removes the middle pixel of consecutive orthogonal unit steps making a diagonal corner. It restores the exact pixel values captured immediately before that stamp (including up to four unique reflected positions), preserving pre-existing art and earlier ink at overlaps. Tile coordinates remain unwrapped for path decisions; wrapped/reflected restoration participates in presentation damage. Alpha lock and selection clipping remain. State resets for new strokes, gaps and temporary erase/larger brush paths. No allocations or full redraws are introduced while drawing.
 
-Tool slots now write PDB4, still 20 bytes with CRC/readback and PDB1–3 compatibility. Byte-14 bit 2 persists pixel-perfect; global/visible fill bits and tolerance remain. Preserve tools0.bin/tools1.bin, no downgrade writes. Host checks cover corner restoration of existing semi-transparent pixels, alpha lock, symmetry/tile damage, undo/redo, persisted toggle and DS/3DS partial/full equivalence. Prior 4079 incremental frames and all other tests pass. NDS/3DSX/CIA builds pass (CIA version 128); native popup inspected. 0.8.0 emulator/hardware acceptance pending.
+Tool slots now write PDB4, still 20 bytes with CRC/readback and PDB1Ã¢â‚¬â€œ3 compatibility. Byte-14 bit 2 persists pixel-perfect; global/visible fill bits and tolerance remain. Preserve tools0.bin/tools1.bin, no downgrade writes. Host checks cover corner restoration of existing semi-transparent pixels, alpha lock, symmetry/tile damage, undo/redo, persisted toggle and DS/3DS partial/full equivalence. Prior 4079 incremental frames and all other tests pass. NDS/3DSX/CIA builds pass (CIA version 128); native popup inspected. 0.8.0 emulator/hardware acceptance pending.
 
 
 ### App identity assets

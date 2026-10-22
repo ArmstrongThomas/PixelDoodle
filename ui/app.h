@@ -2,9 +2,19 @@
 #define PD_APP_H
 #include "pixel.h"
 #include "files.h"
+#include "animation.h"
 #include "community.h"
 #include "dropdown.h"
-enum { PD_TOOLS=1,PD_PAN=2,PD_SAMPLE=4,PD_ZOOM=8,PD_ERASE=16,PD_SAVE=32,PD_MENU=64,PD_SHOULDER_L=128,PD_SHOULDER_R=256 };
+enum { PD_TOOLS=1,PD_PAN=2,PD_SAMPLE=4,PD_ZOOM=8,PD_ERASE=16,PD_SAVE=32,PD_MENU=64,PD_SHOULDER_L=128,PD_SHOULDER_R=256,PD_FRAME_PREV=512,PD_FRAME_NEXT=1024 };
+/* Screen pixels. NDS builds store native 15-bit color with the display bit set, halving both screen
+ * buffers; there a one-field struct makes any unconverted 32-bit write a compile error. */
+#ifdef PD_FB16
+typedef struct { uint16_t v; } PdFb;
+static inline PdFb pd_fb(uint32_t c){PdFb p={(uint16_t)(0x8000u|((c>>19)&31u)|((c>>6)&992u)|((c<<7)&31744u))};return p;}
+#else
+typedef uint32_t PdFb;
+static inline PdFb pd_fb(uint32_t c){return c;}
+#endif
 typedef struct PdApp PdApp;
 struct PdApp {
     PdDocument doc;
@@ -16,6 +26,18 @@ struct PdApp {
     int dx0,dy0,dx1,dy1,px0,py0,px1,py1;
     bool partial,present_top;
     unsigned input_us,render_us,present_us,gap_us,samples;
+    /* Diagnostics: platforms supply a free-running tick counter and the largest allocation worth probing. */
+    uint32_t (*clock_ticks)(void);
+    uint32_t clock_hz;
+    size_t memory_limit;
+    unsigned free_kb,largest_kb,card_write_kbs,card_read_kbs;
+    bool memory_measured,overview_pending;
+    unsigned input_contacts,ink_starts;
+    uint32_t overview_at;
+    unsigned timeline_first,timeline_layer_first;
+    PdPlayback playback;
+    uint64_t recovery_frames;
+    char diag_status[48];
     uint32_t color,background,recent[12];
     unsigned recent_count,numeric_mode;
     char numeric[10];
@@ -56,12 +78,12 @@ struct PdApp {
     char upload_title[121],upload_description[2001],upload_tags[257];
     char upload_snapshot[PD_PATH],upload_request_id[37];
     unsigned upload_size,upload_stage;
-    bool upload_snapshot_ready,upload_busy;
+    bool upload_snapshot_ready,upload_busy,share_animation;
     unsigned community_mode;
     bool community_loading,community_loaded;
     bool community_action_busy;
     char community_status[64];
-    uint32_t gallery_thumbs[6][32*32];
+    uint32_t (*gallery_thumbs)[32*32]; /* six thumbnails, allocated on first gallery use */
     unsigned gallery_page,gallery_count;
     bool gallery_ready[6];
     unsigned file_mode,file_page,name_action,file_filter;
@@ -78,15 +100,17 @@ struct PdApp {
     unsigned tool_panel;
     unsigned help_tab;
     unsigned bindings,draft_bindings; /* four paired controls, two bits per action */
-    PdClipboard clipboard;
-    uint32_t selection[PD_MAX_PIXELS/32],selection_base[PD_MAX_PIXELS/32],selection_draft[PD_MAX_PIXELS/32];
+    PdClipboard *clipboard; /* allocated on first copy or cut */
+    /* Masks hold mask_words words each, sized to the largest canvas the profile allows. */
+    uint32_t *selection,*selection_base,*selection_draft;
+    unsigned mask_words;
     int16_t lasso[512][2];
     unsigned lasso_count,selection_shape,selection_mode,selection_layer;
     uint64_t selection_revision;
     bool selection_valid,selection_drag,selection_move,lasso_overflow;
     int selection_x,selection_y,selection_dx,selection_dy,selection_offset_x,selection_offset_y;
     unsigned guides;
-    uint32_t guide_damage[PD_MAX_PIXELS/32];
+    uint32_t *guide_damage;
     PdPerfectStroke perfect_stroke;
     bool pixel_perfect;
     unsigned brush_size[2],brush_round[2],brush_edit;
@@ -131,7 +155,11 @@ unsigned app_bindings(const PdApp *a,unsigned actions);
 void app_text_result(PdApp *a,const char *text,bool accepted);
 void app_pan_pixels(PdApp *a,int dx,int dy);
 void app_pan(PdApp *a,int dx,int dy);
-void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int topw,int toph);
+void app_render(PdApp *a,PdFb *bottom,PdFb *top,int topw,int toph);
+/* Sets the device profile and resizes masks to it; DS mode (profile 1) needs only 128 x 128. */
+bool app_set_profile(PdApp *a,unsigned profile);
+bool app_reserve_gallery(PdApp *a);
+void app_dispose(PdApp *a);
 void pd_pairing_init(PdApp *a);
 void pd_pairing_exit(void);
 void pd_pairing_begin(PdApp *a);

@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include "app.h"
+#include "gif.h"
+#include "share.h"
 #include "community_https.h"
 #ifdef PD_PRIVATE_BUILD
 #include "../../private_webhook.h"
@@ -17,7 +19,7 @@ static char device_code[44];
 static char access_token[44];
 static char worker_path[384],worker_body[160],worker_response[PAIR_RESPONSE_MAX],worker_error[48];
 static char share_png_path[PD_PATH];
-static bool share_visible;
+static bool share_visible,share_gif;
 static LightLock worker_lock;
 static Thread worker;
 static bool worker_started,worker_busy,worker_done,worker_ok,worker_is_begin;
@@ -94,7 +96,7 @@ static void request_worker(void *unused){
     else if(worker_kind==5){ok=pd_https_post_bearer(worker_path,access_token,worker_body,(char*)response,sizeof(response),&status,error,sizeof(error));if(ok)received=strlen((char*)response);}
     else if(worker_kind==6){
         FILE *f=fopen(share_png_path,"rb");unsigned char *png=NULL,*body=NULL;size_t png_size=0,body_size=0;
-        if(f&&fseek(f,0,SEEK_END)==0){long end=ftell(f);if(end>0&&end<=2*1024*1024&&fseek(f,0,SEEK_SET)==0){png_size=(size_t)end;png=(unsigned char*)malloc(png_size);if(png&&fread(png,1,png_size,f)==png_size){const char *prefix="--PDShareBoundary7db\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n{\"content\":\"Pixel Doodle sprite\"}\r\n--PDShareBoundary7db\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"PixelDoodle.png\"\r\nContent-Type: image/png\r\n\r\n";const char *suffix="\r\n--PDShareBoundary7db--\r\n";size_t a=strlen(prefix),b=strlen(suffix);body_size=a+png_size+b;body=(unsigned char*)malloc(body_size);if(body){memcpy(body,prefix,a);memcpy(body+a,png,png_size);memcpy(body+a+png_size,suffix,b);char type[]="multipart/form-data; boundary=PDShareBoundary7db";ok=pd_https_post_multipart(worker_path,body,body_size,type,&status,error,sizeof(error));if(ok)received=0;}}}}
+        if(f&&fseek(f,0,SEEK_END)==0){long end=ftell(f);if(end>0&&end<=2*1024*1024&&fseek(f,0,SEEK_SET)==0){png_size=(size_t)end;png=(unsigned char*)malloc(png_size);if(png&&fread(png,1,png_size,f)==png_size){char prefix[512];pd_share_prefix(prefix,sizeof(prefix),share_gif);const char *suffix="\r\n--PDShareBoundary7db--\r\n";size_t a=strlen(prefix),b=strlen(suffix);body_size=a+png_size+b;body=(unsigned char*)malloc(body_size);if(body){memcpy(body,prefix,a);memcpy(body+a,png,png_size);memcpy(body+a+png_size,suffix,b);char type[]="multipart/form-data; boundary=PDShareBoundary7db";ok=pd_https_post_multipart(worker_path,body,body_size,type,&status,error,sizeof(error));if(ok)received=0;}}}}
         if(f)fclose(f);if(png){memset(png,0,png_size);free(png);}if(body){memset(body,0,body_size);free(body);}if(!ok&&!error[0])snprintf(error,sizeof(error),"Could not prepare sprite upload");
     }
     else{ok=pd_https_post(worker_path,worker_body,(char*)response,sizeof(response),error,sizeof(error));if(ok)received=strlen((char*)response);}
@@ -190,7 +192,7 @@ static bool save_gallery_thumbnail(PdApp *app,unsigned index,const unsigned char
     snprintf(name,sizeof(name),"%s.png",app->community_page.items[index].id);if(!pd_join(target,directory,name))return false;snprintf(name,sizeof(name),"%s.png.tmp",app->community_page.items[index].id);if(!pd_join(temp,directory,name))return false;
     FILE *f=fopen(temp,"wb");if(!f)return false;bool ok=fwrite(data,1,size,f)==size;if(fflush(f)!=0)ok=false;if(fclose(f)!=0)ok=false;
     if(ok){remove(target);if(rename(temp,target)!=0)ok=false;}if(!ok){remove(temp);return false;}
-    char error[64];if(!pd_preview_file_profile(target,app->file_preview,1,error)){remove(target);return false;}
+    char error[64];if(!app_reserve_gallery(app))return false;if(!pd_preview_file_profile(target,app->file_preview,1,error)){remove(target);return false;}
     for(unsigned y=0;y<32;y++)for(unsigned x=0;x<32;x++)app->gallery_thumbs[index][y*32+x]=app->file_preview[(y*2)*64+x*2];
     app->gallery_ready[index]=true;return true;
 }
@@ -209,7 +211,7 @@ static void pairing_tick_impl(PdApp *app){
             else{memset(app->gallery_ready,0,sizeof(app->gallery_ready));app->community_loading=false;app->community_loaded=true;app->community_status[0]=0;app->selected=-1;app->preview_attempted=false;if(kind!=4&&app->community_page.count&&!gallery_thumbnail(app,0)){snprintf(app->community_status,sizeof(app->community_status),"THUMBNAIL QUEUE BUSY");}}app->redraw=true;return;}
         if(kind==2){if(!save_gallery_thumbnail(app,art_index,(unsigned char*)response,response_size)){snprintf(app->community_status,sizeof(app->community_status),"THUMBNAIL UNAVAILABLE");}else if(art_index+1<app->community_page.count&&!gallery_thumbnail(app,art_index+1)){snprintf(app->community_status,sizeof(app->community_status),"THUMBNAIL QUEUE BUSY");}app->redraw=true;return;}
         if(kind==5){app->community_action_busy=false;if(art_index<app->community_page.count&&strstr(response,"\"favorite\":true")){app->community_page.items[art_index].favorite=true;snprintf(app->community_status,sizeof(app->community_status),"ADDED TO FAVORITES");}else if(art_index<app->community_page.count&&strstr(response,"\"favorite\":false")){app->community_page.items[art_index].favorite=false;snprintf(app->community_status,sizeof(app->community_status),"REMOVED FROM FAVORITES");if(app->community_mode==2)pd_gallery_list(app,2,app->gallery_page*PD_COMMUNITY_PAGE);}else snprintf(app->community_status,sizeof(app->community_status),"INVALID FAVORITE RESPONSE");app->redraw=true;return;}
-        if(kind==6){cleanup_share_file();memset(worker_path,0,sizeof(worker_path));snprintf(app->notice,sizeof(app->notice),"%s",share_visible?"VISIBLE SPRITE SENT TO DISCORD":"ACTIVE LAYER SENT TO DISCORD");app->redraw=true;return;}
+        if(kind==6){cleanup_share_file();memset(worker_path,0,sizeof(worker_path));snprintf(app->notice,sizeof(app->notice),"%s",share_gif?"ANIMATION GIF SENT TO DISCORD":share_visible?"VISIBLE SPRITE SENT TO DISCORD":"ACTIVE LAYER SENT TO DISCORD");app->redraw=true;return;}
         if(begin){
             if(!json_string(response,"deviceCode",device_code,sizeof(device_code))||strlen(device_code)!=43||
                !json_string(response,"userCode",value,sizeof(value))||strlen(value)!=9||
@@ -245,9 +247,9 @@ static void pd_discord_share_start(PdApp *app,bool visible){
     if(worker_busy){snprintf(app->notice,sizeof(app->notice),"NETWORK BUSY; TRY AGAIN");app->redraw=true;return;}
     char directory[PD_PATH],error[64]={0};if(!app->directory[0]||!pd_join(directory,app->directory,"private")){snprintf(app->notice,sizeof(app->notice),"SAVED SD CARD REQUIRED");app->redraw=true;return;}
     mkdir(directory,0777);if(!webhook_path(worker_path,directory)){snprintf(app->notice,sizeof(app->notice),"WEBHOOK OVERRIDE INVALID");app->redraw=true;return;}
-    if(!pd_join(share_png_path,directory,"share.png")){memset(worker_path,0,sizeof(worker_path));snprintf(app->notice,sizeof(app->notice),"SPRITE PATH TOO LONG");app->redraw=true;return;}
-    cleanup_share_file();if(!pd_join(share_png_path,directory,"share.png")||!pd_write_file(&app->doc,share_png_path,visible?2:3,false,error)){memset(worker_path,0,sizeof(worker_path));share_png_path[0]=0;snprintf(app->notice,sizeof(app->notice),"%.63s",error[0]?error:"SPRITE EXPORT FAILED");app->redraw=true;return;}
-    worker_body[0]=0;worker_is_begin=false;worker_kind=6;worker_art_index=0;worker_done=false;worker_ok=false;worker_status=0;worker_response[0]=worker_error[0]=0;worker_response_size=0;share_visible=visible;
+    if(!pd_join(share_png_path,directory,app->share_animation?"share.gif":"share.png")){memset(worker_path,0,sizeof(worker_path));snprintf(app->notice,sizeof(app->notice),"SPRITE PATH TOO LONG");app->redraw=true;return;}
+    cleanup_share_file();if(!pd_join(share_png_path,directory,app->share_animation?"share.gif":"share.png")||!(app->share_animation?pd_gif_write(&app->doc,share_png_path,2u*1024u*1024u,error):pd_write_file(&app->doc,share_png_path,visible?2:3,false,error))){memset(worker_path,0,sizeof(worker_path));share_png_path[0]=0;snprintf(app->notice,sizeof(app->notice),"%.63s",error[0]?error:"SPRITE EXPORT FAILED");app->redraw=true;return;}
+    worker_body[0]=0;worker_is_begin=false;worker_kind=6;worker_art_index=0;worker_done=false;worker_ok=false;worker_status=0;worker_response[0]=worker_error[0]=0;worker_response_size=0;share_visible=visible;share_gif=app->share_animation;
     worker=threadCreate(request_worker,NULL,128*1024,0x18,-2,false);if(!worker){cleanup_share_file();memset(worker_path,0,sizeof(worker_path));snprintf(app->notice,sizeof(app->notice),"NETWORK WORKER UNAVAILABLE");app->redraw=true;return;}
     worker_started=true;worker_busy=true;snprintf(app->notice,sizeof(app->notice),"UPLOADING SPRITE TO DISCORD");app->redraw=true;
 }
