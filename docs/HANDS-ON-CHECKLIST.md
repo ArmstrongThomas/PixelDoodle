@@ -1,3 +1,26 @@
+## Tool drawer sliders and labels 0.14.8 (2026-10-21)
+
+Copy `build/private/nds/PixelDoodle-Private.nds` (or standard `PixelDoodle.nds`)
+to the DSi card. Confirm the launcher subtitle shows 0.14.8.
+
+- [ ] Pencil, Eraser, Fill tolerance, Line, Rect and Ellipse: drag each slider
+  repeatedly both ways. The knob stays under the stylus; no stale touches,
+  skipped steps or jumps.
+- [ ] Tap once on each slider track and confirm the value moves to the tap.
+- [ ] Open Eraser, then Line, Rect and Ellipse. Confirm the shape size slider
+  moves and the eraser size is unchanged.
+- [ ] Fill: the - and + buttons beside `TOL n` change tolerance by one.
+- [ ] Select panel: Delete, SEL ALL, Deselect and Transform labels stay inside
+  their buttons, and each tap triggers the button under the stylus.
+- [ ] With Tools open and no settings panel, tap the canvas beside the rail
+  and confirm the drawer closes without drawing.
+- [ ] Brush Details previews and Load/Store; Pixel Grid at 4x.
+- [ ] Private Send Sprite with `fat:/PixelDoodle/private/discord-webhook.txt`:
+  `share.png` is created, uploaded, removed, and the UI never freezes.
+
+Host suite, builds, icon/header/CIA checks pass. Azahar booted the exact 3DSX;
+emulator drawer interaction and DSi hardware acceptance are pending.
+
 ## Palette workspace 0.14.2 (2026-10-21)
 
 Use the Color icon in the persistent shortcut rail on DSi and 3DS.

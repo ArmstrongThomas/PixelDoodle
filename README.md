@@ -10,7 +10,7 @@ Current developer handoff: [docs/HANDOFF.md](docs/HANDOFF.md).
 Local PHP work includes schema-5 scoped favorites and resumable PNG upload APIs. Previously prepared 0.3.5 server archives remain local under `build/`; this increment produced no new server package. Fresh native build and verification results are recorded in `docs/HANDS-ON-CHECKLIST.md`.
 
 The native Community page now has Cached, Recent, Favorites and My Uploads modes on both handhelds, with a reusable touch-scroll dropdown, bounded remote thumbnails, favorite toggles, moderation status/reason and confirmed import of the device-sized PNG derivative. Grant errors distinguish invalid/revoked grants (401, clear and re-pair) from missing scopes (403, preserve and explicitly re-pair). NDS DNS resolution is nonblocking and bounded. Console submission metadata, immutable preview and resumable chunk upload are still unimplemented. Host and PHP checks pass; 3DSX/CIA and NDS builds pass. On 2026-10-21, Docker Desktop 4.82's stale runtime sockets were quarantined without deleting them, then Docker Desktop was updated in place to 4.96.0; Linux Engine 29.9.1 is running. DSi pairing and online-gallery hardware acceptance are the next tests. No device transfer or card write occurred.
-# Pixel Doodle 0.14.7 candidate
+# Pixel Doodle 0.14.8 candidate
 
 Offline solo pixel art for Nintendo DS/DSi and Nintendo 3DS. **One repository, one shared C engine and UI, three outputs: NDS, 3DSX and CIA.**
 
@@ -50,16 +50,21 @@ canvas with consistent headers, close controls and grouped actions. Brush
 Details includes visual previews of all four saved presets, and brush size uses
 a centered filled slider.
 
-Standard 0.14.7 artifacts: `PixelDoodle.nds` SHA-256
-`C7524E28BBF85923CCA8E6F355663162CC6F388CE5C1C62932FEFDEB8CC2BEC8`;
+Tool settings sliders set their value on the first touch and follow the stylus
+to the nearest step. The Line, Rect and Ellipse size slider always edits the
+shared pencil size, even after using Eraser. Fill tolerance shows its - and +
+buttons beside the value.
+
+Standard 0.14.8 artifacts: `PixelDoodle.nds` SHA-256
+`257E59064E42C578377C90E1BDCE689B7E13601F5D980F5B83812D8AADA09691`;
 `build/3ds/PixelDoodle.3dsx` SHA-256
-`F62462EE8E47340C1479EBC110489B34C2D0A9BDB83825CF8D237778AC56B53C`;
+`D9A4B5CC22E23984FF2FFB581CD0B9C077931727E89DB4E77D8BB83618E2F9CE`;
 and `build/3ds/PixelDoodle.cia` SHA-256
-`DC160EFBAA925F745F4348A33AAD0226F9B9862B7751C1FEB3D76D0A9D9FA1C1`.
+`7D5A7A7C829D7C33390014C8EFB1D224DC25C28FC94F7E319947C4EC6990E3C5`.
 Private NDS SHA-256:
-`D005D4BCE1ED5DDC6211FD00BA818C1ACB9EABADC4A6881F1541B8328E472F6C`;
+`9D6F732834BD88E0D45CF87A3F53E97AF2334348C135DE227EE431552CC249E1`;
 private 3DSX SHA-256:
-`51A1AD089E6C735F73FB23D79069FE5612C12CF8DC61FF09455860AB7B62049C`.
+`373B8D9C0D4A8E294D4D83784087CFD6C5C0E6E0E1CEF3B293CDD9D476874753`.
 
 Private builds embed the webhook URL from the ignored, one-line `discord-webhook.txt` in the repository root at build time. The URL supplied for this candidate is already in that local build input; no webhook file needs to be copied to either console. A one-line `sdmc:/3ds/PixelDoodle/private/discord-webhook.txt` on 3DS or `fat:/PixelDoodle/private/discord-webhook.txt` on DSi overrides the embedded URL when present. An invalid override stops the send. Treat the private binaries and any override file as credentials. The app temporarily writes `share.png` in its private app folder and removes it after the upload finishes. A connection error is shown in the app and does not trigger a second upload automatically.
 

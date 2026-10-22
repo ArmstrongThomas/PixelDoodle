@@ -1,3 +1,43 @@
+## 0.14.8 tool drawer slider and label fixes (2026-10-21)
+
+No new hardware report was available, so this pass came from host fixtures.
+Fixes in the Tools drawer's right-side panel:
+
+- The Line/Rect/Ellipse size slider wrote `brush_size[brush_edit]`. After
+  Eraser had been opened, dragging changed the eraser size and the shape slider
+  appeared frozen. Shape drags now always write the shared pencil size
+  (`brush_size[0]`), matching the - and + buttons.
+- Pencil, Eraser, Fill tolerance and shape sliders now set the value on the
+  first touch and round to the nearest step, so a single tap works and the knob
+  stays under the stylus instead of trailing by up to one step.
+- Fill tolerance draws its existing - and + touch zones as buttons, with the
+  value between them (`TOL n` on NDS, `TOLERANCE n` where it fits). Fill and
+  shape tracks now show the filled portion like the brush slider.
+- On NDS the Select panel's `SELECT ALL` label overflowed its button; it now
+  reads `SEL ALL` where the full label does not fit.
+
+Hit zones and layouts are otherwise unchanged. Legacy pages 21-24 and 26 are
+no longer reachable from the UI (only tests set them); their right-column
+overflow is not user-visible. Host tests add an Eraser-then-Rect slider
+regression, tap-to-set checks, drawer Select/Shape fixtures
+(`*-drawer-select`, `*-drawer-shape`) and a pixel check that two-column Select
+labels stay inside their buttons (confirmed to fail on the old label).
+
+Standard artifacts: `PixelDoodle.nds` SHA-256
+`257E59064E42C578377C90E1BDCE689B7E13601F5D980F5B83812D8AADA09691`,
+`build/3ds/PixelDoodle.3dsx` SHA-256
+`D9A4B5CC22E23984FF2FFB581CD0B9C077931727E89DB4E77D8BB83618E2F9CE`,
+`build/3ds/PixelDoodle.cia` SHA-256
+`7D5A7A7C829D7C33390014C8EFB1D224DC25C28FC94F7E319947C4EC6990E3C5`
+(CIA version 232). Private: `build/private/nds/PixelDoodle-Private.nds` SHA-256
+`9D6F732834BD88E0D45CF87A3F53E97AF2334348C135DE227EE431552CC249E1`,
+`build/private/3ds/PixelDoodle-Private.3dsx` SHA-256
+`373B8D9C0D4A8E294D4D83784087CFD6C5C0E6E0E1CEF3B293CDD9D476874753`.
+Copies of the standard set are in `build/test-0.14.8`. Icon, NDS/DSi header,
+ARM bounds, DLDI and CIA checks pass. Azahar booted the exact test 3DSX to its
+startup recovery prompt, which was left untouched; drawer interaction in Azahar
+and all DSi hardware acceptance remain pending. No hardware transfer.
+
 ## 0.14.7 four-times pixel grid (2026-10-21)
 
 The pixel grid now appears at 4x zoom and above instead of 8x. Both incremental
@@ -64,7 +104,8 @@ protection state. The layer icons use the same packed antialiased glyph source
 as the rail without changing project or file formats. Host tests cover the new
 row zones, visibility and direct lock controls, the options tray, scrolling,
 reorder thresholds and both native layouts. No server change is required.
-Standard artifacts: `PixelDoodle.nds` SHA-256
+The hashes below were last updated for the 0.14.7 build; the 0.14.8 section
+supersedes them. Former standard artifacts: `PixelDoodle.nds` SHA-256
 `C7524E28BBF85923CCA8E6F355663162CC6F388CE5C1C62932FEFDEB8CC2BEC8`,
 `build/3ds/PixelDoodle.3dsx` SHA-256
 `F62462EE8E47340C1479EBC110489B34C2D0A9BDB83825CF8D237778AC56B53C`,

@@ -631,22 +631,25 @@ static void shape_input(PdApp *a,int x,int y,bool pressed){
     for(unsigned i=0;i<pd_plane(&a->doc)/32;i++)a->guide_damage[i]|=a->selection_draft[i];
     a->shape_lastx=wx;a->shape_lasty=wy;a->partial=!a->redraw;a->redraw=true;
 }
+/* Round to the nearest step so the knob stays under the stylus. Shapes share the pencil size. */
+static void tool_slider_set(PdApp *a,int x){
+    int ix=tool_panel_x(a)+8,iw=tool_panel_w(a)-16;
+    int left=a->tool_panel==3?ix:ix+30,range=a->tool_panel==3?iw-5:iw-60,raw=x-left;
+    if(raw<0)raw=0;if(raw>range)raw=range;
+    if(a->tool_panel==3)a->fill_tolerance=(unsigned)((raw*255+range/2)/range);
+    else a->brush_size[a->tool_panel>=5?0:a->brush_edit]=1+(unsigned)((raw*15+range/2)/range);
+    a->brush_dirty=true;a->redraw=true;
+}
 static void tool_options_input(PdApp *a,int x,int y,bool pressed){
     int px=tool_panel_x(a),pw=tool_panel_w(a),ix=px+8,iw=pw-16;
-    if(a->brush_drag){
-        int left=a->tool_panel==3?ix:ix+30,range=a->tool_panel==3?iw-5:iw-60,raw=x-left;
-        if(raw<0)raw=0;if(raw>range)raw=range;
-        if(a->tool_panel==3)a->fill_tolerance=(unsigned)(raw*255/range);
-        else a->brush_size[a->brush_edit]=1+(unsigned)(raw*15/range);
-        a->brush_dirty=true;a->redraw=true;return;
-    }
+    if(a->brush_drag){tool_slider_set(a,x);return;}
     if(!pressed||x<px||x>=px+pw)return;
     if(y>=26&&y<42&&x>=px+pw-18)a->tool_options_open=false;
     else if(a->tool_panel==0||a->tool_panel==1){
         if(y>=76&&y<100){
             if(x<ix+24&&a->brush_size[a->brush_edit]>1)a->brush_size[a->brush_edit]--;
             else if(x>=px+pw-32&&a->brush_size[a->brush_edit]<16)a->brush_size[a->brush_edit]++;
-            else a->brush_drag=true;
+            else{a->brush_drag=true;tool_slider_set(a,x);}
             a->brush_dirty=true;
         }
         else if(y>=110&&y<130){a->brush_round[a->brush_edit]^=1;a->brush_dirty=true;}
@@ -656,7 +659,7 @@ static void tool_options_input(PdApp *a,int x,int y,bool pressed){
         if(y>=44&&y<64)a->fill_global=!a->fill_global;
         else if(y>=68&&y<88)a->fill_visible=!a->fill_visible;
         else if(y>=92&&y<112){if(x<ix+24&&a->fill_tolerance)a->fill_tolerance--;else if(x>=px+pw-32&&a->fill_tolerance<255)a->fill_tolerance++;}
-        else if(y>=114&&y<136)a->brush_drag=true;
+        else if(y>=114&&y<136){a->brush_drag=true;tool_slider_set(a,x);}
         else if(y>=150&&y<170)a->tool_options_open=false;
         a->brush_dirty=true;
     }else if(a->tool_panel==4){
@@ -667,7 +670,7 @@ static void tool_options_input(PdApp *a,int x,int y,bool pressed){
         else if(y>=140&&y<160){if(x<ix+iw/2)selection_action(a,5);else{a->page=25;a->toolbox=false;a->tool_options_open=false;}}
     }else if(a->tool_panel>=5&&a->tool_panel<8){
         if(y>=44&&y<64&&a->tool!=5)a->shape_filled=!a->shape_filled;
-        else if(y>=82&&y<102){if(x<ix+24&&a->brush_size[0]>1)a->brush_size[0]--;else if(x>=px+pw-32&&a->brush_size[0]<16)a->brush_size[0]++;else a->brush_drag=true;a->brush_dirty=true;}
+        else if(y>=82&&y<102){if(x<ix+24&&a->brush_size[0]>1)a->brush_size[0]--;else if(x>=px+pw-32&&a->brush_size[0]<16)a->brush_size[0]++;else{a->brush_drag=true;tool_slider_set(a,x);}a->brush_dirty=true;}
     }else if(a->tool_panel==8&&y>=44&&y<164){
         int row=(y-44)/22;if(row>=0&&row<5){if(row==0)a->pixel_grid=!a->pixel_grid;else a->guides^=1u<<(row-1);a->brush_dirty=true;}
     }
@@ -1583,20 +1586,22 @@ void app_render(PdApp *a,uint32_t *bottom,uint32_t *top,int tw,int th){
             }else if(a->tool_panel==3){
                 button(bottom,w,h,ix,44,iw-4,20,a->fill_global?"REGION: GLOBAL":"REGION: CONTIGUOUS",a->fill_global);
                 button(bottom,w,h,ix,68,iw-4,20,a->fill_visible?"MATCH: VISIBLE":"MATCH: ACTIVE",a->fill_visible);
-                snprintf(label,sizeof(label),"TOLERANCE %u",a->fill_tolerance);button(bottom,w,h,ix,92,iw-4,20,label,false);
-                rect(bottom,w,h,ix,120,iw-4,6,UI_PANEL);int sx=ix+(int)a->fill_tolerance*(iw-5)/255;rect(bottom,w,h,sx-2,114,4,18,UI_TEXT);
+                button(bottom,w,h,ix,92,24,20,"-",false);button(bottom,w,h,px+pw-32,92,24,20,"+",false);
+                int gap=pw-32-32;snprintf(label,sizeof(label),"TOLERANCE %u",a->fill_tolerance);if((int)strlen(label)*6>gap-8)snprintf(label,sizeof(label),"TOL %u",a->fill_tolerance);
+                text(bottom,w,h,ix+24+(gap-(int)strlen(label)*6)/2,99,label,UI_TEXT);
+                int sx=ix+(int)a->fill_tolerance*(iw-5)/255;rect(bottom,w,h,ix,120,iw-4,6,UI_PANEL);rect(bottom,w,h,ix,120,sx-ix,6,UI_SELECTED);rect(bottom,w,h,sx-2,114,4,18,UI_TEXT);
                 button(bottom,w,h,ix,150,iw-4,20,"DONE",true);
             }else if(a->tool_panel==4){
                 button(bottom,w,h,ix,44,iw/2-2,20,"RECT",a->selection_shape==0);button(bottom,w,h,ix+iw/2+2,44,iw-iw/2-2,20,"LASSO",a->selection_shape!=0);
                 int aw=(iw-8)/3;const char *modes[]={"REP","ADD","SUB"};for(int i=0;i<3;i++)button(bottom,w,h,ix+i*(aw+4),68,aw,20,modes[i],a->selection_mode==(unsigned)i);
                 const char *acts[]={"COPY","CUT","PASTE"};for(int i=0;i<3;i++)button(bottom,w,h,ix+i*(aw+4),92,aw,20,acts[i],false);
-                button(bottom,w,h,ix,116,iw/2-2,20,"SELECT ALL",false);button(bottom,w,h,ix+iw/2+2,116,iw-iw/2-2,20,"DESELECT",false);
+                button(bottom,w,h,ix,116,iw/2-2,20,(int)strlen("SELECT ALL")*6+8<=iw/2-2?"SELECT ALL":"SEL ALL",false);button(bottom,w,h,ix+iw/2+2,116,iw-iw/2-2,20,"DESELECT",false);
                 button(bottom,w,h,ix,140,iw/2-2,20,"DELETE",false);button(bottom,w,h,ix+iw/2+2,140,iw-iw/2-2,20,"TRANSFORM",false);
             }else if(a->tool_panel>=5&&a->tool_panel<8){
                 if(a->tool!=5)button(bottom,w,h,ix,44,iw-4,20,a->shape_filled?"FILLED":"OUTLINE",a->shape_filled);
                 snprintf(label,sizeof(label),"SIZE  %u PX",a->brush_size[0]);text(bottom,w,h,ix,70,label,UI_TEXT);
                 button(bottom,w,h,ix,82,24,20,"-",false);button(bottom,w,h,px+pw-32,82,24,20,"+",false);
-                int range=iw-61,sx=ix+30+(range>0?(int)(a->brush_size[0]-1)*range/15:0);rect(bottom,w,h,ix+30,88,range,6,UI_PANEL);rect(bottom,w,h,sx-2,82,4,18,UI_TEXT);
+                int range=iw-60,sx=ix+30+(int)(a->brush_size[0]-1)*range/15;rect(bottom,w,h,ix+30,88,range,6,UI_PANEL);rect(bottom,w,h,ix+30,88,sx-ix-30,6,UI_SELECTED);rect(bottom,w,h,sx-2,82,4,18,UI_TEXT);
             }else if(a->tool_panel==8){
                 const char *guide_names[]={"PIXEL GRID","SYMMETRY X","SYMMETRY Y","TILE X","TILE Y"};
                 for(int i=0;i<5;i++){bool on=i?(a->guides&(1u<<(i-1)))!=0:a->pixel_grid;snprintf(label,sizeof(label),"%s: %s",guide_names[i],on?"ON":"OFF");button(bottom,w,h,ix,44+i*22,iw-4,20,label,on);}

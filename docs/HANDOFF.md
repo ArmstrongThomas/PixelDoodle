@@ -4,14 +4,28 @@
 
 - Repository: `G:\dev\3ds\PixelDoodle`
 - Branch: `main`
-- Version: `0.14.7`
-- Git state: the UI/color/grid work is committed before handoff
+- Version: `0.14.8`
+- Git state: 0.14.8 drawer fixes are committed on `main` after `eeadf20`; the
+  remaining modified community/HTTPS files differ only in line endings
 - Current work: touchscreen UI refinement for NDS/DSi and 3DS
 - Server changes required by this candidate: none
 - Hardware transfer performed: none
 
 The standard and private packages were rebuilt after the final source changes.
-Host tests, header checks, icon checks and CIA metadata checks pass.
+Host tests, header checks, icon checks and CIA metadata checks pass. Azahar
+booted the exact standard 3DSX (`build/test-0.14.8`) to its startup recovery
+prompt; that prompt was left untouched and no drawer interaction was driven.
+
+## 0.14.8 fixes (from fixture review; no new hardware report)
+
+- Line/Rect/Ellipse size slider no longer edits the eraser size after Eraser
+  was opened (it previously looked frozen).
+- All drawer sliders set the value on first touch and round to the nearest
+  step, so the knob tracks the stylus.
+- Fill tolerance shows its existing - and + touch zones as buttons; Fill and
+  shape tracks show their filled portion.
+- NDS Select panel `SELECT ALL` overflowed its button; it reads `SEL ALL` where
+  the full label does not fit. A host pixel check guards the two-column rows.
 
 ## Completed in this UI pass
 
@@ -48,9 +62,11 @@ Host tests, header checks, icon checks and CIA metadata checks pass.
 5. Open Tools and test every left-column entry.
 6. Test the transparent canvas area beside Tools closes the drawer.
 7. Drag each slider repeatedly in both directions. Confirm no stale touches,
-   skipped movement or value jumps.
+   skipped movement or value jumps. Also tap a track once and confirm the
+   value moves to the tap. Open Eraser first, then Line/Rect/Ellipse, and
+   confirm the shape size slider still moves.
 8. Verify Brush Details previews and Load/Store behavior.
-9. Verify Selection Delete remains inside its button.
+9. Verify Selection Delete, SEL ALL and Transform remain inside their buttons.
 10. Enable Pixel Grid at 4x and confirm it is useful and does not obscure art.
 11. Retest private Sprite sending with the rotated Discord webhook override at
     `fat:/PixelDoodle/private/discord-webhook.txt`. Confirm `share.png` is
@@ -81,21 +97,21 @@ Host tests, header checks, icon checks and CIA metadata checks pass.
 ## Current artifact hashes
 
 - `PixelDoodle.nds`:
-  `C7524E28BBF85923CCA8E6F355663162CC6F388CE5C1C62932FEFDEB8CC2BEC8`
+  `257E59064E42C578377C90E1BDCE689B7E13601F5D980F5B83812D8AADA09691`
 - `build/3ds/PixelDoodle.3dsx`:
-  `F62462EE8E47340C1479EBC110489B34C2D0A9BDB83825CF8D237778AC56B53C`
-- `build/3ds/PixelDoodle.cia`:
-  `DC160EFBAA925F745F4348A33AAD0226F9B9862B7751C1FEB3D76D0A9D9FA1C1`
+  `D9A4B5CC22E23984FF2FFB581CD0B9C077931727E89DB4E77D8BB83618E2F9CE`
+- `build/3ds/PixelDoodle.cia` (CIA version 232):
+  `7D5A7A7C829D7C33390014C8EFB1D224DC25C28FC94F7E319947C4EC6990E3C5`
 - `build/private/nds/PixelDoodle-Private.nds`:
-  `D005D4BCE1ED5DDC6211FD00BA818C1ACB9EABADC4A6881F1541B8328E472F6C`
+  `9D6F732834BD88E0D45CF87A3F53E97AF2334348C135DE227EE431552CC249E1`
 - `build/private/3ds/PixelDoodle-Private.3dsx`:
-  `51A1AD089E6C735F73FB23D79069FE5612C12CF8DC61FF09455860AB7B62049C`
+  `373B8D9C0D4A8E294D4D83784087CFD6C5C0E6E0E1CEF3B293CDD9D476874753`
 
 ## Prompt for the next LLM
 
 Continue work on Pixel Doodle in `G:\dev\3ds\PixelDoodle` on branch `main`.
 Read the root `AGENTS.md` and `docs/HANDOFF.md` first. The current candidate is
-`0.14.7`. Start from the current committed `main` state. Preserve the DSi-first
+`0.14.8`. Start from the current committed `main` state. Preserve the DSi-first
 workflow: the user manually copies NDS artifacts and tests them on physical
 hardware.
 
