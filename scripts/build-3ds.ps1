@@ -11,7 +11,7 @@ $flags=@('-std=gnu11','-O2','-g','-Wall','-Wextra','-Werror','-Wno-misleading-in
 if($Private){$flags+= '-DPD_PRIVATE_BUILD=1'}
 if($Private){& "$PSScriptRoot/prepare-private-webhook.ps1"}
 $objects=@()
-foreach($src in @('core/pixel.c','core/animation.c','core/gif.c','core/storage.c','core/files.c','core/community.c','ui/dropdown.c','ui/app.c','platform/3ds/main.c','platform/3ds/pairing.c') + @(Get-ChildItem "$repo/vendor/zlib/*.c" | ForEach-Object { 'vendor/zlib/'+$_.Name })) {
+foreach($src in @('core/pixel.c','core/animation.c','core/ase_export.c','core/gif.c','core/storage.c','core/files.c','core/community.c','ui/dropdown.c','ui/app.c','platform/3ds/main.c','platform/3ds/pairing.c') + @(Get-ChildItem "$repo/vendor/zlib/*.c" | ForEach-Object { 'vendor/zlib/'+$_.Name })) {
     $obj=Join-Path $out (([IO.Path]::GetFileNameWithoutExtension($src))+'.o')
     & $gcc @flags -c (Join-Path $repo $src) -o $obj
     if($LASTEXITCODE -ne 0){throw "Compile failed: $src"}

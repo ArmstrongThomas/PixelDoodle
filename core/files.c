@@ -1,5 +1,6 @@
 #include "files.h"
 #include "animation.h"
+#include "ase_export.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -232,25 +233,28 @@ static unsigned char *png_encode(PdDocument *d,size_t *n,bool visible){
     while(off<raw_n){unsigned len=raw_n-off;if(len>65535)len=65535;z[at++]=(off+len==raw_n)?1:0;w16(z+at,len);w16(z+at+2,len^65535);at+=4;memcpy(z+at,raw+off,len);at+=len;off+=len;}be32(z+at,(uint32_t)adler32(1,raw,raw_n));free(raw);
     *n=8+25+12+zlen+12;unsigned char *b=calloc(1,*n);if(!b){free(z);return NULL;}memcpy(b,"\x89PNG\r\n\x1a\n",8);unsigned char ihdr[13]={0};be32(ihdr,d->width);be32(ihdr+4,d->height);ihdr[8]=8;ihdr[9]=6;png_chunk(b+8,"IHDR",ihdr,13);png_chunk(b+33,"IDAT",z,zlen);png_chunk(b+45+zlen,"IEND",NULL,0);free(z);return b;
 }
-static bool write_bytes(const char *path,unsigned char *b,size_t n,bool overwrite,char error[64],PdDocument *animation){
+static bool write_bytes_mode(const char *path,unsigned char *b,size_t n,bool overwrite,char error[64],PdDocument *animation,bool ase){
+    if(ase)error[0]=0;
     struct stat st;
     if(stat(path,&st)==0&&(st.st_mode&S_IFMT)!=S_IFREG)return fail(error,"Destination is not a regular file");
     if(pd_exists(path)&&!overwrite)return fail(error,"File already exists");
     char temp[PD_PATH],backup[PD_PATH];if(snprintf(temp,sizeof(temp),"%s.tmp",path)>=(int)sizeof(temp)||snprintf(backup,sizeof(backup),"%s.bak",path)>=(int)sizeof(backup))return fail(error,"Path too long");
     if(pd_exists(temp))return fail(error,"Recovery .tmp exists; use another name");
     FILE *f=fopen(temp,"wb");if(!f){return fail(error,"Cannot create temporary file");}
-    bool ok=animation?pd_frames_write(animation,f):fwrite(b,1,n,f)==n;if(fflush(f)||SYNC(f))ok=false;if(fclose(f))ok=false;
+    uint32_t stream_crc=0;size_t stream_size=0;bool ok=ase?pd_ase_stream(animation,f,&stream_crc,&stream_size,error):animation?pd_frames_write(animation,f):fwrite(b,1,n,f)==n;if(fflush(f)||SYNC(f))ok=false;if(fclose(f))ok=false;
     /* Verify exact bytes before replacing the previous file. */
-    f=fopen(temp,"rb");if(!f)ok=false;else if(animation){ok=ok&&pd_frames_verify(f);fclose(f);}else{unsigned char buf[1024];for(size_t off=0;ok&&off<n;){size_t len=n-off;if(len>sizeof(buf))len=sizeof(buf);if(fread(buf,1,len,f)!=len||memcmp(buf,b+off,len))ok=false;off+=len;}if(ok&&(fgetc(f)!=EOF||ferror(f)))ok=false;fclose(f);}
-    if(!ok)return fail(error,"Write failed; original retained");
+    f=fopen(temp,"rb");if(!f)ok=false;else if(ase){unsigned char buf[1024];uint32_t crc=0;size_t left=stream_size;while(ok&&left){size_t len=left>sizeof(buf)?sizeof(buf):left;if(fread(buf,1,len,f)!=len)ok=false;else crc=(uint32_t)crc32(crc,buf,(uInt)len);left-=len;}ok=ok&&crc==stream_crc&&fgetc(f)==EOF&&!ferror(f);fclose(f);}else if(animation){ok=ok&&pd_frames_verify(f);fclose(f);}else{unsigned char buf[1024];for(size_t off=0;ok&&off<n;){size_t len=n-off;if(len>sizeof(buf))len=sizeof(buf);if(fread(buf,1,len,f)!=len||memcmp(buf,b+off,len))ok=false;off+=len;}if(ok&&(fgetc(f)!=EOF||ferror(f)))ok=false;fclose(f);}
+    if(!ok){if(ase&&error[0])return false;return fail(error,"Write failed; original retained");}
     bool existed=pd_exists(path);if(existed){if(stat(backup,&st)==0&&(st.st_mode&S_IFMT)!=S_IFREG)return fail(error,"Backup path is not a regular file");if(pd_exists(backup)&&remove(backup))return fail(error,"Cannot replace backup");if(rename(path,backup))return fail(error,"Cannot back up original");}
     if(rename(temp,path)){if(existed)rename(backup,path);return fail(error,"Cannot finish save; check .bak/.tmp");}
     return true;
 }
 
+static bool write_bytes(const char *path,unsigned char *b,size_t n,bool overwrite,char error[64],PdDocument *animation){return write_bytes_mode(path,b,n,overwrite,error,animation,false);}
+
 bool pd_write_file(PdDocument *d,const char *path,unsigned kind,bool overwrite,char error[64]){
     if(d->editing||!pd_capacity(d->width,d->height,d->profile)||kind>3||d->palette_count>256)return fail(error,"Invalid save operation");
-    if(kind==1&&pd_frame_count(d)>1)return fail(error,"Animation ASE export is not available yet");
+    if(kind==1&&pd_frame_count(d)>1)return write_bytes_mode(path,NULL,0,overwrite,error,d,true);
     if(kind==0&&d->animation){bool ok=write_bytes(path,NULL,0,overwrite,error,d);if(ok){d->saved_revision=d->revision;d->saved_palette_count=d->palette_count;memcpy(d->saved_palette,d->palette,sizeof(d->palette));pd_frames_saved(d);}return ok;}size_t n=0;unsigned char *b=kind==0?native_encode(d,&n):kind==1?ase_encode(d,&n):png_encode(d,&n,kind==2);if(!b)return fail(error,"Not enough memory");bool ok=write_bytes(path,b,n,overwrite,error,NULL);free(b);if(ok&&kind==0){d->saved_revision=d->revision;d->saved_palette_count=d->palette_count;memcpy(d->saved_palette,d->palette,sizeof(d->palette));}return ok;
 }
 

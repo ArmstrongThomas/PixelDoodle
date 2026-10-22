@@ -1,4 +1,41 @@
 
+## 0.20.0 animated Aseprite export candidate (2026-10-22)
+
+Export > Aseprite now includes all frames, enabled layers (including hidden
+layers), order, names, visibility, opacity, supported blend modes, generic
+layer locks, palette and per-frame durations. RGBA cels are lossless, including
+RGB under zero alpha. Alpha Lock remains native-only, with existing UI notice.
+The flat RGBA file uses raw cels and is streamed row by row; no whole-animation
+buffer. A current-frame snapshot must fit before export. All later seeking and
+restoration allocate nothing. Original frame, pixels, history and dirty state
+are restored even on write failure. File size is capped at 64 MiB before
+writing. Existing verified .tmp/.bak replacement now checks streamed ASE
+length and CRC by readback before replacing an existing destination.
+
+Animated ASE IMPORT remains unsupported and explicitly rejected; preserve PDD
+as the editable device master. This increment enables desktop interchange in
+the export direction, not linked cels/groups/tags/indexed import. Test exported
+files in actual desktop Aseprite as well as the independent parser. Desktop
+batch tests can run while Windows is locked; no Azahar visual acceptance is
+claimed. No device transfer or live webhook post while user is away.
+
+### Frame ordering and playback polish in 0.20.0
+
+Tap the selected frame number in Frames to open frame actions: duration,
+Move Left/Right and confirmed deletion. The ordinary Delete footer remains.
+Moving is allocation-free and keeps the same working frame pixels selected;
+paint-history frame indices are remapped in both directions, including redo.
+Frame order marks the project structurally dirty and persists in PDD/ASE/GIF.
+Move itself is not undoable, matching current insert/duration behavior; paint
+undo is retained. Out-of-bounds moves and moves during a transaction refuse
+without changing art. Playback stop now brings the original editing frame
+back into the visible column range. Single-frame playback reports its actual
+need for a second frame, rather than a generic memory error.
+
+See docs/ANIMATION-HARDWARE.md for physical test requirements. Verification and
+artifact hashes are recorded below after native builds.
+
+
 ## 0.19.0 onion skin candidate (2026-10-22)
 
 Checkpoint 2ce8a56 was committed and pushed before this work. 0.18.0P animated

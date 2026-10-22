@@ -741,7 +741,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
 #endif
     if(a->playback.active){
         bool stop=down!=0||(touch&&!a->touching);
-        if(stop){pd_playback_stop(&a->doc,&a->playback);a->blocked=touch;a->redraw=true;}
+        if(stop){pd_playback_stop(&a->doc,&a->playback);unsigned f=pd_frame_index(&a->doc),cols=(unsigned)(a->width-96)/28;if(f<a->timeline_first||f>=a->timeline_first+cols)a->timeline_first=f;a->blocked=touch;a->redraw=true;}
         else if(pd_playback_tick(&a->doc,&a->playback,a->now_ms)){
             unsigned f=pd_frame_index(&a->doc),cols=(unsigned)(a->width-96)/28;
             if(f<a->timeline_first||f>=a->timeline_first+cols)a->timeline_first=f;
@@ -904,9 +904,17 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             a->blocked=!a->brush_drag;a->redraw=true;
         }
     }else if(a->page){
-        if(a->page>=32&&a->page<=34&&touch){
+        if(a->page>=32&&a->page<=35&&touch){
             if(pressed){
-                if(a->page==34){if(y>=100&&y<128){if(x<a->width/2){pd_frame_delete(&a->doc);a->selection_valid=false;message(a,"Frame deleted; undo history cleared");}a->page=32;}}
+                if(a->page==35){
+                    unsigned f=pd_frame_index(&a->doc),count=pd_frame_count(&a->doc);
+                    if(y>=a->height-24)a->page=32;
+                    else if(y>=44&&y<68)a->page=33;
+                    else if(y>=80&&y<104){bool right=x>=a->width/2;unsigned target=right?f+1:f?f-1:f;
+                        if(target<count&&pd_frame_move(&a->doc,target)){unsigned cols=(unsigned)(a->width-96)/28;if(target<a->timeline_first||target>=a->timeline_first+cols)a->timeline_first=target;message(a,"Frame moved; paint undo retained");}else message(a,"Frame is already at that end");}
+                    else if(y>=116&&y<140){if(count>1)a->page=34;else message(a,"Keep at least one frame");}
+                }
+                else if(a->page==34){if(y>=100&&y<128){if(x<a->width/2){pd_frame_delete(&a->doc);a->selection_valid=false;message(a,"Frame deleted; undo history cleared");}a->page=32;}}
                 else if(a->page==33){unsigned ms=pd_frame_duration(&a->doc);if(y>=60&&y<132){unsigned row=(unsigned)(y-60)/24,col=x>=a->width/2,values[]={50,100,150,200,300,500};pd_frame_set_duration(&a->doc,values[row*2+col]);}
                     else if(y>=136&&y<158){if(x<a->width/2&&ms>10)pd_frame_set_duration(&a->doc,ms-10);else if(x>=a->width/2&&ms<60000)pd_frame_set_duration(&a->doc,ms+10);}else if(y>=a->height-24)a->page=32;}
                 else {unsigned count=pd_frame_count(&a->doc),current=pd_frame_index(&a->doc),cols=(unsigned)(a->width-96)/28,rows=a->height==192?6:8;int footer=a->height-48,row_h=(footer-72)/(int)rows;
@@ -915,12 +923,12 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
                     else if(y>=30&&y<44&&x>=96&&x<a->width-80){
                         ok=pd_playback_start(&a->doc,&a->playback,a->now_ms);
                         if(ok){a->overview_pending=false;a->selection_valid=false;}
-                        else message(a,count<2?"Add a second frame to play":"Not enough memory to start playback");
+                        else {message(a,count<2?"Add a second frame to play":"Not enough memory to start playback");ok=true;}
                     }
                     else if(y>=a->height-24)a->page=0;
                     else if(y>=footer){unsigned pick=(unsigned)(x*3/a->width);if(pick<2){ok=pd_frame_add(&a->doc,pick==1);changed=ok;}else if(count>1)a->page=34;}
                     else if(y>=42&&y<58&&x>=a->width-76)a->page=33;
-                    else if(y>=58&&y<72){if(x<46){if(a->timeline_first)a->timeline_first--;}else if(x<92){if(a->timeline_first+cols<count)a->timeline_first++;}else {unsigned f=a->timeline_first+(unsigned)(x-96)/28;if(x>=96&&f<count){ok=pd_frame_switch(&a->doc,f);changed=ok;}}}
+                    else if(y>=58&&y<72){if(x<46){if(a->timeline_first)a->timeline_first--;}else if(x<92){if(a->timeline_first+cols<count)a->timeline_first++;}else {unsigned f=a->timeline_first+(unsigned)(x-96)/28;if(x>=96&&f<count){if(f==current)a->page=35;else{ok=pd_frame_switch(&a->doc,f);changed=ok;}}}}
                     else if(y>=72&&y<footer){unsigned row=(unsigned)(y-72)/(unsigned)row_h,layerrow=a->timeline_layer_first+row;int slot=timeline_slot(a,layerrow);
                         if(x>=86&&x<96){unsigned layers=0;for(unsigned l=0;l<8;l++)if(a->doc.enabled&(1u<<l))layers++;if(y<(72+footer)/2){if(a->timeline_layer_first)a->timeline_layer_first--;}else if(a->timeline_layer_first+rows<layers)a->timeline_layer_first++;}
                         else if(slot>=0){if(x<86){a->doc.active=(unsigned)slot;}else if(x>=96){unsigned f=a->timeline_first+(unsigned)(x-96)/28;if(f<count){ok=pd_frame_switch(&a->doc,f);if(ok){a->doc.active=slot;changed=true;}}}}}
@@ -1043,7 +1051,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             else if(a->page==17){if(y>=a->height-28){if(x>=a->width/2){a->page=4;a->preview_attempted=false;}else if(a->recent_project_selected>=0){int n=snprintf(a->pending,sizeof(a->pending),"%s/%s",a->directory,a->recent_projects[a->recent_project_selected]);if(n<(int)sizeof(a->pending)){a->file_mode=0;a->confirm=4;message(a,"Open replaces current drawing");}}}else if(y>=30&&y<158){unsigned i=(unsigned)(y-30)/16;if(i<a->recent_project_count){a->recent_project_selected=(int)i;char path[PD_PATH];if(snprintf(path,sizeof(path),"%s/%s",a->directory,a->recent_projects[i])<(int)sizeof(path))preview_file(a,path);}}a->blocked=true;a->redraw=true;}
             else if(a->page==4||a->page==5)browser_input(a,x,y);
             else if(a->page==6){if(y>=45&&y<85)browse(a,2);else if(y>=95&&y<135)browse(a,3);}
-            else if(a->page==3){if(y>=156){unsigned col=(unsigned)(x*3/a->width);action(a,col==0?7:col==1?8:9);}else if(y>=30){int i=(y-30)/18;if(i==4&&x>=a->width/2){a->page=32;unsigned columns=(unsigned)(a->width-96)/28,frame=pd_frame_index(&a->doc);a->timeline_first=frame>=columns?frame-columns+1:0;a->timeline_layer_first=0;a->redraw=true;a->blocked=true;}else if(i<7)action(a,i);}}
+            else if(a->page==3){if(y>=156){unsigned col=(unsigned)(x*3/a->width);action(a,col==0?7:col==1?8:9);}else if(y>=30){int i=(y-30)/18;if(i==4&&x>=a->width/2){a->page=32;unsigned columns=(unsigned)(a->width-96)/28,frame=pd_frame_index(&a->doc);a->timeline_first=frame>=columns?frame-columns+1:0;a->timeline_layer_first=0;message(a,"Tap selected frame number for actions");a->redraw=true;a->blocked=true;}else if(i<7)action(a,i);}}
             else {int i=(y-30)/24;if(y>=30&&i<6)action(a,i);}
         }
     }else if(a->tool==4&&touch&&y<50){
@@ -1542,7 +1550,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         int cy=72+rh*3;if(a->name_action==5){button(bottom,w,h,4,cy,w/3-8,rh-2,"CLEAR",false);button(bottom,w,h,w/3+4,cy,w/3-8,rh-2,"<",false);button(bottom,w,h,2*w/3+4,cy,w/3-8,rh-2,">",false);}else{button(bottom,w,h,2,cy,w/7-4,rh-2,a->text_mode==1?"abc":"ABC",a->text_mode==1);button(bottom,w,h,w/7+2,cy,w/7-4,rh-2,a->text_mode==2?"ABC":"123",a->text_mode==2);button(bottom,w,h,2*w/7+2,cy,3*w/7-4,rh-2,"SPACE",false);button(bottom,w,h,5*w/7+2,cy,w/7-4,rh-2,"<",false);button(bottom,w,h,6*w/7+2,cy,w/7-4,rh-2,">",false);}
         button(bottom,w,h,4,h-28,w/3-8,24,"DELETE",false);button(bottom,w,h,w/3+4,h-28,w/3-8,24,"CANCEL",false);button(bottom,w,h,2*w/3+4,h-28,w/3-8,24,"DONE",true);
     }else if(a->page==6){
-        button(bottom,w,h,4,45,w-8,40,"ASEPRITE - EDITABLE LAYERS",false);
+        button(bottom,w,h,4,45,w-8,40,pd_frame_count(&a->doc)>1?"ASEPRITE - FRAMES + LAYERS":"ASEPRITE - EDITABLE LAYERS",false);
         button(bottom,w,h,4,95,w-8,40,"PNG - VISIBLE IMAGE + ALPHA",false);
     }else if(a->page==8){
         button(bottom,w,h,4,32,w-8,28,a->draft_handed?"TOOLBOX: RIGHT SIDE":"TOOLBOX: LEFT SIDE",false);
@@ -1584,9 +1592,15 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         const char *base=strrchr(a->file_source,'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->file_source);text(bottom,w,h,8,27,label,UI_MUTED);const char *items[]={"RENAME FILE","DUPLICATE FILE","DELETE FILE"};for(int i=0;i<3;i++)button(bottom,w,h,4,40+i*32,w-8,28,items[i],false);button(bottom,w,h,4,h-28,w-8,24,"BACK TO FILES",false);
     }else if(a->page==17){
         for(unsigned i=0;i<a->recent_project_count;i++){const char *base=strrchr(a->recent_projects[i],'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->recent_projects[i]);button(bottom,w,h,4,30+(int)i*16,w-8,15,label,a->recent_project_selected==(int)i);}if(!a->recent_project_count)text(bottom,w,h,8,50,"NO RECENT PROJECTS YET",UI_MUTED);button(bottom,w,h,4,h-28,w/2-8,24,"OPEN",a->recent_project_selected>=0);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"BACK TO FILES",false);
-    }else if(a->page>=32&&a->page<=34){
+    }else if(a->page>=32&&a->page<=35){
         unsigned current=pd_frame_index(&a->doc),count=pd_frame_count(&a->doc);snprintf(label,sizeof(label),"FRAME %u / %u",current+1,count);text(bottom,w,h,8,30,label,UI_ACCENT);
-        if(a->page==34){text(bottom,w,h,8,60,"DELETE CURRENT FRAME?",UI_TEXT);text(bottom,w,h,8,76,"CLEARS UNDO HISTORY",UI_MUTED);button(bottom,w,h,4,100,w/2-8,28,"DELETE",false);button(bottom,w,h,w/2+4,100,w/2-8,28,"CANCEL",true);}
+        if(a->page==35){
+            button(bottom,w,h,4,44,w-8,24,"FRAME DURATION",false);
+            button(bottom,w,h,4,80,w/2-8,24,"MOVE LEFT",false);button(bottom,w,h,w/2+4,80,w/2-8,24,"MOVE RIGHT",false);
+            button(bottom,w,h,4,116,w-8,24,"DELETE FRAME",false);text(bottom,w,h,8,146,"MOVING RETAINS PAINT UNDO",UI_MUTED);
+            button(bottom,w,h,4,h-24,w-8,22,"BACK TO FRAMES",true);
+        }
+        else if(a->page==34){text(bottom,w,h,8,60,"DELETE CURRENT FRAME?",UI_TEXT);text(bottom,w,h,8,76,"CLEARS UNDO HISTORY",UI_MUTED);button(bottom,w,h,4,100,w/2-8,28,"DELETE",false);button(bottom,w,h,w/2+4,100,w/2-8,28,"CANCEL",true);}
         else if(a->page==33){snprintf(label,sizeof(label),"DURATION %u MS",pd_frame_duration(&a->doc));text(bottom,w,h,8,44,label,UI_TEXT);unsigned values[]={50,100,150,200,300,500};for(int i=0;i<6;i++){snprintf(label,sizeof(label),"%u MS",values[i]);button(bottom,w,h,4+(i%2)*w/2,60+(i/2)*24,w/2-8,22,label,pd_frame_duration(&a->doc)==values[i]);}button(bottom,w,h,4,136,w/2-8,22,"- 10 MS",false);button(bottom,w,h,w/2+4,136,w/2-8,22,"+ 10 MS",false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO FRAMES",true);}
         else {unsigned cols=(unsigned)(w-96)/28,rows=h==192?6:8;int footer=h-48,row_h=(footer-72)/(int)rows;if(a->timeline_first>=count)a->timeline_first=count-1;
             snprintf(label,sizeof(label),"POOL %u/%u KB",(unsigned)((pd_frame_memory(&a->doc)+1023)/1024),(unsigned)(pd_frame_budget(&a->doc)/1024));text(bottom,w,h,8,44,label,UI_MUTED);rect(bottom,w,h,8,54,76,2,UI_PANEL);rect(bottom,w,h,8,54,(int)(pd_frame_memory(&a->doc)*76/pd_frame_budget(&a->doc)),2,UI_ACCENT);snprintf(label,sizeof(label),"%u MS",pd_frame_duration(&a->doc));button(bottom,w,h,w-76,40,72,18,label,false);

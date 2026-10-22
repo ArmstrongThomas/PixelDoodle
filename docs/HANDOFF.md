@@ -1,5 +1,63 @@
 # Pixel Doodle development handoff
 
+## 0.20.0 animated Aseprite export candidate (2026-10-22)
+
+Export > Aseprite now includes all frames, enabled layers (including hidden
+layers), order, names, visibility, opacity, supported blend modes, generic
+layer locks, palette and per-frame durations. RGBA cels are lossless, including
+RGB under zero alpha. Alpha Lock remains native-only, with existing UI notice.
+The flat RGBA file uses raw cels and is streamed row by row; no whole-animation
+buffer. A current-frame snapshot must fit before export. All later seeking and
+restoration allocate nothing. Original frame, pixels, history and dirty state
+are restored even on write failure. File size is capped at 64 MiB before
+writing. Existing verified .tmp/.bak replacement now checks streamed ASE
+length and CRC by readback before replacing an existing destination.
+
+Animated ASE IMPORT remains unsupported and explicitly rejected; preserve PDD
+as the editable device master. This increment enables desktop interchange in
+the export direction, not linked cels/groups/tags/indexed import. Test exported
+files in actual desktop Aseprite as well as the independent parser. Desktop
+batch tests can run while Windows is locked; no Azahar visual acceptance is
+claimed. No device transfer or live webhook post while user is away.
+
+### Frame ordering and playback polish in 0.20.0
+
+Tap the selected frame number in Frames to open frame actions: duration,
+Move Left/Right and confirmed deletion. The ordinary Delete footer remains.
+Moving is allocation-free and keeps the same working frame pixels selected;
+paint-history frame indices are remapped in both directions, including redo.
+Frame order marks the project structurally dirty and persists in PDD/ASE/GIF.
+Move itself is not undoable, matching current insert/duration behavior; paint
+undo is retained. Out-of-bounds moves and moves during a transaction refuse
+without changing art. Playback stop now brings the original editing frame
+back into the visible column range. Single-frame playback reports its actual
+need for a second frame, rather than a generic memory error.
+
+### Verified 0.20.0 candidates
+
+Private and standard host/native builds pass. Added checks cover streamed ASE
+frames/layers/durations/palette, exact RGBA, readback/overwrite/state preservation,
+allocation refusal, allocation-free frame movement, cross-frame undo remapping,
+boundaries and native actions. Onion and 16436 render-equivalence checks plus
+independent GIF/ASE parsers pass. Desktop Aseprite batch opened/saved all test
+frames and matched rendered RGBA within rounding differences; empty clearing
+and durations pass. Broader desktop interop suite also passes: native/ASE roundtrips, compressed
+cels, malformed-file preservation, palettes and variable/large PNG pixels.
+DS/3DS action fixtures visually inspected. No Azahar visual
+acceptance or device testing claimed. Five artifacts staged with SHA-256 readback;
+NDS ARM9 version, direct input, onion and move labels verified. Hardware queue:
+docs/ANIMATION-HARDWARE.md. No overnight transfers or webhook sends.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.20.0\PixelDoodle.nds`: 355840 bytes; SHA-256 `95E9CD2B01D05F09D6512CF8A46550F3EAEC03721CF29174708B75E79B704749`
+- `G:\dev\3ds\PixelDoodle\build\test-0.20.0\PixelDoodle.3dsx`: 855892 bytes; SHA-256 `85D632855D6476DFC77B1A2B8B98706D6EE0031C6151602756C291A1AA097272`
+- `G:\dev\3ds\PixelDoodle\build\test-0.20.0\PixelDoodle.cia`: 690624 bytes; SHA-256 `7C362019B98B17654E02A8CD1AEBA0EBF1A484FE45CA2068DCD3FB3AE77DEB15`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.20.0\PixelDoodle-Private.nds`: 743936 bytes; SHA-256 `0F82784A73E74168B64BA51EBDA44AFDB38102EDE1F81BC3D5268C629495781A`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.20.0\PixelDoodle-Private.3dsx`: 863224 bytes; SHA-256 `879E81C852BF164AA4522E26591D6F76402D7C03830EEC394A6CAC6892F4C8E2`
+
+See docs/ANIMATION-HARDWARE.md for physical test requirements. Verification and
+artifact hashes are recorded below after native builds.
+
+
 ## 0.19.0 onion skin candidate (2026-10-22)
 
 Checkpoint 2ce8a56 was committed and pushed before this work. 0.18.0P animated
@@ -331,24 +389,23 @@ sample gap 16731 us / N 23. These are one photo's counters, not a benchmark.
 
 ## Current state (2026-10-22)
 
-- Repository: `G:/dev/3ds/PixelDoodle`, branch `main`; last commit remains
-  `6c835c4` (0.14.9). Version is now **0.16.1**, including the uncommitted
-  0.15.0 memory work. Do not commit or push without the user's request.
-- 0.16.0 includes the handwriting candidate fix, corrected memory diagnostics,
-  animation step 2, and an initial Aseprite-inspired layer/frame timeline.
-  Read `docs/ANIMATION-CORE.md` for controls, storage and current limitations.
-- New content files: `core/animation.c`, `core/animation.h`,
-  `tests/animation-checks.h`, `docs/ANIMATION-CORE.md`, plus the two mockups
-  already untracked at session start. Existing content changes cross core,
-  UI, both adapters, build/test scripts and documentation. The unrelated 33
-  line-ending-only files remain untouched; inspect with
-  `git diff --ignore-cr-at-eol --stat` before any future commit.
-- Host tests pass, including 16,436 incremental/full stroke frames, 131,072
-  composite oracle comparisons, frame/cel and failure tests. Native-size
-  timeline renders were inspected on both screen sizes.
-- Standard and private NDS/3DS builds, icons, CA and CIA/version checks pass.
-  The exact hashes and device transfer results are below. Hardware acceptance of
-  0.16.0, the corrected free-heap readout and handwriting improvement is pending.
+- Current local source: **0.20.0**. Pushed checkpoint: `2ce8a56` (accepted
+  animation/GIF baseline); onion increment: local `0f51d8c`. Later work is
+  committed locally when verified; do not infer an extra push was requested.
+- User accepted 0.17.0 playback and 0.18.0P animated GIF delivery to Discord
+  on DSi. 0.19.0 onion skin and 0.20.0 ASE export/frame ordering require hardware
+  testing. See `docs/ANIMATION-HARDWARE.md` for the current acceptance matrix.
+- Quick separate-stroke issue is deferred. 0.16.1 queued capture was rejected
+  for severe latency and removed. Keep direct input and version labels.
+- Frames and Layers remain separate. Local candidate adds cached onion skin,
+  streamed animated ASE export and allocation-free frame ordering that retains
+  paint undo. Animated ASE import, linked cels, tags, structure undo, animated
+  layer merge and sprite-sheet export remain future work.
+- Native PDD/PDDA remains the device editing master. Older builds cannot read
+  PDDA. Preserve user data/credentials and unrelated line-ending-only changes.
+- Current candidate hashes/build results are near the top of this handoff;
+  older artifact sections are historical. No overnight hardware sends or live
+  webhook posts, and no CIA installation/Azahar visual acceptance claimed.
 
 ## 0.16.0 implementation notes
 
@@ -377,54 +434,38 @@ use new test filenames. No networking/protocol/settings format change.
 
 ## Devices and what is on them
 
-- **DSi LL / DSpico** (new SD card; the old one failed from repeated removal).
-  Builds now go over Wi-Fi with DSi Link, never by hand. On the card:
-  - DSi Link 1.3 at `Homebrew/Dev/Received/DSiLink.nds` (the one the user runs;
-    last address `192.168.1.162:17494`). Older copies: 1.2 at
-    `Homebrew/Dev/DSiLink.nds`, 1.0 at `Homebrew/DevTools/DSiLink.nds`.
-  - Standard and private 0.16.1 were sent save-only to
-    `Homebrew/Dev/Received/PixelDoodle.nds` and `PixelDoodle-Private.nds`
-    on 2026-10-22; both returned OK SAVED. Launch from Pico Launcher.
-    `Homebrew/Dev/PixelDoodle.nds` retains the older working copy.
-  - User accepted private-build Send Sprite before 0.16.0; new retest pending.
-- **3DS** (`192.168.1.225:17491`, Homebrew Launcher netloader): the standard
-  0.16.0 3DSX was sent by 3dslink (exit 0) on 2026-10-22. It is the standard
-  staged candidate. Private 3DSX was not sent; CIA was not installed. Hardware
-  acceptance is pending; the missed-stroke report covers the preceding build.
-- Commands for both are at the top of `AGENTS.md` ("Device test workflow").
-  The user set this as the standard workflow: 3dslink to the 3DS, DSi Link to
-  the DSi. Say what you sent and its hash.
+- DSi LL / DSpico: last confirmed running build is **0.18.0P** from
+  `Homebrew/Dev/Received/PixelDoodle-Private.nds`. GIF delivery succeeded.
+  Last DSi Link address: `192.168.1.162:17494`; use save-only Wi-Fi transfer
+  after renewed readiness. Do not remove the SD card for manual copies.
+- Standard NDS Received copy was last sent as 0.16.1 (rejected); use an exact
+  newer staged standard candidate for any future test, not that old copy.
+- 3DS last received standard 0.16.0 via 3dslink at `192.168.1.225:17491`;
+  no later private transfer or CIA installation. Receiver is not assumed ready.
+- 0.19.0/0.20.0 candidates are local only. User is asleep; do not send builds
+  or webhook messages until requested with receiver readiness.
 
 ## Next hardware checks
 
-1. Run 0.16.0 Diagnostics on DSi TWL, DS Lite NTR and New 3DS. Record FREE,
-   LARGEST, MASKS and WRITE/READ. Expected masks remain 128/8/128 KB.
-2. Write letters quickly, repeatedly lifting between strokes; compare with the
-   reported completely missed strokes in 0.15.0. Check ordinary and guided
-   drawing, tiny taps, undo/redo and the deferred top preview.
-3. Menu > Frames: NEW, DUPE, cel/frame selection, durations, the DS layer scroll
-   track, Pan+L/R, ZL/ZR, native save/reopen/recovery and cancelled Delete.
-4. Regression: copy/cut/paste, selections, layers, palette, file open/save and
-   Settings. Retest private Send Sprite for the current frame.
-5. Record the results here and in the 0.16.0 AGENTS.md section. Do not infer
-   tested frame capacity or performance parity from host/build success.
+Use `docs/ANIMATION-HARDWARE.md`. Start with onion On/Off responsiveness,
+frame move plus cross-frame undo/redo, original-frame restoration after playback,
+then layered/duration ASE export and card/memory refusal paths. Repeat on
+DS Lite, DSi, standard 3DS and expanded New 3DS as available. Preserve native
+masters; animated ASE import is intentionally rejected. Do not spend this
+pass on the deferred rapid-handwriting issue.
 
 ## What comes next
 
-The user approved continuing animation and specifically requested Aseprite's
-layer/timeline approach as the implementation reference. Keep layers global,
-frames horizontal, cels at intersections, and independent DUPE editing even
-though identical tiles share storage. Step 2 and the initial grid are in
-0.16.0. Next are playback, onion-skin/cached composites, timeline gestures,
-frame-structure undo, tags and animated Aseprite I/O. Card streaming waits for
-actual corrected memory/card measurements. Do not infer that every feature in
-`docs/mockups/pixel-doodle-animation.html` is implemented.
+Continue the Aseprite-style model: global layers, horizontal frames and cels.
+Remaining priorities are bounded transactional animated ASE import, frame-range
+selection/copy, local GIF/sprite-sheet export, tags/loop ranges, frame-structure
+undo and all-frame layer merge. Keep DUPE edits independent despite shared tile
+storage. Do not merge Frames and Layers without the user's instruction.
 
-The approved file-screen redesign in
-`docs/mockups/pixel-doodle-files-menu.html` is still pending. Preserve the
-six-icon rail, DUPE spelling, six/eight-row Layers screen, dedicated Delete
-Layer, blend dropdown, single-column Tools drawer, 4x Pixel Grid and centered
-Brush Details/Transform sheets.
+The approved file-screen redesign remains pending. Preserve the existing
+six-icon rail, Layers layout, dedicated Delete Layer, blend dropdown and Tools
+drawer. Use `docs/ANIMATION-HARDWARE.md` for acceptance rather than historical
+pending lists below.
 
 ## Gotchas from this session
 
@@ -542,7 +583,7 @@ Brush Details/Transform sheets.
 - Further UI passes should preserve the original `DUPE` spelling and the
   4x Pixel Grid threshold.
 
-## Current artifact hashes (0.16.1, CIA version 257)
+## Historical artifact hashes (rejected 0.16.1, CIA version 257)
 
 - `PixelDoodle.nds` (349696 bytes):
   `EE13BB94BE1B06DC043DA5943F08299FCF69A935413CE9DF2110A76F63B2018E`
@@ -560,28 +601,21 @@ Only the two NDS variants were sent for 0.16.1; 3DS still has the earlier 0.16.0
 
 ## Prompt for the next LLM
 
-Continue Pixel Doodle in `G:/dev/3ds/PixelDoodle`. Read this handoff and
-AGENTS.md, then `docs/ANIMATION-CORE.md`. 0.16.1 is uncommitted, including the
-prior 0.15.0 changes. No commit, push or publication was performed. For 0.16.1, both NDS variants were sent with user-confirmed DSi Link readiness
-and both returned OK SAVED. No 0.16.1 3DS transfer occurred; the user had no 3DS
-ready. The 3DS retains standard 0.16.0. No CIA was installed. Preserve
-unrelated line-ending-only changes and all credentials, preferences, identity
-and runtime data.
+Continue PixelDoodle in `G:/dev/3ds/PixelDoodle`. Read current sections of
+this handoff, AGENTS.md, ANIMATION-CORE.md and ANIMATION-HARDWARE.md. User is
+away and authorized local animation progress with documentation after each
+increment. Checkpoint `2ce8a56` was pushed before new work. Later feature
+commits are local unless explicitly documented otherwise. Preserve unrelated
+whitespace-only changes, all private credentials and runtime data.
 
-The user reported completely missed fast handwriting strokes on DSi, DS Lite
-and New 3DS, confirmed private Send Sprite works, asked to fix input and proceed
-with animation, and selected antislop during mode for this session. Aseprite's
-layer/timeline is the requested reference. 0.16.0 did not resolve missed strokes. The 0.16.1 candidate captures touch
-independently into a bounded queue and restores an in-app version/variant label.
-The DSi heap readout is now confirmed at 14135 KB free/largest before 0.16.1.
-Keep Frames and Layers separate until the user tests thoroughly. It also has
-delayed pen-lift redraw, first-point stamping and corrected heap measurement, plus shared-tile
-frames, global layers, frame-aware undo, streaming native save/recovery and an
-initial timeline. Hardware acceptance and corrected FREE/LARGEST figures are
-still needed. Full animation (playback/onion skin/tags/animated ASE) is pending.
+Latest user acceptance: DSi 0.18.0P animated GIF sent successfully to Discord.
+0.17.0 playback also accepted. New onion/ASE/frame-order work needs hardware
+checks. Do not reintroduce queued capture; rapid separate-stroke work is
+explicitly deferred. Keep Frames and Layers separate. Do not claim animated
+ASE import is supported. Native PDD is the editable master.
 
-DSi delivery uses DSi Link save-only; get its current on-screen address. 3DS
-uses 3dslink at the established address once its netloader is waiting. Do not
-send to hardware without the user's request/readiness. Use the exact staged
-candidate and report its hash. Build private then standard with scripts/build.ps1;
-Docker may need elevated access to its engine. Do not replace the pinned image.
+Run scripts/build.ps1 private then standard using the pinned Docker image;
+record exact staged artifacts and hashes. Host suites include independent GIF
+and ASE parsers. Desktop Aseprite supports --batch while Windows is locked.
+Hardware delivery uses DSi Link save-only and 3dslink after renewed readiness.
+Do not send unattended builds/messages or publish releases/updater payloads.

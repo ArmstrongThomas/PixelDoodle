@@ -16,6 +16,7 @@ size_t pd_frame_budget(const PdDocument *d);
 bool pd_frame_switch(PdDocument *d,unsigned index);
 bool pd_frame_add(PdDocument *d,bool duplicate);
 bool pd_frame_delete(PdDocument *d);
+bool pd_frame_move(PdDocument *d,unsigned target);
 bool pd_frame_set_duration(PdDocument *d,unsigned milliseconds);
 bool pd_frame_snapshot(PdDocument *d);
 bool pd_frame_slot_unused(const PdDocument *d,unsigned layer);

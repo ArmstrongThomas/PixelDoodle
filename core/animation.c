@@ -168,6 +168,18 @@ bool pd_frame_add(PdDocument *d,bool duplicate){
     for(unsigned i=0;i<d->count;i++)if(d->history[i].frame>=index)d->history[i].frame++;
     restore(d,index);return true;
 }
+bool pd_frame_move(PdDocument *d,unsigned target){
+    if(d->editing||!d->animation||target>=d->animation->count||target==d->animation->current)return false;
+    Animation *a=d->animation;unsigned from=a->current;Frame *f=a->frames[from];
+    if(from<target)memmove(a->frames+from,a->frames+from+1,(target-from)*sizeof(Frame *));
+    else memmove(a->frames+target+1,a->frames+target,(from-target)*sizeof(Frame *));
+    a->frames[target]=f;a->current=target;a->structure++;
+    for(unsigned i=0;i<d->count;i++){unsigned frame=d->history[i].frame;
+        if(frame==from)d->history[i].frame=(uint16_t)target;
+        else if(from<target&&frame>from&&frame<=target)d->history[i].frame--;
+        else if(target<from&&frame>=target&&frame<from)d->history[i].frame++;
+    }return true;
+}
 bool pd_frame_delete(PdDocument *d){
     if(d->editing||!d->animation||d->animation->count<2)return false;Animation *a=d->animation;unsigned at=a->current;
     free_frame(a,a->frames[at]);memmove(a->frames+at,a->frames+at+1,(a->count-at-1)*sizeof(Frame *));a->count--;a->structure++;

@@ -1,3 +1,12 @@
+# Pixel Doodle 0.20.0 local animation candidate
+
+Latest hardware-accepted baseline: **0.18.0P on DSi**, including animated GIF
+sending to Discord. New local work adds onion skin, frame ordering and streamed
+animated Aseprite export. Frames and Layers remain separate. Animated ASE
+import is still unsupported; keep PDD masters. See [hardware tests](docs/ANIMATION-HARDWARE.md)
+and [handoff](docs/HANDOFF.md) for current status, controls and exact artifacts.
+The older version sections below are historical.
+
 
 ## 0.18.0 animated GIF webhook candidate (2026-10-22)
 
@@ -164,7 +173,7 @@ Current developer handoff: [docs/HANDOFF.md](docs/HANDOFF.md).
 Local PHP work includes schema-5 scoped favorites and resumable PNG upload APIs. Previously prepared 0.3.5 server archives remain local under `build/`; this increment produced no new server package. Fresh native build and verification results are recorded in `docs/HANDS-ON-CHECKLIST.md`.
 
 The native Community page now has Cached, Recent, Favorites and My Uploads modes on both handhelds, with a reusable touch-scroll dropdown, bounded remote thumbnails, favorite toggles, moderation status/reason and confirmed import of the device-sized PNG derivative. Grant errors distinguish invalid/revoked grants (401, clear and re-pair) from missing scopes (403, preserve and explicitly re-pair). NDS DNS resolution is nonblocking and bounded. Console submission metadata, immutable preview and resumable chunk upload are still unimplemented. Host and PHP checks pass; 3DSX/CIA and NDS builds pass. On 2026-10-21, Docker Desktop 4.82's stale runtime sockets were quarantined without deleting them, then Docker Desktop was updated in place to 4.96.0; Linux Engine 29.9.1 is running. DSi pairing and online-gallery hardware acceptance are the next tests. No device transfer or card write occurred.
-# Pixel Doodle 0.18.0 candidate
+# Historical 0.18.0 candidate
 
 Offline solo pixel art for Nintendo DS/DSi and Nintendo 3DS. **One repository, one shared C engine and UI, three outputs: NDS, 3DSX and CIA.**
 

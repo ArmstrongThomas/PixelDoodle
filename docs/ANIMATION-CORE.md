@@ -1,4 +1,41 @@
-# Animation and GIF sending: 0.18.0
+# Animation, onion skin and ASE export: 0.20.0
+
+## 0.20.0 animated Aseprite export candidate (2026-10-22)
+
+Export > Aseprite now includes all frames, enabled layers (including hidden
+layers), order, names, visibility, opacity, supported blend modes, generic
+layer locks, palette and per-frame durations. RGBA cels are lossless, including
+RGB under zero alpha. Alpha Lock remains native-only, with existing UI notice.
+The flat RGBA file uses raw cels and is streamed row by row; no whole-animation
+buffer. A current-frame snapshot must fit before export. All later seeking and
+restoration allocate nothing. Original frame, pixels, history and dirty state
+are restored even on write failure. File size is capped at 64 MiB before
+writing. Existing verified .tmp/.bak replacement now checks streamed ASE
+length and CRC by readback before replacing an existing destination.
+
+Animated ASE IMPORT remains unsupported and explicitly rejected; preserve PDD
+as the editable device master. This increment enables desktop interchange in
+the export direction, not linked cels/groups/tags/indexed import. Test exported
+files in actual desktop Aseprite as well as the independent parser. Desktop
+batch tests can run while Windows is locked; no Azahar visual acceptance is
+claimed. No device transfer or live webhook post while user is away.
+
+### Frame ordering and playback polish in 0.20.0
+
+Tap the selected frame number in Frames to open frame actions: duration,
+Move Left/Right and confirmed deletion. The ordinary Delete footer remains.
+Moving is allocation-free and keeps the same working frame pixels selected;
+paint-history frame indices are remapped in both directions, including redo.
+Frame order marks the project structurally dirty and persists in PDD/ASE/GIF.
+Move itself is not undoable, matching current insert/duration behavior; paint
+undo is retained. Out-of-bounds moves and moves during a transaction refuse
+without changing art. Playback stop now brings the original editing frame
+back into the visible column range. Single-frame playback reports its actual
+need for a second frame, rather than a generic memory error.
+
+See docs/ANIMATION-HARDWARE.md for physical test requirements. Verification and
+artifact hashes are recorded below after native builds.
+
 
 ## 0.19.0 onion skin candidate (2026-10-22)
 
@@ -118,10 +155,10 @@ Historical 0.16.1 delivery notes below describe a rejected build, not the
 current input path. No 3DS transfer is authorized while its receiver is absent.
 
 
-This is animation step 2 plus the first timeline controls. Playback, onion
-skin, tags, linked-cel editing, animated Aseprite import/export and sprite-sheet
-export are still pending. Frame capacity and handwriting responsiveness need
-hardware acceptance; passing host tests does not establish them.
+Animation includes frame/cel storage, playback, onion skin, frame ordering,
+GIF sending and animated Aseprite export. Tags, linked-cel editing, animated
+Aseprite import and sprite-sheet export remain pending. New features need
+hardware acceptance; passing host tests does not establish device performance.
 
 ## Controls and model
 
@@ -136,6 +173,8 @@ its existing six/eight visible rows and controls.
 - Tap the duration to choose a preset or adjust by 10 ms (10Ã¢â‚¬â€œ60,000 ms).
 - Pan + L/R steps frames with the pen lifted. ZL/ZR also step on New 3DS.
   These are single presses; holding to repeat is not implemented yet.
+- Tap the selected frame number for duration and allocation-free Move Left/Right.
+  Paint undo follows reordered artwork; moving itself is not undoable.
 - Delete asks for confirmation and clears undo history. At least one frame
   remains. Frame insertion and duration changes are not yet undoable.
 - The upper-screen status names the current frame when there is more than one.
@@ -154,6 +193,7 @@ Reference: [Aseprite Timeline](https://www.aseprite.org/docs/timeline/),
 [Sprites](https://www.aseprite.org/docs/sprite/), and
 [Linked Cels](https://www.aseprite.org/docs/linked-cels/). The tile pool shares
 storage, but DUPE has independent editing semantics; it is not a linked cel.
+Animated export follows the [official Aseprite file specification](https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md).
 Implementation and assets are original or reused from this repository.
 
 ## Storage and failure behavior
@@ -198,9 +238,10 @@ does not mark the named project saved. Older PDD1Ã¢â‚¬â€œ9 imports rem
 ordinary single-frame projects without animation state keep PDD8/PDD9 output.
 Older app versions cannot read PDDA: use new filenames while testing.
 
-Multi-frame Aseprite export is explicitly refused rather than dropping frames.
-PNG export and private Send Sprite export only the current frame. Existing
-single-frame Aseprite import/export remains unchanged.
+Multi-frame Aseprite export streams all frames/layers and verifies its output.
+Animated Aseprite import remains unsupported; keep PDD masters. PNG exports
+only the current frame. Private Send Sprite can choose current-frame PNG or
+an all-visible-frame animated GIF. Single-frame Aseprite I/O remains unchanged.
 
 ## Handwriting and diagnostics
 
@@ -210,14 +251,14 @@ and waits for 80 ms of idle time before refreshing the overview. An unrendered
 last batch still renders its damage. A newly started stroke always stamps its
 first point, including when entering the canvas from outside. Platform timing
 counters now include release work. The user subsequently confirmed missing strokes still occur in 0.16.0.
-0.16.1 captures input independently of the main consumer: NDS VBlank IRQ and a
+Historical rejected 0.16.1 experiment (removed in 0.16.2): independent capture used NDS VBlank IRQ and a
 4 ms higher-priority HID worker on 3DS, with a 64-sample locked queue. The
 consumer drains captured edges/positions before rendering. Idle repeats are
 coalesced; overflow resets safely and requires a new lift, and route changes
 flush stale touches before another menu can act. Capture never calls app code.
 SDK contacts entirely between hardware samples still cannot be recovered.
-Hardware acceptance remains pending. Version/variant labels and Q/PEAK/LOST,
-PEN/INK diagnostics distinguish capture problems from application processing.
+This capture experiment caused unacceptable hardware latency and is removed.
+Current diagnostics show INPUT DIRECT plus PEN/INK and version/variant labels.
 The user explicitly wants Frames and Layers kept separate while testing.
 
 The ARM optimizer removed malloc/free pairs from the old free-heap search,

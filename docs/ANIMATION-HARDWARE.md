@@ -5,6 +5,29 @@ The received `143535.gif` confirms animation sent through Discord. Playback was
 accepted in 0.17.0. Rapid separate-stroke work is explicitly deferred. Keep
 Frames and Layers separate until the user requests their integration.
 
+## 0.20.0: animated Aseprite export — pending on all devices
+
+- Export a layered animation with different durations from a middle editing
+  frame. Open the file in desktop Aseprite; check all frames, order, names,
+  visibility, opacity, blend and palette. Check the device stays on its original
+  frame, and undo/dirty state remain unchanged.
+- Repeat export with overwrite and inspect .bak. Test a full/removed card and
+  low-memory snapshot refusal: original artwork and previous output must survive.
+- Export larger animations and measure time/memory on DS Lite and DSi.
+- Keep native PDD masters. Reopening multi-frame ASE on the device is still
+  explicitly unsupported; rejection must preserve current artwork.
+
+## 0.20.0: frame actions and ordering — pending on all devices
+
+- Tap the selected frame number, move left/right across column boundaries,
+  and confirm the selected art stays the same while its position changes.
+- Paint on several frames, move in both directions, then undo/redo across
+  frames. Each edit must target its original artwork. Save/reopen and export
+  GIF/ASE to confirm order and durations follow the moved frames.
+- Boundary moves should refuse; deleting still confirms and clears history.
+- Play through more columns than fit, stop, and confirm the original editing
+  frame is visible again. Try Play with one frame for the explanatory notice.
+
 ## 0.19.0: onion skin â€” pending on all devices
 
 - Menu > Frames: toggle Onion On, return to canvas. Previous frame is faint

@@ -3,6 +3,39 @@
 #include "gif.h"
 #include "share.h"
 
+static void frame_move_checks(const char *dir){
+    PdDocument *d=calloc(1,sizeof(*d));assert(d);pd_init(d);assert(pd_create(d,16,16,1));dot(d,0,1,1,0xff111111);assert(pd_frame_add(d,false));dot(d,0,2,2,0xff222222);assert(pd_frame_add(d,false));dot(d,0,3,3,0xff333333);
+    unsigned history=d->count,cursor=d->cursor;size_t pool=pd_frame_memory(d);pd_frames_test_fail_after(0);assert(pd_frame_move(d,0));pd_frames_test_fail_after(-1);assert(pd_frame_memory(d)==pool&&pd_frame_index(d)==0&&d->count==history&&d->cursor==cursor&&pd_pixels(&d->layer[0])[387]==0xff333333);
+    assert(pd_undo(d)&&pd_frame_index(d)==0&&!pd_pixels(&d->layer[0])[387]);assert(pd_redo(d)&&pd_pixels(&d->layer[0])[387]==0xff333333);
+    assert(pd_frame_move(d,2));assert(pd_undo(d)&&pd_frame_index(d)==2);assert(pd_undo(d)&&pd_frame_index(d)==1&&!pd_pixels(&d->layer[0])[258]);assert(pd_redo(d)&&pd_pixels(&d->layer[0])[258]==0xff222222);
+    char path[512],error[64];snprintf(path,sizeof(path),"%s/moved.pdd",dir);assert(pd_write_file(d,path,0,false,error)&&!pd_dirty(d));assert(pd_frame_move(d,0)&&pd_dirty(d));assert(!pd_frame_move(d,0)&&!pd_frame_move(d,99));
+    assert(pd_begin(d));assert(!pd_frame_move(d,1));pd_cancel(d);pd_dispose(d);free(d);
+    PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
+    for(unsigned mode=0;mode<2;mode++){
+        app_init(a,mode?320:256,mode?240:192,"","TEST");assert(pd_frame_add(&a->doc,false));a->page=32;tap(a,128,64);assert(a->page==35);
+        tap(a,20,90);assert(pd_frame_index(&a->doc)==0&&a->page==35);tap(a,20,90);assert(pd_frame_index(&a->doc)==0);tap(a,a->width-20,90);assert(pd_frame_index(&a->doc)==1);
+        app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-frame-actions":"nds-frame-actions",b,a->width,a->height);
+        tap(a,20,a->height-12);assert(a->page==32);app_dispose(a);
+    }
+    free(a);free(b);free(t);puts("Frame move: allocation-free reorder, original working pixels, cross-frame undo remapping, dirty state, bounds and native actions: PASS");
+}
+static void ase_animation_checks(const char *dir){
+    PdDocument *d=calloc(1,sizeof(*d));assert(d);pd_init(d);assert(pd_create(d,16,16,1));d->enabled=3;d->order[0]=1;d->order[1]=0;strcpy(d->names[0],"Ink");strcpy(d->names[1],"Shade");d->layer[0].flags=PD_LAYER_LOCK;d->layer[1].opacity=128;d->layer[1].blend=1;
+    d->palette_count=3;d->palette[0]=0;d->palette[1]=0xff123456;d->palette[2]=0x80abcdef;
+    char path[512],error[64];unsigned durations[]={40,230,600};
+    for(unsigned frame=0;frame<3;frame++){
+        if(frame)assert(pd_frame_add(d,false));assert(pd_frame_set_duration(d,durations[frame]));
+        for(unsigned l=0;l<2;l++){
+            for(unsigned y=0;y<16;y++)for(unsigned x=0;x<16;x++)pd_pixels(&d->layer[l])[y*128+x]=(frame==2?0:((x+y)%5?0xff000000u:0x70000000u))|((frame*40+l*80+x)<<16)|((y*10)<<8)|(x+y);
+            snprintf(path,sizeof(path),"%s/ase-frame-%u-%u.rgba",dir,frame,l);FILE *f=fopen(path,"wb");assert(f);for(unsigned y=0;y<16;y++)assert(fwrite(pd_pixels(&d->layer[l])+y*128,4,16,f)==16);assert(!fclose(f));
+        }
+    }
+    assert(pd_frame_switch(d,1));unsigned history=d->count,cursor=d->cursor;uint64_t revision=d->revision,generation=pd_frames_generation(d);bool dirty=pd_dirty(d);
+    snprintf(path,sizeof(path),"%s/animated-layers.aseprite",dir);assert(pd_write_file(d,path,1,false,error));assert(pd_frame_index(d)==1&&d->count==history&&d->cursor==cursor&&d->revision==revision&&pd_frames_generation(d)==generation&&pd_dirty(d)==dirty);
+    assert(!pd_write_file(d,path,1,false,error));assert(pd_write_file(d,path,1,true,error));
+    snprintf(path,sizeof(path),"%s/ase-no-memory.aseprite",dir);pd_frames_test_fail_after(0);assert(!pd_write_file(d,path,1,false,error)&&!pd_exists(path));pd_frames_test_fail_after(-1);assert(pd_frame_index(d)==1&&d->revision==revision);
+    pd_dispose(d);free(d);puts("Animated ASE export: streamed frames/layers/durations/palette, readback, overwrite backup, state preservation and allocation refusal: PASS");
+}
 static void onion_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));PdFb *b=malloc(320*240*sizeof(PdFb)),*top=malloc(400*240*sizeof(PdFb));unsigned char *alpha=malloc(PD_PIXELS);assert(a&&b&&top&&alpha);
     for(unsigned mode=0;mode<2;mode++){
@@ -14,6 +47,7 @@ static void onion_checks(const char *dir){
         assert(a->doc.count==count&&a->doc.cursor==cursor&&a->doc.revision==revision&&pd_frames_generation(&a->doc)==generation&&pd_frame_memory(&a->doc)==pool&&pd_frame_index(&a->doc)==1);
         uint64_t key=a->onion_key;unsigned char *cache=a->onion;int left=mode?32:0;
         a->now_ms=16;app_input(a,true,left+41,65,0,0);app_render(a,b,top,mode?400:256,a->height);a->now_ms=32;app_input(a,false,0,0,0,0);a->now_ms=200;app_input(a,false,0,0,0,0);app_render(a,b,top,mode?400:256,a->height);assert(a->onion==cache&&a->onion_key==key);
+        uint32_t *reference=malloc((size_t)a->width*a->height*4);assert(reference);memcpy(reference,b,(size_t)a->width*a->height*4);a->partial=false;a->redraw=true;app_render(a,b,top,mode?400:256,a->height);assert(!memcmp(reference,b,(size_t)a->width*a->height*4));free(reference);
         assert(!pd_pixels(&a->doc.layer[0])[5*128+5]&&!pd_pixels(&a->doc.layer[0])[5*128+13]);
         a->doc.layer[0].opacity=100;a->redraw=true;app_render(a,b,top,mode?400:256,a->height);assert(a->onion[5*128+5]==100&&a->onion_key!=key);
         pd_frames_test_fail_after(0);assert(pd_frame_alpha(&a->doc,0,alpha)&&alpha[5*128+5]==100);pd_frames_test_fail_after(-1);
@@ -61,7 +95,7 @@ static void playback_checks(const char *dir){
         a->now_ms++;app_input(a,false,0,0,0,0);assert(pd_frame_index(&a->doc)==1&&pd_pixels(&a->doc.layer[0])[258]==0xff445566);
         app_render(a,b,t,mode?400:256,a->height);a->now_ms+=250;app_input(a,false,0,0,0,0);assert(pd_frame_index(&a->doc)==0);
         a->now_ms+=350*1000+110;app_input(a,false,0,0,0,0);assert(pd_frame_index(&a->doc)==1);
-        app_input(a,true,120,100,PD_SAVE,PD_SAVE);assert(!a->playback.active&&a->page==32&&pd_frame_index(&a->doc)==0&&!a->doc.editing);
+        a->timeline_first=1;app_input(a,true,120,100,PD_SAVE,PD_SAVE);assert(!a->timeline_first);assert(!a->playback.active&&a->page==32&&pd_frame_index(&a->doc)==0&&!a->doc.editing);
         assert(a->doc.count==history&&a->doc.cursor==cursor&&a->doc.revision==revision&&pd_frames_generation(&a->doc)==generation);
         assert(pd_pixels(&a->doc.layer[0])[129]==0xff112233&&!pd_pixels(&a->doc.layer[0])[258]);
         assert(pd_playback_start(&a->doc,&a->playback,0));pd_frames_test_fail_after(0);assert(pd_playback_tick(&a->doc,&a->playback,100));pd_playback_stop(&a->doc,&a->playback);pd_frames_test_fail_after(-1);
@@ -87,7 +121,7 @@ static void animation_checks(const char *dir){
     assert(!strcmp(r->names[0],"INK")&&pd_frame_switch(r,1)&&pd_frame_duration(r)==230&&pd_pixels(&r->layer[0])[258]==0x7fabcdef);
     assert(pd_frame_switch(r,2)&&pd_pixels(&r->layer[0])[645]==0xff445566);assert(pd_frame_delete(r)&&pd_frame_count(r)==2&&pd_dirty(r)&&!r->count);
     assert(pd_frame_switch(d,1));assert(pd_frame_set_duration(d,100));snprintf(path,sizeof(path),"%s/animation-recovery.pdd",dir);rev=d->saved_revision;assert(pd_write_recovery(d,path,error)&&pd_dirty(d)&&d->saved_revision==rev);assert(pd_open_file(r,path,error)&&pd_frame_duration(r)==100);
-    snprintf(path,sizeof(path),"%s/animation.aseprite",dir);assert(!pd_write_file(d,path,1,false,error)&&!pd_exists(path));
+    snprintf(path,sizeof(path),"%s/animation.aseprite",dir);assert(pd_write_file(d,path,1,false,error)&&pd_exists(path));assert(!pd_open_file(r,path,error));
     snprintf(path,sizeof(path),"%s/animation-low-memory.pdd",dir);used=pd_frame_memory(d);assert(pd_frames_test_budget(d,used));pd_frames_test_fail_after(0);assert(pd_write_file(d,path,0,false,error));pd_frames_test_fail_after(-1);assert(pd_frames_test_budget(d,budget));assert(pd_open_file(r,path,error)&&pd_frame_count(r)==3&&pd_frame_index(r)==1&&pd_pixels(&r->layer[0])[258]==0x7fabcdef);
     snprintf(path,sizeof(path),"%s/animation-recovery.pdd",dir);FILE *f=fopen(path,"r+b");assert(f&&fseek(f,80,SEEK_SET)==0);int byte=fgetc(f);assert(byte!=EOF&&fseek(f,80,SEEK_SET)==0&&fputc(byte^1,f)!=EOF&&!fclose(f));
     unsigned frames=pd_frame_count(d),frame=pd_frame_index(d);rev=d->revision;assert(!pd_open_file(d,path,error)&&pd_frame_count(d)==frames&&pd_frame_index(d)==frame&&d->revision==rev&&pd_pixels(&d->layer[0])[258]==0x7fabcdef);
