@@ -1,4 +1,8 @@
 
+Current continuation summary: `docs/ANIMATION-NEXT-SESSION.md`.
+Pushed baseline: `2ce8a56`; local feature commits: `0f51d8c` and `e8967a3`.
+Current device candidate: 0.20.0; hardware-accepted DSi baseline: 0.18.0P.
+
 ## 0.20.0 animated Aseprite export candidate (2026-10-22)
 
 Export > Aseprite now includes all frames, enabled layers (including hidden
