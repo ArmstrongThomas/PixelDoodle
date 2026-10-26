@@ -2,8 +2,8 @@
 
 Current continuation summary: `docs/ANIMATION-NEXT-SESSION.md` (animation);
 file-screen redesign: the 0.21.0 section below.
-Pushed baseline: `2ce8a56`; local commits `0f51d8c`, `e8967a3`, `5207761`;
-0.21.0 is uncommitted on top.
+Pushed baseline: `2ce8a56`; local commits `0f51d8c`, `e8967a3`, `5207761` and
+`738b07d` (0.21.0); not pushed.
 Current device candidate: 0.21.0; hardware-accepted DSi baseline: 0.18.0P.
 UI mockups (design references, with what is implemented): `docs/mockups/README.md`.
 
