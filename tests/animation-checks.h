@@ -153,7 +153,7 @@ static void rapid_stroke_checks(void){
 }
 static void timeline_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);
-    for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,"","TEST");assert(app_set_profile(a,mode?3:1));a->doc.enabled=255;dot(&a->doc,0,2,2,0xffabcdef);a->page=3;tap(a,a->width-30,110);assert(a->page==32);
+    for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,"","TEST");assert(app_set_profile(a,mode?3:1));a->doc.enabled=255;dot(&a->doc,0,2,2,0xffabcdef);a->page=3;tap_menu(a,10);assert(a->page==32);
         tap(a,24,a->height-40);assert(pd_frame_count(&a->doc)==2&&pd_frame_index(&a->doc)==1&&!pd_frame_has_cel(&a->doc,1,0));
         tap(a,a->width/2,a->height-40);assert(pd_frame_count(&a->doc)==3&&pd_frame_index(&a->doc)==2);
         /* The first visible layer is the topmost stable slot, not slot zero. */

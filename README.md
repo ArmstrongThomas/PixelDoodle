@@ -1,4 +1,13 @@
-# Pixel Doodle 0.20.0 local animation candidate
+# Pixel Doodle 0.21.0 candidate
+
+0.21.0 redesigns the file screens: a reordered Menu (New Project and Frames
+first, Adjust moved to the Layers footer), a file browser with type icons, a
+type dropdown and seven rows on DSi (nine on 3DS), an upper-screen preview with
+size, layers, frames and file size, and a keyboard that types lowercase with
+Shift and caps lock. File and layer names now show in the case you typed.
+Artifacts and hashes: `docs/HANDOFF.md`.
+
+## 0.20.0 local animation candidate
 
 Latest hardware-accepted baseline: **0.18.0P on DSi**, including animated GIF
 sending to Discord. New local work adds onion skin, frame ordering and streamed
@@ -165,7 +174,7 @@ current input path. No 3DS transfer is authorized while its receiver is absent.
 
 Running queue: [docs/HANDS-ON-CHECKLIST.md](docs/HANDS-ON-CHECKLIST.md).
 Provider/hosting walkthrough: [docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md).
-Editable UI mockups: [docs/mockups/pixel-doodle-workflow.html](docs/mockups/pixel-doodle-workflow.html).
+UI mockups and their implementation status: [docs/mockups/README.md](docs/mockups/README.md).
 Current developer handoff: [docs/HANDOFF.md](docs/HANDOFF.md).
 
 # Community implementation status (2026-10-16)

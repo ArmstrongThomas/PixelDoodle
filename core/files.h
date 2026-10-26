@@ -12,6 +12,9 @@ bool pd_exists(const char *path);
 bool pd_mkdir(const char *path);
 /* Stage imports before touching live artwork. Error text is bounded. */
 bool pd_preview_file_profile(const char *path,uint32_t preview[64*64],unsigned profile,char error[64]);
+/* As pd_preview_file_profile, also reporting the decoded size, enabled layers and frames. */
+typedef struct { unsigned width,height,layers,frames; } PdPreviewInfo;
+bool pd_preview_file_info(const char *path,uint32_t preview[64*64],unsigned profile,PdPreviewInfo *info,char error[64]);
 bool pd_preview_file(const char *path,uint32_t preview[64*64],char error[64]);
 bool pd_write_recovery(PdDocument *d,const char *path,char error[64]);
 bool pd_open_file(PdDocument *d,const char *path,char error[64]);

@@ -1,3 +1,23 @@
+## File screens 0.21.0 (2026-10-26)
+
+Sent to DSi Link (save-only): `Homebrew/Dev/Received/PixelDoodle-Private.nds`
+(V0.21.0P) and `PixelDoodle.nds` (V0.21.0).
+
+- [ ] Menu order: New Project | Frames; Save | Save As | Export; Open;
+  Settings | Recovery; Exit | Send Sprite (private). Each opens the right page.
+- [ ] Layers footer: New Layer, Adjust, Delete. Adjust Apply/Cancel return to Layers.
+- [ ] Browser: 7 rows on DSi, icons match types, folders show `>` and open on a
+  second tap, Up returns, drag scrolls without selecting.
+- [ ] Type dropdown: opens, every type filters correctly, tapping outside closes it.
+- [ ] More opens Rename/Duplicate/Delete for the selected file; Recent still works.
+- [ ] Upper screen: name in real case, type tag, size/layers/frames/file size,
+  unsaved-art warning when the current art is unsaved; palettes show colors.
+- [ ] Keyboard: lowercase default, Shift once, caps lock on double tap, 123/abc,
+  Backspace hold-repeat, cursor keys, extension shown; hex color entry unchanged.
+- [ ] File and layer names keep the typed case everywhere (browser, Layers, Frames,
+  upper-screen title).
+- [ ] Same checks on 3DS when available (9 browser rows).
+
 
 ## 0.20.0 animated Aseprite export candidate (2026-10-22)
 

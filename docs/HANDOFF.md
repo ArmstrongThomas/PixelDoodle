@@ -1,8 +1,65 @@
 # Pixel Doodle development handoff
 
-Current continuation summary: `docs/ANIMATION-NEXT-SESSION.md`.
-Pushed baseline: `2ce8a56`; local feature commits: `0f51d8c` and `e8967a3`.
-Current device candidate: 0.20.0; hardware-accepted DSi baseline: 0.18.0P.
+Current continuation summary: `docs/ANIMATION-NEXT-SESSION.md` (animation);
+file-screen redesign: the 0.21.0 section below.
+Pushed baseline: `2ce8a56`; local commits `0f51d8c`, `e8967a3`, `5207761`;
+0.21.0 is uncommitted on top.
+Current device candidate: 0.21.0; hardware-accepted DSi baseline: 0.18.0P.
+UI mockups (design references, with what is implemented): `docs/mockups/README.md`.
+
+## 0.21.0 file screens redesign (2026-10-26)
+
+Implements the user-approved mockup `docs/mockups/pixel-doodle-files-menu.html`
+on top of 0.20.0. No file-format, settings or animation change.
+
+- **Menu:** New Project | Frames; Save | Save As | Export; Open / File Browser;
+  Settings | Recovery; Exit | Send Sprite (Send only in private builds; Exit
+  takes the full row in standard builds). One `menu_buttons()` table drives
+  drawing and taps. Adjust is no longer in the Menu.
+- **Layers footer:** + New Layer | Adjust | Delete Layer (`DELETE` where the
+  full label does not fit). Adjust opens the existing page and its Apply and
+  Cancel now return to Layers.
+- **File browser:** title and path in the header, Recent at the right; Up and a
+  type dropdown (reusing `PdDropdown`) with icons and extensions; one-line rows
+  (7 visible on DSi, 9 on 3DS) with a 10x8 type icon, the real-case name and a
+  type tag or `>` for folders; footer New Dir | More | Cancel | Open/Name/Import.
+  More replaces the old `...` file-actions button. `browser_layout()` is the
+  shared geometry. Row tags use the extension; no per-file size lookups.
+- **Upper-screen preview:** header with icon, name and type tag; framed preview;
+  details column (size, layers, frames, file size, format, or palette colors);
+  footer warning when opening would replace unsaved art. `pd_preview_file_info()`
+  in `core/files.c` reports size, layers and frames from the same decode; the
+  file size comes from one `fopen`/`ftell` when a file is selected.
+- **Keyboard:** lowercase by default; Shift gives one capital, a second tap caps
+  lock (underlined); Backspace beside M with hold-to-repeat; bottom row
+  123/abc, dash, space, underscore and cursor keys; footer Cancel | Done; the
+  field shows the extension that will be added. Hex color entry keeps its own
+  layout. `keyboard_keys()` drives drawing, taps and hold-to-delete.
+- **Real-case names:** `text()` still capitalises labels and messages;
+  `text_raw()` draws names the user typed (files, folders, paths, layers in the
+  Layers list, options sheet and timeline, the upper-screen title). The font
+  already had lowercase glyphs.
+
+Tests: menu taps use `app_test_menu_point()` (PD_TEST only) via `tap_menu()`;
+browser taps use `tap_file_row()`, `tap_file_footer()` and `tap_file_filter()`,
+which mirror `browser_layout()`. New checks cover the type dropdown (open,
+choose, outside tap), preview size/layers/frames/bytes, lowercase default,
+one-shot Shift, caps lock, symbols toggle and Backspace hold-repeat. Host suite,
+16-bit screen check, icon, NDS/DSi header and DLDI, and CIA (version 336) checks
+pass. Native fixtures inspected for DSi and 3DS. The 3DS compiler rejected two
+`snprintf` truncation patterns; both now copy with explicit lengths.
+
+Sent save-only by DSi Link to `192.168.1.165` (the DSi's address changed from
+.162; ask for the on-screen address each time): private OK SAVED (755200 bytes,
+CRC-32 A52C369E) and standard OK SAVED (367104 bytes, CRC-32 AA53956B), both in
+`Homebrew/Dev/Received/`. No 3DS transfer. Hardware acceptance pending.
+Docker Desktop was not running; it was started for the NDS builds.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.21.0\PixelDoodle.nds`: 367104 bytes; SHA-256 `121CFAA46C57B772409043630F7DC81628DED6C5839500D910F1BC254EFD5D92`
+- `G:\dev\3ds\PixelDoodle\build\test-0.21.0\PixelDoodle.3dsx`: 868316 bytes; SHA-256 `BABFC9CE11A4EADA816512C2DBF423CC0486A7BAED7D90092E6C3AC82B7F4844`
+- `G:\dev\3ds\PixelDoodle\build\test-0.21.0\PixelDoodle.cia`: 699328 bytes; SHA-256 `098606CFF49894B4649D3E83C764CD968267C60C1BE1C6817D268561E991B8AC`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.21.0\PixelDoodle-Private.nds`: 755200 bytes; SHA-256 `B40F577EC53F81D5D56E5776445D55502EB193EBAB9C5FC1DB3364B29D784C33`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.21.0\PixelDoodle-Private.3dsx`: 875692 bytes; SHA-256 `331D466C8316C3A6EDA74539A5719F65ECF51405F1E16A022673A0FEA7091DE1`
 
 ## 0.20.0 animated Aseprite export candidate (2026-10-22)
 

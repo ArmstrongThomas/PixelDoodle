@@ -29,6 +29,9 @@ static const uint32_t palette[PALETTE_DEFAULT_COUNT]={
 #define UI_MUTED 0xb9cbd2u
 #define UI_ACCENT 0x79e0d3u
 #define UI_SELECTED 0x0d7a75u
+#define UI_DEEP 0x202c32u
+#define UI_LINE 0x25333au
+#define UI_WARN 0xf2c46bu
 static const char *control_names[]={"B / DOWN","A / LEFT","X / UP","Y / RIGHT"};
 static const char *action_names[]={"TOOLS","PAN","SAMPLE","ZOOM"};
 static bool bindings_valid(unsigned b){unsigned seen=0;for(unsigned i=0;i<4;i++)seen|=1u<<((b>>(i*2))&3);return seen==15;}
@@ -232,14 +235,31 @@ static void recent_project_change(PdApp *a,const char *old,const char *replaceme
 static unsigned file_type(const char *name){const char *ext=strrchr(name,'.');char e[12]={0};if(!ext||strlen(ext)>=sizeof(e))return 0;for(unsigned i=0;ext[i];i++)e[i]=(char)(ext[i]>='A'&&ext[i]<='Z'?ext[i]+32:ext[i]);if(!strcmp(e,".pdd"))return 1;if(!strcmp(e,".ase")||!strcmp(e,".aseprite"))return 2;if(!strcmp(e,".gpl"))return 3;if(!strcmp(e,".hex"))return 4;if(!strcmp(e,".png"))return 5;return 0;}
 static void preview_file(PdApp *a,const char *path){
     const char *base=strrchr(path,'/');snprintf(a->preview_name,sizeof(a->preview_name),"%s",base?base+1:path);a->preview_attempted=true;a->preview_palette_count=0;
+    a->preview_width=a->preview_height=a->preview_layers=a->preview_frames=0;a->preview_bytes=-1;
+    FILE *size_probe=fopen(path,"rb");if(size_probe){if(!fseek(size_probe,0,SEEK_END))a->preview_bytes=ftell(size_probe);fclose(size_probe);}
     unsigned type=file_type(path);if(type==3||type==4||(type==5&&(a->file_mode>=4||a->file_filter==3))){uint32_t colors[256];unsigned count=0;a->preview_ready=pd_palette_read(path,colors,&count,a->preview_error);if(a->preview_ready){a->preview_palette_count=count;unsigned cols=count<=16?4:count<=64?8:16;memset(a->file_preview,0,sizeof(a->file_preview));for(unsigned y=0;y<64;y++)for(unsigned x=0;x<64;x++){unsigned i=(y/(64/cols))*cols+x/(64/cols);if(i<count)a->file_preview[y*64+x]=colors[i];}}}
-    else a->preview_ready=pd_preview_file_profile(path,a->file_preview,a->doc.profile,a->preview_error);a->redraw=true;
+    else{PdPreviewInfo info;a->preview_ready=pd_preview_file_info(path,a->file_preview,a->doc.profile,&info,a->preview_error);
+        a->preview_width=info.width;a->preview_height=info.height;a->preview_layers=info.layers;a->preview_frames=info.frames;}
+    a->redraw=true;
 }
 static const char *filter_names[]={"PROJECTS","PDD","ASEPRITE","PALETTES","GPL","HEX","PNG","ALL"};
 static bool file_matches(PdApp *a,PdEntry *e){unsigned t=file_type(e->name);return e->directory||a->file_filter==7||(a->file_filter==0&&(t==1||t==2||t==5))||(a->file_filter==1&&t==1)||(a->file_filter==2&&t==2)||(a->file_filter==3&&t>=3)||(a->file_filter>=4&&a->file_filter<=6&&t==a->file_filter-1);}
 static unsigned file_rows(PdApp *a){unsigned n=0;for(unsigned i=0;i<a->listing.count;i++)if(file_matches(a,&a->listing.entries[i]))n++;return n;}
 static int file_index(PdApp *a,unsigned row){for(unsigned i=0;i<a->listing.count;i++)if(file_matches(a,&a->listing.entries[i])){if(!row)return (int)i;row--;}return -1;}
-static void file_clamp(PdApp *a){int max=(int)file_rows(a)*24-(a->height-116);if(max<0)max=0;if(a->file_scroll<0)a->file_scroll=0;if(a->file_scroll>max)a->file_scroll=max;}
+/* Browser geometry shared by drawing and touch: one-line rows, 7 visible on DSi and 9 on 3DS. */
+typedef struct { int row_h,list_top,list_bottom,footer_y,footer_h; } BrowserLayout;
+static BrowserLayout browser_layout(const PdApp *a){
+    BrowserLayout l;bool big=a->height>192;l.row_h=big?16:14;l.footer_h=big?24:20;l.footer_y=(int)a->height-l.footer_h-4;l.list_top=64;l.list_bottom=l.footer_y-3;return l;
+}
+static void file_clamp(PdApp *a){BrowserLayout l=browser_layout(a);int max=(int)file_rows(a)*l.row_h-(l.list_bottom-l.list_top);if(max<0)max=0;if(a->file_scroll<0)a->file_scroll=0;if(a->file_scroll>max)a->file_scroll=max;}
+/* Type filter dropdown: icon and extensions shown beside each of the eight filters. */
+enum { ICON_FILE, ICON_PDD, ICON_ASE, ICON_PAL, ICON_PNG, ICON_DIR };
+static const unsigned filter_icons[8]={ICON_PDD,ICON_PDD,ICON_ASE,ICON_PAL,ICON_PAL,ICON_PAL,ICON_PNG,ICON_FILE};
+static const char *filter_exts[8]={"PDD ASE PNG","PDD","ASE","GPL HEX PNG","GPL","HEX","PNG","*"};
+static unsigned type_icon_for(unsigned type,bool directory){return directory?ICON_DIR:type==1?ICON_PDD:type==2?ICON_ASE:type==3||type==4?ICON_PAL:type==5?ICON_PNG:ICON_FILE;}
+static void browser_open_filter(PdApp *a){
+    BrowserLayout l=browser_layout(a);int row=l.row_h+1;pd_dropdown_open(&a->file_type_dropdown,30,63,(int)a->width-34,1,row,8,8,a->file_filter,true);
+}
 
 static int canvas_top(const PdApp *a){return a->tool==4?50:24;}
 static void clamp(PdApp *a){int vw=a->width/a->zoom,vh=(a->height-canvas_top(a))/a->zoom;
@@ -306,7 +326,7 @@ static void browse_refresh(PdApp *a){a->preview_attempted=false;a->preview_ready
     a->redraw=true;
 }
 static void browse(PdApp *a,unsigned mode){
-    finish(a);a->file_mode=mode;a->file_filter=mode>=4?3:mode==3?6:0;a->page=4;a->confirm=0;
+    finish(a);pd_dropdown_close(&a->file_type_dropdown);a->file_mode=mode;a->file_filter=mode>=4?3:mode==3?6:0;a->page=4;a->confirm=0;
     if(!a->folder[0])snprintf(a->folder,sizeof(a->folder),"%s",a->directory);
     browse_refresh(a);
 }
@@ -361,20 +381,43 @@ static void new_project(PdApp *a){
     if(a->new_background){uint32_t c=a->new_background==1?0xffffffff:a->background;for(unsigned y=0;y<a->doc.height;y++)for(unsigned x=0;x<a->doc.width;x++)pd_pixels(&a->doc.layer[0])[y*a->doc.stride+x]=c;snprintf(a->doc.names[0],64,"Background");}
     a->doc.enabled=(uint8_t)((1u<<a->new_layers)-1);a->swatch_selected=0;a->palette_scroll[0]=a->palette_scroll[1]=0;a->doc.revision=++a->doc.serial;a->zoom=1;while(a->zoom<32&&(int)a->doc.width*a->zoom*2<=a->width&&(int)a->doc.height*a->zoom*2<=a->height-canvas_top(a))a->zoom*=2;a->ox=a->oy=a->subx=a->suby=0;a->page=0;a->recovery_revision=0;a->recovery_at=a->now_ms;message(a,"New project - not saved");
 }
-static void text_begin(PdApp *a){a->page=5;a->text_cursor=(unsigned)strlen(a->filename);a->text_mode=0;a->text_repeat=false;if(a->palette_picker_active)a->picker_update=false;}
+static void text_begin(PdApp *a){a->page=5;a->text_cursor=(unsigned)strlen(a->filename);a->text_mode=0;a->text_shift=0;a->text_repeat=false;if(a->palette_picker_active)a->picker_update=false;}
 static void text_begin_hex(PdApp *a){
     uint32_t color=*palette_color_target(a);a->name_action=5;snprintf(a->filename,sizeof(a->filename),"%06X",(unsigned)(color&0xffffff));a->text_cursor=6;a->text_mode=3;a->text_repeat=false;a->numeric_replace=true;a->picker_update=false;a->page=5;a->redraw=true;
 }
 static void text_delete(PdApp *a){unsigned end=a->text_cursor;if(end){unsigned start=end-1;while(start&&((unsigned char)a->filename[start]&0xc0)==0x80)start--;memmove(a->filename+start,a->filename+end,strlen(a->filename+end)+1);a->text_cursor=start;}a->redraw=true;}
-static int text_row_height(PdApp *a){return (a->height-112)/4;}
+static int text_row_height(const PdApp *a){return ((int)a->height-112)/4;}
 static const char *text_keys(unsigned mode,unsigned row){
-    static const char *upper[]={"QWERTYUIOP","ASDFGHJKL","ZXCVBNM"};
-    static const char *lower[]={"qwertyuiop","asdfghjkl","zxcvbnm"};
-    static const char *symbols[]={"1234567890","_-().,!@+","[]{}=#$%&"};
+    static const char *letters[]={"qwertyuiop","asdfghjkl","zxcvbnm"};
+    static const char *symbols[]={"1234567890","_-().,!@+&","[]{}=#$%"};
     static const char *hex[]={"0123456789","ABCDEF",""};
-    return mode==3?hex[row]:mode==2?symbols[row]:mode==1?lower[row]:upper[row];
+    return mode==3?hex[row]:mode==2?symbols[row]:letters[row];
 }
-static unsigned text_start(PdApp *a){unsigned start=a->text_cursor>30?a->text_cursor-30:0;while(start&&((unsigned char)a->filename[start]&0xc0)==0x80)start--;return start;}
+static unsigned text_start(PdApp *a){unsigned start=a->text_cursor>26?a->text_cursor-26:0;while(start&&((unsigned char)a->filename[start]&0xc0)==0x80)start--;return start;}
+/* Text-entry keys (hex entry keeps its own layout). Rows 0-1 are characters; row 2 adds Shift and
+ * Backspace (symbols: Backspace only); row 3 holds mode, dash, space, underscore and cursor keys.
+ * Drawing, taps and hold-to-delete all use this table. */
+enum { KEY_CHAR, KEY_SHIFT, KEY_BKSP, KEY_MODE, KEY_SPACE, KEY_LEFT, KEY_RIGHT };
+typedef struct { int x,y,w,h; unsigned kind; char ch; } KeyRect;
+static unsigned keyboard_keys(const PdApp *a,KeyRect *out){
+    int w=(int)a->width,kw=(w-8)/10,x0=4+(w-8-kw*10)/2,rh=text_row_height(a),top=72,sw=kw*3/2;unsigned n=0;bool symbols=a->text_mode==2;
+    for(unsigned row=0;row<3;row++){
+        const char *chars=text_keys(a->text_mode,row);int count=(int)strlen(chars),y=top+(int)row*rh,x=x0;
+        if(row<2)x=x0+(10-count)*kw/2;
+        else if(!symbols){out[n++]=(KeyRect){x0,y,sw,rh,KEY_SHIFT,0};x=x0+sw;}
+        for(int i=0;i<count;i++)out[n++]=(KeyRect){x+i*kw,y,kw,rh,KEY_CHAR,chars[i]};
+        if(row==2){int bx=x+count*kw;out[n++]=(KeyRect){bx,y,x0+kw*10-bx,rh,KEY_BKSP,0};}
+    }
+    static const unsigned kinds[6]={KEY_MODE,KEY_CHAR,KEY_SPACE,KEY_CHAR,KEY_LEFT,KEY_RIGHT};static const char marks[6]={0,'-',' ','_',0,0};
+    int widths[6]={sw,kw,kw*4,kw,kw*5/4,0},y=top+3*rh,x=x0;
+    for(int i=0;i<6;i++){int kwid=i==5?x0+kw*10-x:widths[i];out[n++]=(KeyRect){x,y,kwid,rh,kinds[i],marks[i]};x+=kwid;}
+    return n;
+}
+static char key_char(const PdApp *a,char c){return a->text_mode==0&&a->text_shift&&c>='a'&&c<='z'?(char)(c-'a'+'A'):c;}
+static bool keyboard_delete_hit(const PdApp *a,int x,int y){
+    if(a->name_action==5)return x<(int)a->width/3&&y>=(int)a->height-28;
+    KeyRect k[40];unsigned n=keyboard_keys(a,k);for(unsigned i=0;i<n;i++)if(k[i].kind==KEY_BKSP&&x>=k[i].x&&x<k[i].x+k[i].w&&y>=k[i].y&&y<k[i].y+k[i].h)return true;return false;
+}
 static void text_insert(PdApp *a,char c){
     if(a->name_action==5){
         if(c>='a'&&c<='f')c=(char)(c-'a'+'A');if(!((c>='0'&&c<='9')||(c>='A'&&c<='F')))return;
@@ -416,25 +459,38 @@ static void browser_input(PdApp *a,int x,int y){
         
         int rh=text_row_height(a);
         if(y>=44&&y<66){unsigned at=text_start(a)+(unsigned)(x>8?(x-8)/6:0),n=(unsigned)strlen(a->filename);if(at>n)at=n;while(at&&((unsigned char)a->filename[at]&0xc0)==0x80)at--;a->text_cursor=at;}
-        else if(y>=72&&y<72+rh*3){unsigned row=(unsigned)(y-72)/rh;const char *keys=text_keys(a->text_mode,row);int kw=(a->width-8)/10,left=(a->width-(int)strlen(keys)*kw)/2;if(x>=left){unsigned k=(unsigned)(x-left)/kw;if(k<strlen(keys))text_insert(a,keys[k]);}}
-        else if(y>=72+rh*3&&y<72+rh*4){
-            if(a->name_action==5){
-                int button=x*3/a->width;
-                if(button==0){a->filename[0]=0;a->text_cursor=0;a->numeric_replace=false;}
-                else if(button==1&&a->text_cursor){a->text_cursor--;}
-                else if(button==2&&a->text_cursor<strlen(a->filename)){a->text_cursor++;}
-            }else{
-                int key=x*7/a->width;if(key==0)a->text_mode=a->text_mode==1?0:1;else if(key==1)a->text_mode=a->text_mode==2?0:2;else if(key<5)text_insert(a,' ');else if(key==5&&a->text_cursor){do{a->text_cursor--;}while(a->text_cursor&&((unsigned char)a->filename[a->text_cursor]&0xc0)==0x80);}else if(key==6&&a->text_cursor<strlen(a->filename)){do{a->text_cursor++;}while(((unsigned char)a->filename[a->text_cursor]&0xc0)==0x80);}
-            }
+        else if(a->name_action==5&&y>=72&&y<72+rh*3){unsigned row=(unsigned)(y-72)/rh;const char *keys=text_keys(a->text_mode,row);int kw=(a->width-8)/10,left=(a->width-(int)strlen(keys)*kw)/2;if(x>=left){unsigned k=(unsigned)(x-left)/kw;if(k<strlen(keys))text_insert(a,keys[k]);}}
+        else if(a->name_action==5&&y>=72+rh*3&&y<72+rh*4){
+            int button=x*3/a->width;
+            if(button==0){a->filename[0]=0;a->text_cursor=0;a->numeric_replace=false;}
+            else if(button==1&&a->text_cursor){a->text_cursor--;}
+            else if(button==2&&a->text_cursor<strlen(a->filename)){a->text_cursor++;}
         }
-        else if(y>=a->height-28){int button=x*3/a->width;if(button==0){text_delete(a);a->text_repeat=true;a->text_repeat_at=a->now_ms+400;}else if(button==1)a->page=a->name_action==2?1:a->name_action==5?2:4;else name_done(a);}
+        else if(a->name_action!=5&&y>=72&&y<72+rh*4){
+            KeyRect k[40];unsigned n=keyboard_keys(a,k);
+            for(unsigned i=0;i<n;i++){KeyRect *r=&k[i];if(x<r->x||x>=r->x+r->w||y<r->y||y>=r->y+r->h)continue;
+                if(r->kind==KEY_CHAR){text_insert(a,key_char(a,r->ch));if(a->text_shift==1)a->text_shift=0;}
+                else if(r->kind==KEY_SPACE)text_insert(a,' ');
+                else if(r->kind==KEY_SHIFT)a->text_shift=(a->text_shift+1)%3;
+                else if(r->kind==KEY_MODE)a->text_mode=a->text_mode==2?0:2;
+                else if(r->kind==KEY_BKSP){text_delete(a);a->text_repeat=true;a->text_repeat_at=a->now_ms+400;}
+                else if(r->kind==KEY_LEFT&&a->text_cursor){do{a->text_cursor--;}while(a->text_cursor&&((unsigned char)a->filename[a->text_cursor]&0xc0)==0x80);}
+                else if(r->kind==KEY_RIGHT&&a->text_cursor<strlen(a->filename)){do{a->text_cursor++;}while(((unsigned char)a->filename[a->text_cursor]&0xc0)==0x80);}
+                break;}
+        }
+        else if(y>=a->height-28){
+            if(a->name_action==5){int button=x*3/a->width;if(button==0){text_delete(a);a->text_repeat=true;a->text_repeat_at=a->now_ms+400;}else if(button==1)a->page=2;else name_done(a);}
+            else if(x<a->width/2)a->page=a->name_action==2?1:4;else name_done(a);
+        }
         a->redraw=true;return;
     }
-    if(a->file_mode<=1&&x>=a->width-96&&x<a->width-40&&y>=26&&y<42){a->page=17;a->recent_project_selected=-1;a->preview_attempted=false;}
-    else if(x>=a->width-38&&y>=26&&y<42){if(a->selected>=0&&!a->listing.entries[a->selected].directory&&pd_join(a->file_source,a->folder,a->listing.entries[a->selected].name))a->page=16;else message(a,"Select a file first");}
-    else if(y>=54&&y<76){if(x<48){if(strlen(a->folder)>strlen(a->directory)){char *slash=strrchr(a->folder,'/');if(slash)*slash=0;browse_refresh(a);}}else {a->file_filter=(a->file_filter+1)%8;a->file_scroll=0;a->selected=-1;a->preview_attempted=false;}}
-    else if(y>=80&&y<a->height-36){a->file_hold=file_index(a,(unsigned)(y-80+a->file_scroll)/24);a->file_start_y=y;a->file_start_scroll=a->file_scroll;a->file_scrolling=false;a->blocked=false;
-    }else if(y>=a->height-32){int b=x*3/a->width;
+    BrowserLayout l=browser_layout(a);
+    if(a->file_mode<=1&&x>=a->width-58&&x<a->width-4&&y>=25&&y<41){a->page=17;a->recent_project_selected=-1;a->preview_attempted=false;}
+    else if(y>=44&&y<62){if(x<28){if(strlen(a->folder)>strlen(a->directory)){char *slash=strrchr(a->folder,'/');if(slash)*slash=0;browse_refresh(a);}else message(a,"Already at the app folder");}else if(x>=30)browser_open_filter(a);}
+    else if(y>=l.list_top&&y<l.list_bottom){a->file_hold=file_index(a,(unsigned)(y-l.list_top+a->file_scroll)/(unsigned)l.row_h);a->file_start_y=y;a->file_start_scroll=a->file_scroll;a->file_scrolling=false;a->blocked=false;
+    }else if(y>=l.footer_y){int fw=((int)a->width-20)/4,col=(x-4)/(fw+4);if(col<0)col=0;if(col>3)col=3;
+        if(col==1){if(a->selected>=0&&!a->listing.entries[a->selected].directory&&pd_join(a->file_source,a->folder,a->listing.entries[a->selected].name))a->page=16;else message(a,"Select a file first");a->redraw=true;return;}
+        int b=col==0?0:col==2?1:2;
         if(b==0){a->name_action=1;a->filename[0]=0;text_begin(a);}
         if(b==1)a->page=a->file_mode>=4?12:3;
         if(b==2){
@@ -522,12 +578,12 @@ static void adjustment_apply(PdApp *a){
     }
     if(a->adjust_scope==0)a->selection_revision=a->doc.revision;
     a->adjust_preview_ready=a->adjust_preview_stale=false;
-    a->page=0;message(a,a->adjust_scope==0?"Selection colors adjusted":a->adjust_scope==1?"Layer colors adjusted":"Visible layer colors adjusted");
+    a->page=1;message(a,a->adjust_scope==0?"Selection colors adjusted":a->adjust_scope==1?"Layer colors adjusted":"Visible layer colors adjusted");
 }
 static void adjustment_input(PdApp *a,int x,int y,bool pressed){
     if(pressed){
         int scope_y=adjustment_scope_y(a->height);
-        if(y>=a->height-28){if(x<a->width/2)adjustment_apply(a);else{a->adjust_preview_ready=a->adjust_preview_stale=false;a->page=0;message(a,"Color adjustment cancelled");}a->adjust_drag=0;}
+        if(y>=a->height-28){if(x<a->width/2)adjustment_apply(a);else{a->adjust_preview_ready=a->adjust_preview_stale=false;a->page=1;message(a,"Color adjustment cancelled");}a->adjust_drag=0;}
         else if(y>=scope_y&&y<scope_y+20){unsigned scope=(unsigned)(x*3/a->width);if(scope!=a->adjust_scope){a->adjust_scope=scope;a->adjust_preview_stale=true;}a->adjust_drag=0;}
         else {
             for(unsigned row=0;row<3;row++){
@@ -547,6 +603,28 @@ static void adjustment_input(PdApp *a,int x,int y,bool pressed){
     if(a->adjust_saturation< -100)a->adjust_saturation=-100;if(a->adjust_saturation>100)a->adjust_saturation=100;
     if(a->adjust_brightness< -100)a->adjust_brightness=-100;if(a->adjust_brightness>100)a->adjust_brightness=100;
 }
+/* Menu rows: New Project | Frames; Save | Save As | Export; Open; Settings | Recovery; Exit | Send.
+ * Drawing and touch both use this table. Adjust lives in the Layers footer. */
+typedef struct { int x,y,w,h,action; const char *label; } MenuButton;
+enum { MENU_FRAMES=10 };
+static unsigned menu_buttons(const PdApp *a,MenuButton *out){
+    static const int actions[5][3]={{4,MENU_FRAMES,-1},{0,1,3},{2,-1,-1},{6,7,-1},{5,9,-1}};
+    static const char *labels[5][3]={{"NEW PROJECT","FRAMES",NULL},{"SAVE","SAVE AS","EXPORT"},{"OPEN / FILE BROWSER",NULL,NULL},{"SETTINGS","RECOVERY",NULL},{"EXIT","SEND SPRITE",NULL}};
+    bool big=a->height>192;int bh=big?28:22,gap=big?6:5,y=big?32:30,full=(int)a->width-8;unsigned n=0;
+    for(int r=0;r<5;r++){
+        int cols=0;while(cols<3&&labels[r][cols])cols++;
+#ifndef PD_PRIVATE_BUILD
+        if(r==4)cols=1;
+#endif
+        int bw=(full-(cols-1)*4)/cols;
+        for(int c=0;c<cols;c++){MenuButton *b=&out[n++];b->x=4+c*(bw+4);b->y=y;b->w=c==cols-1?full-c*(bw+4):bw;b->h=bh;b->action=actions[r][c];b->label=labels[r][c];}
+        y+=bh+gap;
+    }
+    return n;
+}
+#ifdef PD_TEST
+bool app_test_menu_point(const PdApp *a,int action,int *x,int *y){MenuButton b[12];unsigned n=menu_buttons(a,b);for(unsigned i=0;i<n;i++)if(b[i].action==action){*x=b[i].x+b[i].w/2;*y=b[i].y+b[i].h/2;return true;}return false;}
+#endif
 static void action(PdApp *a,int index){
     if(a->page==1){
         if(index<4){unsigned row=0;for(unsigned i=0;i<4;i++)if(a->doc.enabled&(1u<<i)){if(row++==(unsigned)index){a->doc.active=i;message(a,"Selected layer preview");break;}}}
@@ -559,7 +637,7 @@ static void action(PdApp *a,int index){
         if(index==3)a->page=6;
         if(index==4){a->page=18;a->new_background=0;a->new_layers=1;a->new_current_palette=false;}
         if(index==7)a->page=19;
-        if(index==8)adjustment_open(a);
+        if(index==MENU_FRAMES){a->page=32;unsigned columns=(unsigned)(a->width-96)/28,frame=pd_frame_index(&a->doc);a->timeline_first=frame>=columns?frame-columns+1:0;a->timeline_layer_first=0;message(a,"Tap selected frame number for actions");a->blocked=true;}
 #ifdef PD_PRIVATE_BUILD
         if(index==9)a->page=30;
 #endif
@@ -603,7 +681,9 @@ static void layer_input(PdApp *a,int x,int y,bool pressed){
     if(pressed){
         int footer=layer_footer_y(a),top=layer_list_top();
         if(y>=footer){
-            if(x<a->width/2){message(a,pd_add_layer(&a->doc)?"New layer selected":"No free layer slots");a->layer_scroll=0;}
+            int fw=(a->width-16)/3;
+            if(x<6+fw){message(a,pd_add_layer(&a->doc)?"New layer selected":"No free layer slots");a->layer_scroll=0;}
+            else if(x<10+2*fw){a->blocked=true;adjustment_open(a);a->redraw=true;return;}
             else if(layer_count(a)>1&&!(a->doc.layer[a->doc.active].flags&PD_LAYER_LOCK)){a->layer_popup=false;a->layer_delete=true;message(a,"Delete selected layer?");}
             else message(a,layer_count(a)<=1?"Keep at least one layer":"Unlock the selected layer before deleting");
             a->blocked=true;a->redraw=true;return;
@@ -800,6 +880,12 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
         }
         a->blocked=touch;a->touching=touch;a->redraw=true;return;
     }
+    if(a->file_type_dropdown.open){
+        if(a->page!=4||(down&(PD_TOOLS|PD_MENU))){pd_dropdown_close(&a->file_type_dropdown);a->blocked=touch;a->touching=touch;a->redraw=true;return;}
+        unsigned chosen=a->file_filter;PdDropdownEvent event=pd_dropdown_input(&a->file_type_dropdown,touch,pressed,x,y,&chosen);
+        if(event==PD_DROPDOWN_SELECTED&&chosen<8){a->file_filter=chosen;a->file_scroll=0;a->selected=-1;a->preview_attempted=false;}
+        a->blocked=touch;a->touching=touch;a->redraw=true;return;
+    }
     if(a->community_dropdown.open){
         if(down&(PD_TOOLS|PD_MENU)){pd_dropdown_close(&a->community_dropdown);a->blocked=touch;a->touching=touch;a->redraw=true;return;}
         if(down&PD_SAMPLE)pd_dropdown_scroll(&a->community_dropdown,-1);
@@ -839,7 +925,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
         a->redraw=true;
     }
     if(!touch){a->text_repeat=false;a->brush_drag=false;if(a->brush_dirty){brush_save(a);a->brush_dirty=false;}if(a->presets_dirty){presets_save(a);a->presets_dirty=false;}}
-    if(a->page==5&&touch&&a->text_repeat){if(x<a->width/3&&y>=a->height-28){if((int32_t)(a->now_ms-a->text_repeat_at)>=0){text_delete(a);a->text_repeat_at=a->now_ms+60;}}else a->text_repeat=false;}
+    if(a->page==5&&touch&&a->text_repeat){if(keyboard_delete_hit(a,x,y)){if((int32_t)(a->now_ms-a->text_repeat_at)>=0){text_delete(a);a->text_repeat_at=a->now_ms+60;}}else a->text_repeat=false;}
     if(a->file_hold>=0){
         if(a->page!=4||down||a->confirm)a->file_hold=-1;
         else if(touch){int delta=y-a->file_start_y;if(abs(delta)>5)a->file_scrolling=true;if(a->file_scrolling){a->file_scroll=a->file_start_scroll-delta;file_clamp(a);a->redraw=true;}a->touching=true;return;}
@@ -1051,7 +1137,7 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
             else if(a->page==17){if(y>=a->height-28){if(x>=a->width/2){a->page=4;a->preview_attempted=false;}else if(a->recent_project_selected>=0){int n=snprintf(a->pending,sizeof(a->pending),"%s/%s",a->directory,a->recent_projects[a->recent_project_selected]);if(n<(int)sizeof(a->pending)){a->file_mode=0;a->confirm=4;message(a,"Open replaces current drawing");}}}else if(y>=30&&y<158){unsigned i=(unsigned)(y-30)/16;if(i<a->recent_project_count){a->recent_project_selected=(int)i;char path[PD_PATH];if(snprintf(path,sizeof(path),"%s/%s",a->directory,a->recent_projects[i])<(int)sizeof(path))preview_file(a,path);}}a->blocked=true;a->redraw=true;}
             else if(a->page==4||a->page==5)browser_input(a,x,y);
             else if(a->page==6){if(y>=45&&y<85)browse(a,2);else if(y>=95&&y<135)browse(a,3);}
-            else if(a->page==3){if(y>=156){unsigned col=(unsigned)(x*3/a->width);action(a,col==0?7:col==1?8:9);}else if(y>=30){int i=(y-30)/18;if(i==4&&x>=a->width/2){a->page=32;unsigned columns=(unsigned)(a->width-96)/28,frame=pd_frame_index(&a->doc);a->timeline_first=frame>=columns?frame-columns+1:0;a->timeline_layer_first=0;message(a,"Tap selected frame number for actions");a->redraw=true;a->blocked=true;}else if(i<7)action(a,i);}}
+            else if(a->page==3){MenuButton b[12];unsigned n=menu_buttons(a,b);for(unsigned i=0;i<n;i++)if(x>=b[i].x&&x<b[i].x+b[i].w&&y>=b[i].y&&y<b[i].y+b[i].h){action(a,b[i].action);break;}}
             else {int i=(y-30)/24;if(y>=30&&i<6)action(a,i);}
         }
     }else if(a->tool==4&&touch&&y<50){
@@ -1096,14 +1182,48 @@ void app_input(PdApp *a,bool touch,int x,int y,unsigned down,unsigned held){
 static void rect(PdFb *p,int w,int h,int x,int y,int rw,int rh,uint32_t c){
     for(int yy=y;yy<y+rh;yy++)for(int xx=x;xx<x+rw;xx++)if(xx>=0&&xx<w&&yy>=0&&yy<h)p[yy*w+xx]=pd_fb(c);
 }
-static void text(PdFb *p,int w,int h,int x,int y,const char *s,uint32_t c){
-    for(;*s;s++,x+=6){unsigned char rows[7];char ch=*s;if(ch>='a'&&ch<='z')ch=(char)(ch-'a'+'A');glyphRows(ch,rows);
+static void text_glyphs(PdFb *p,int w,int h,int x,int y,const char *s,uint32_t c,bool upper){
+    for(;*s;s++,x+=6){unsigned char rows[7];char ch=*s;if(upper&&ch>='a'&&ch<='z')ch=(char)(ch-'a'+'A');glyphRows(ch,rows);
         for(int yy=0;yy<7;yy++)for(int xx=0;xx<5;xx++)if(rows[yy]&(1<<(4-xx)))rect(p,w,h,x+xx,y+yy,1,1,c);
     }
+}
+/* Labels and messages are drawn in capitals; text_raw keeps the case of names the user typed. */
+static void text(PdFb *p,int w,int h,int x,int y,const char *s,uint32_t c){text_glyphs(p,w,h,x,y,s,c,true);}
+static void text_raw(PdFb *p,int w,int h,int x,int y,const char *s,uint32_t c){text_glyphs(p,w,h,x,y,s,c,false);}
+/* Shortens s to fit max_px (6 px per character) with a trailing "..". */
+static void fit_name(char *out,size_t n,const char *s,int max_px){
+    if(!n)return;size_t room=max_px>0?(size_t)((max_px+1)/6):0,len=strlen(s);if(room>n-1)room=n-1;
+    if(len<=room){memcpy(out,s,len);out[len]=0;return;}
+    if(room<2){memcpy(out,s,room);out[room]=0;return;}
+    memcpy(out,s,room-2);out[room-2]='.';out[room-1]='.';out[room]=0;
+}
+/* One-colour pixel art drawn from rows of '#' and '.'. */
+static void pixel_rows(PdFb *p,int w,int h,int x,int y,const char *const *rows,int n,uint32_t c){
+    for(int yy=0;yy<n;yy++)for(int xx=0;rows[yy][xx];xx++)if(rows[yy][xx]=='#')rect(p,w,h,x+xx,y+yy,1,1,c);
+}
+/* 10x8 file-type icons: '#' is the type's tint and '+' its darker fill. */
+static void type_icon(PdFb *p,int w,int h,int x,int y,unsigned icon){
+    static const char *const rows[6][8]={
+        {"#######...","#+++++##..","#+++++#+#.","#+++++####","#++++++++#","#++++++++#","#++++++++#","##########"},
+        {"##########","#++++++++#","#+##+++++#","#+##++##+#","#+++++##+#","#+++##+++#","#+++##+++#","##########"},
+        {"....######","....#++++#","..######+#","..#++++#+#","######+###","#++++#+#..","#++++###..","######...."},
+        {"####..####","#++#..#++#","####..####","..........","####..####","#++#..#++#","####..####",".........."},
+        {"##########","#++++++++#","#+++++##+#","#+++++##+#","#++#+++++#","#+###+#++#","##########",".........."},
+        {".###......","#...#.....","##########","#++++++++#","#++++++++#","#++++++++#","#++++++++#","##########"}};
+    static const uint32_t tint[6][2]={{0xb9cbd2,0x46545a},{0x79e0d3,0x2e5a55},{0xc3a6ff,0x4f4669},{0xff9ec7,0x6a4456},{0x8ec5ff,0x3a5370},{0xe9c46a,0x5e5232}};
+    for(int yy=0;yy<8;yy++){const char *r=rows[icon][yy];for(int xx=0;r[xx];xx++)if(r[xx]!='.')rect(p,w,h,x+xx,y+yy,1,1,tint[icon][r[xx]=='#'?0:1]);}
 }
 static void button(PdFb *p,int w,int h,int x,int y,int bw,int bh,const char *label,bool primary){
     rect(p,w,h,x,y,bw,bh,UI_EDGE);rect(p,w,h,x+1,y+1,bw-2,bh-2,primary?UI_SELECTED:UI_PANEL);
     text(p,w,h,x+6,y+(bh-7)/2,label,UI_TEXT);
+}
+static void file_type_dropdown_draw(PdApp *a,PdFb *p,int w,int h){
+    PdDropdown *m=&a->file_type_dropdown;if(!m->open)return;
+    int total=m->header_h+m->row_h*m->visible_rows+1;rect(p,w,h,m->x+2,m->y+3,m->w,total,0x111820);rect(p,w,h,m->x,m->y,m->w,total,UI_ACCENT);rect(p,w,h,m->x+1,m->y+1,m->w-2,total-2,UI_DEEP);
+    for(int row=0;row<m->visible_rows;row++){unsigned i=m->first+(unsigned)row;if(i>=m->count)break;int yy=m->y+m->header_h+row*m->row_h;bool on=i==m->selected;
+        if(on)rect(p,w,h,m->x+1,yy,m->w-2,m->row_h,UI_SELECTED);else if(row)rect(p,w,h,m->x+4,yy,m->w-8,1,UI_LINE);
+        type_icon(p,w,h,m->x+5,yy+(m->row_h-8)/2,filter_icons[i]);text(p,w,h,m->x+20,yy+(m->row_h-7)/2,filter_names[i],UI_TEXT);
+        text(p,w,h,m->x+20+10*6,yy+(m->row_h-7)/2,filter_exts[i],on?UI_TEXT:UI_MUTED);}
 }
 static void community_dropdown_draw(PdApp *a,PdFb *p,int w,int h){
     PdDropdown *m=&a->community_dropdown;if(!m->open)return;static const char *names[]={"CACHED","RECENT","FAVORITES","MY UPLOADS"};
@@ -1349,6 +1469,35 @@ static void guided_render(PdApp *a,PdFb *bottom){
     }
     canvas_border(a,bottom);selection_overlay(a,bottom);selection_toolbar(a,bottom);a->px0=0;a->py0=24;a->px1=w;a->py1=h;a->present_top=false;a->partial=false;a->redraw=false;
 }
+/* Upper screen while browsing: name and type tag, a framed preview, details, and what opening does. */
+static void render_file_preview(PdApp *a,PdFb *top,int tw,int th){
+    char line[96];unsigned type=file_type(a->preview_name);bool palette=a->preview_palette_count>0;
+    static const char *formats[]={"FILE","PDD","ASE","GPL","HEX","PNG"};const char *tag=a->preview_frames>1?"ANIM":formats[type];
+    rect(top,tw,th,0,0,tw,th,UI_BG);rect(top,tw,th,0,0,tw,16,0x121a1e);type_icon(top,tw,th,5,4,palette?ICON_PAL:type_icon_for(type,false));
+    int tag_w=(int)strlen(tag)*6+7;fit_name(line,sizeof(line),a->preview_name,tw-19-tag_w-10);text_raw(top,tw,th,19,5,line,UI_TEXT);
+    rect(top,tw,th,tw-tag_w-4,3,tag_w,11,UI_ACCENT);rect(top,tw,th,tw-tag_w-3,4,tag_w-2,9,0x121a1e);text(top,tw,th,tw-tag_w,5,tag,UI_ACCENT);
+    int box=th-46;if(box>tw/2)box=tw/2;int bx=8,by=23,scale=box/64;if(scale<1)scale=1;int img=64*scale,ox=bx+(box-img)/2,oy=by+(box-img)/2;
+    rect(top,tw,th,bx-1,by-1,box+2,box+2,UI_EDGE);rect(top,tw,th,bx,by,box,box,UI_DEEP);
+    if(a->preview_ready){for(int y=0;y<img;y++)for(int x=0;x<img;x++)top[(oy+y)*tw+ox+x]=pd_fb(displayed(a->file_preview[(y/scale)*64+x/scale],x,y));}
+    else{fit_name(line,sizeof(line),a->preview_error,box-8);text(top,tw,th,bx+4,by+box/2-3,line,UI_MUTED);}
+    int ix=bx+box+12,iy=by+2,value_w=tw-ix-6;char value[40];
+    const char *labels[5];char values[5][24];unsigned n=0;
+    if(palette){labels[n]="COLORS";snprintf(values[n++],24,"%u",a->preview_palette_count);}
+    else if(a->preview_width){labels[n]="SIZE";snprintf(values[n++],24,"%u X %u",a->preview_width,a->preview_height);
+        labels[n]="LAYERS";snprintf(values[n++],24,"%u",a->preview_layers);
+        if(a->preview_frames>1){labels[n]="FRAMES";snprintf(values[n++],24,"%u",a->preview_frames);}}
+    if(a->preview_bytes>=0){labels[n]="FILE";if(a->preview_bytes<1024)snprintf(values[n++],24,"%ld B",a->preview_bytes);else snprintf(values[n++],24,"%ld KB",(a->preview_bytes+1023)/1024);}
+    labels[n]="FORMAT";snprintf(values[n++],24,"%s",palette&&type==5?"PNG STRIP":formats[type]);
+    for(unsigned i=0;i<n;i++){text(top,tw,th,ix,iy+(int)i*20,labels[i],UI_MUTED);fit_name(value,sizeof(value),values[i],value_w);text(top,tw,th,ix,iy+(int)i*20+9,value,UI_TEXT);}
+    rect(top,tw,th,0,th-16,tw,16,0x121a1e);
+    const char *note;uint32_t color=UI_MUTED;
+    if(a->page==17&&a->recent_files_unsaved)note="RECENT LIST NOT SAVED TO DISK";
+    else if(palette)note="IMPORT FROM THE PALETTE MENU";
+    else if(a->page==4&&a->file_mode!=0)note="SAVING OVER A FILE KEEPS A BACKUP";
+    else if(pd_dirty(&a->doc)){note="OPEN REPLACES UNSAVED ART";color=UI_WARN;}
+    else note="OPEN REPLACES CURRENT ART";
+    text(top,tw,th,6,th-11,note,color);
+}
 void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
     if(!masks_fit(a))return;
     onion_cache(a);
@@ -1397,7 +1546,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
     if(a->confirm){text(bottom,w,h,8,48,a->notice,UI_TEXT);text(bottom,w,h,8,70,a->confirm==6?"UNDO CAN RESTORE THIS LAYER":"THIS CANNOT BE UNDONE",0xffaaa0);
         if((a->confirm==2&&(a->new_width>128||a->new_height>128))||((a->confirm==4||a->confirm==8)&&a->doc.profile>=2)){text(bottom,w,h,8,94,"LARGE CANVASES MAY BE SLOWER",UI_TEXT);text(bottom,w,h,8,110,"LAYERS / TOOLS LIMITED BY MEMORY",UI_MUTED);text(bottom,w,h,8,126,"CLIPBOARD / TRANSFORMS: 128 X 128",UI_MUTED);}
         if(a->confirm==7){const char *base=strrchr(a->file_source,'/');snprintf(label,sizeof(label),"%.38s",base?base+1:a->file_source);text(bottom,w,h,8,92,label,UI_TEXT);}
-        if(a->confirm==6){snprintf(label,sizeof(label),"%.38s",a->doc.names[a->doc.active]);text(bottom,w,h,8,92,label,UI_TEXT);}
+        if(a->confirm==6){snprintf(label,sizeof(label),"%.38s",a->doc.names[a->doc.active]);text_raw(bottom,w,h,8,92,label,UI_TEXT);}
         button(bottom,w,h,4,h-32,w/2-8,28,"CONFIRM",true);button(bottom,w,h,w/2+4,h-32,w/2-8,28,"CANCEL",false);
     }else if(a->page==1){
         layer_clamp(a);unsigned count=layer_count(a);
@@ -1412,7 +1561,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
                 icon_coverage(bottom,w,h,6,y+3,uiLayerIconAlpha[0],a->layer_drag&&selected?UI_ACCENT:UI_MUTED,row_bg);
                 icon_coverage(bottom,w,h,22,y+3,uiLayerIconAlpha[hidden?2:1],hidden?UI_MUTED:UI_TEXT,row_bg);
                 int meta_x=44,max_chars=(w-meta_x-50)/6;if(max_chars<6)max_chars=6;
-                snprintf(label,sizeof(label),"%.*s",max_chars,a->doc.names[slot]);text(bottom,w,h,meta_x,y+2,label,hidden?UI_MUTED:UI_TEXT);
+                snprintf(label,sizeof(label),"%.*s",max_chars,a->doc.names[slot]);text_raw(bottom,w,h,meta_x,y+2,label,hidden?UI_MUTED:UI_TEXT);
                 static const char *modes[]={"NORMAL","MULTIPLY","SCREEN","OVERLAY"};
                 snprintf(label,sizeof(label),"%s %u%%%s",modes[l->blend],(unsigned)l->opacity*100/255,alpha?"  A":"");text(bottom,w,h,meta_x,y+11,label,UI_MUTED);
                 icon_coverage(bottom,w,h,w-46,y+3,uiLayerIconAlpha[locked?4:3],locked?UI_ACCENT:UI_MUTED,row_bg);
@@ -1422,8 +1571,10 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         int total=(int)count*row_h,thumb=total>list_h?list_h*list_h/total:list_h,pos=total>list_h?a->layer_scroll*(list_h-thumb)/(total-list_h):0;
         rect(bottom,w,h,w-7,top,4,list_h,UI_PANEL);rect(bottom,w,h,w-7,top+pos,4,thumb,UI_ACCENT);
         if(a->layer_drag){int yy=a->layer_drag_y-10;if(yy<top)yy=top;if(yy>footer-21)yy=footer-21;snprintf(label,sizeof(label),"MOVE %.18s",a->doc.names[a->doc.active]);button(bottom,w,h,44,yy,w-72,21,label,true);}
-        button(bottom,w,h,4,footer,w/2-8,22,"+ NEW LAYER",count<a->doc.capacity);
-        button(bottom,w,h,w/2+4,footer,w/2-8,22,"DELETE LAYER",false);
+        int fw=(w-16)/3;
+        button(bottom,w,h,4,footer,fw,22,"+ NEW LAYER",count<a->doc.capacity);
+        button(bottom,w,h,8+fw,footer,fw,22,"ADJUST",false);
+        button(bottom,w,h,12+2*fw,footer,w-16-2*fw,22,w-16-2*fw>=(int)strlen("DELETE LAYER")*6+10?"DELETE LAYER":"DELETE",false);
         if(a->layer_popup){
             PdLayer *l=&a->doc.layer[a->doc.active];static const char *modes[]={"NORMAL","MULTIPLY","SCREEN","OVERLAY"};
             int ox=layer_options_x(a),ow=layer_options_width(a),ix=layer_options_inner_x(a),iw=layer_options_inner_w(a);
@@ -1441,7 +1592,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         layer_blend_dropdown_draw(a,bottom,w,h);
         if(a->layer_delete){
             rect(bottom,w,h,24,66,w-48,90,UI_EDGE);rect(bottom,w,h,25,67,w-50,88,UI_BG);
-            text(bottom,w,h,36,78,"DELETE LAYER?",UI_TEXT);snprintf(label,sizeof(label),"%.28s",a->doc.names[a->doc.active]);text(bottom,w,h,36,96,label,UI_MUTED);
+            text(bottom,w,h,36,78,"DELETE LAYER?",UI_TEXT);snprintf(label,sizeof(label),"%.28s",a->doc.names[a->doc.active]);text_raw(bottom,w,h,36,96,label,UI_MUTED);
             button(bottom,w,h,32,120,w/2-40,28,"DELETE",true);button(bottom,w,h,w/2+4,120,w/2-36,28,"CANCEL",false);
         }
     }else if(a->page==2){
@@ -1509,23 +1660,44 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         int py=h>=220?h-46:h-45;rect(bottom,w,h,8,py,24,14,UI_EDGE);for(int yy=py+2;yy<py+12;yy++)for(int xx=10;xx<30;xx++)bottom[yy*w+xx]=pd_fb(before&0xffffff);text(bottom,w,h,38,py+3,">",UI_MUTED);rect(bottom,w,h,48,py,24,14,UI_EDGE);for(int yy=py+2;yy<py+12;yy++)for(int xx=50;xx<70;xx++)bottom[yy*w+xx]=pd_fb(after&0xffffff);
         button(bottom,w,h,4,h-28,w/2-8,24,"APPLY",true);button(bottom,w,h,w/2+4,h-28,w/2-8,24,"CANCEL",false);
     }else if(a->page==3){
-        const char *items[]={"SAVE","SAVE AS","OPEN / FILE BROWSER","EXPORT","NEW PROJECT","EXIT","SETTINGS"};
-        for(int i=0;i<7;i++){if(i==4){button(bottom,w,h,4,30+i*18,w/2-8,16,items[i],false);button(bottom,w,h,w/2+4,30+i*18,w/2-8,16,"FRAMES",false);}else button(bottom,w,h,4,30+i*18,w-8,16,items[i],false);}
-        button(bottom,w,h,4,156,w/3-5,16,"RECOVERY",false);button(bottom,w,h,w/3+1,156,w/3-5,16,"ADJUST",false);
-#ifdef PD_PRIVATE_BUILD
-        button(bottom,w,h,2*w/3+1,156,w/3-5,16,"SEND",false);
-#endif
-        const char *name=strrchr(a->project,'/');snprintf(label,sizeof(label),"%.38s",name?name+1:"UNTITLED - SAVE AS TO NAME");text(bottom,w,h,8,h-10,label,UI_ACCENT);
+        MenuButton b[12];unsigned n=menu_buttons(a,b);for(unsigned i=0;i<n;i++)button(bottom,w,h,b[i].x,b[i].y,b[i].w,b[i].h,b[i].label,false);
+        const char *name=strrchr(a->project,'/');if(name){fit_name(label,sizeof(label),name+1,w-16);text_raw(bottom,w,h,8,h-12,label,UI_ACCENT);}else text(bottom,w,h,8,h-12,"UNTITLED - SAVE AS TO NAME",UI_ACCENT);
     }else if(a->page==4){
-        const char *titles[]={"OPEN PROJECT","SAVE PDD PROJECT","EXPORT ASEPRITE","EXPORT PNG","IMPORT PALETTE","EXPORT GPL PALETTE","EXPORT HEX PALETTE","EXPORT PNG PALETTE"};
-        snprintf(label,sizeof(label),"%.14s",titles[a->file_mode]);text(bottom,w,h,8,30,label,UI_ACCENT);button(bottom,w,h,w-36,26,32,16,"...",a->selected>=0);if(a->file_mode<=1)button(bottom,w,h,w-94,26,54,16,"RECENT",false);
-        const char *folder=a->folder;if(!strncmp(folder,a->directory,strlen(a->directory)))folder+=strlen(a->directory);size_t len=strlen(folder);if(len>36)folder+=len-36;snprintf(label,sizeof(label),"~%.36s",folder);text(bottom,w,h,8,42,label,UI_TEXT);
-        button(bottom,w,h,4,54,42,22,"UP",false);snprintf(label,sizeof(label),"TYPE: %s >",filter_names[a->file_filter]);button(bottom,w,h,50,54,w-54,22,label,false);
-        unsigned rows=file_rows(a);int area=h-116;
-        for(unsigned row=0;row<rows;row++){int yy=80+(int)row*24-a->file_scroll;if(yy+23<=80||yy>=h-36)continue;int i=file_index(a,row);PdEntry *e=&a->listing.entries[i];const char *types[]={"FILE","PDD","ASE","GPL","HEX","PNG"};snprintf(label,sizeof(label),"%.30s",e->name);button(bottom+80*w,w,area,4,yy-80,w-18,23,"",a->selected==i);text(bottom+80*w,w,area,10,yy-77,label,UI_TEXT);text(bottom+80*w,w,area,10,yy-67,e->directory?"FOLDER":types[file_type(e->name)],UI_MUTED);}
-        if(!rows)text(bottom,w,h,8,90,"NO MATCHING FILES",UI_MUTED);
-        rect(bottom,w,h,w-10,80,6,area,UI_PANEL);if(rows){int total=(int)rows*24,thumb=total>area?area*area/total:area;if(thumb<8)thumb=8;int pos=total>area?a->file_scroll*(area-thumb)/(total-area):0;rect(bottom,w,h,w-10,80+pos,6,thumb,UI_ACCENT);}
-        button(bottom,w,h,4,h-32,w/3-8,28,"NEW DIR",false);button(bottom,w,h,w/3+4,h-32,w/3-8,28,"CANCEL",false);button(bottom,w,h,2*w/3+4,h-32,w/3-8,28,a->file_mode==4?"IMPORT":a->file_mode?"NAME":"OPEN",true);
+        BrowserLayout l=browser_layout(a);
+        static const char *titles[]={"OPEN","SAVE PROJECT","EXPORT ASEPRITE","EXPORT PNG","IMPORT PALETTE","EXPORT GPL","EXPORT HEX","EXPORT PNG PAL"};
+        const char *title=titles[a->file_mode];text(bottom,w,h,6,30,title,UI_ACCENT);
+        int path_x=6+(int)strlen(title)*6+6,path_end=a->file_mode<=1?w-62:w-6,chars=(path_end-path_x+1)/6;
+        const char *folder=a->folder;if(!strncmp(folder,a->directory,strlen(a->directory)))folder+=strlen(a->directory);
+        char path[PD_PATH+2];snprintf(path,sizeof(path),"~%s",folder);size_t len=strlen(path);
+        size_t room=chars>0?(size_t)chars:0;if(room>sizeof(label)-1)room=sizeof(label)-1;
+        if(len>room&&room>2){size_t tail=room-2;label[0]=label[1]='.';memcpy(label+2,path+len-tail,tail);label[room]=0;}else{size_t c=len<room?len:room;memcpy(label,path,c);label[c]=0;}
+        if(chars>0)text_raw(bottom,w,h,path_x,30,label,UI_MUTED);
+        if(a->file_mode<=1)button(bottom,w,h,w-58,25,54,16,"RECENT",false);
+        bool root=strlen(a->folder)<=strlen(a->directory),open=a->file_type_dropdown.open;
+        static const char *const up_arrow[]={"....#....","...###...","..#####..",".#######.","...###...","...###...","...###..."};
+        rect(bottom,w,h,4,44,22,18,UI_EDGE);rect(bottom,w,h,5,45,20,16,root?UI_DEEP:UI_PANEL);pixel_rows(bottom,w,h,10,49,up_arrow,7,root?UI_EDGE:UI_TEXT);
+        rect(bottom,w,h,30,44,w-34,18,open?UI_ACCENT:UI_EDGE);rect(bottom,w,h,31,45,w-36,16,UI_PANEL);
+        type_icon(bottom,w,h,35,49,filter_icons[a->file_filter]);text(bottom,w,h,50,50,filter_names[a->file_filter],UI_TEXT);
+        text(bottom,w,h,58+(int)strlen(filter_names[a->file_filter])*6,50,filter_exts[a->file_filter],UI_MUTED);
+        static const char *const chevron_down[]={"#######",".#####.","..###..","...#..."},*const chevron_up[]={"...#...","..###..",".#####.","#######"};
+        pixel_rows(bottom,w,h,w-16,51,open?chevron_up:chevron_down,4,UI_ACCENT);
+        unsigned rows=file_rows(a);int list_h=l.list_bottom-l.list_top;PdFb *list=bottom+l.list_top*w;
+        static const char *types[]={"FILE","PDD","ASE","GPL","HEX","PNG"};
+        for(unsigned row=0;row<rows;row++){
+            int yy=(int)row*l.row_h-a->file_scroll;if(yy+l.row_h<=0||yy>=list_h)continue;
+            int i=file_index(a,row);PdEntry *e=&a->listing.entries[i];bool on=a->selected==i;unsigned t=file_type(e->name);
+            if(on){rect(list,w,list_h,4,yy,w-14,l.row_h,UI_ACCENT);rect(list,w,list_h,5,yy+1,w-16,l.row_h-2,UI_SELECTED);}else rect(list,w,list_h,6,yy+l.row_h-1,w-18,1,UI_LINE);
+            type_icon(list,w,list_h,8,yy+(l.row_h-8)/2,type_icon_for(t,e->directory));
+            const char *meta=e->directory?">":types[t];int mx=w-14-(int)strlen(meta)*6;text(list,w,list_h,mx,yy+(l.row_h-7)/2,meta,on?UI_TEXT:UI_MUTED);
+            fit_name(label,sizeof(label),e->name,mx-22-6);text_raw(list,w,list_h,22,yy+(l.row_h-7)/2,label,UI_TEXT);
+        }
+        if(!rows)text(bottom,w,h,10,l.list_top+8,"NO MATCHING FILES HERE",UI_MUTED);
+        rect(bottom,w,h,w-8,l.list_top,3,list_h,UI_DEEP);
+        if(rows){int total=(int)rows*l.row_h;if(total>list_h){int thumb=list_h*list_h/total;if(thumb<8)thumb=8;int pos=a->file_scroll*(list_h-thumb)/(total-list_h);rect(bottom,w,h,w-8,l.list_top+pos,3,thumb,UI_ACCENT);}else rect(bottom,w,h,w-8,l.list_top,3,list_h,UI_EDGE);}
+        int fw=(w-20)/4;const char *labels[4]={"NEW DIR","MORE","CANCEL",a->file_mode==4?"IMPORT":a->file_mode?"NAME":"OPEN"};
+        for(int i=0;i<4;i++){int bx=4+i*(fw+4),bw=i==3?w-4-bx:fw;rect(bottom,w,h,bx,l.footer_y,bw,l.footer_h,UI_EDGE);rect(bottom,w,h,bx+1,l.footer_y+1,bw-2,l.footer_h-2,i==3?UI_SELECTED:UI_PANEL);
+            text(bottom,w,h,bx+(bw-(int)strlen(labels[i])*6+1)/2,l.footer_y+(l.footer_h-7)/2,labels[i],UI_TEXT);}
+        file_type_dropdown_draw(a,bottom,w,h);
     }else if(a->page==18){
         snprintf(label,sizeof(label),"SIZE: %u X %u  >",a->new_width,a->new_height);button(bottom,w,h,4,26,w-8,22,label,true);
         const char *bg[]={"TRANSPARENT","WHITE","BG COLOR"};snprintf(label,sizeof(label),"BACKGROUND: %s",bg[a->new_background]);button(bottom,w,h,4,52,w-8,28,label,false);
@@ -1544,11 +1716,34 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         button(bottom,w,h,4,72,w-8,26,"DISCARD RECOVERY COPIES",false);button(bottom,w,h,4,104,w-8,26,a->recovery_enabled?"AUTOSAVE: ON (THIS SESSION)":"AUTOSAVE: OFF (THIS SESSION)",false);
         text(bottom,w,h,8,138,a->recovery_pending?"RESTORE / DISCARD TO RESUME SAVING":"EVERY 2 MINUTES, AFTER 2S IDLE",UI_MUTED);button(bottom,w,h,4,h-28,w-8,24,"BACK / KEEP FOR LATER",false);
     }else if(a->page==5){
-        text(bottom,w,h,8,32,a->name_action==5?"HEX COLOR - SIX DIGITS":a->name_action==2?"RENAME LAYER":a->name_action==3?"RENAME FILE":a->name_action==4?"DUPLICATE FILE":a->name_action?"NEW FOLDER NAME":"FILENAME (WITHOUT EXTENSION)",UI_TEXT);
-        unsigned start=text_start(a);char shown[64];if(a->name_action==5)snprintf(shown,sizeof(shown),"#%.37s",a->filename+start);else snprintf(shown,sizeof(shown),"%.38s",a->filename+start);rect(bottom,w,h,4,43,w-8,22,UI_EDGE);rect(bottom,w,h,5,44,w-10,20,UI_PANEL);text(bottom,w,h,8,50,shown,UI_ACCENT);rect(bottom,w,h,8+(int)(a->text_cursor-start+(a->name_action==5?1:0))*6,48,1,13,UI_TEXT);
-        int rh=text_row_height(a),kw=(w-8)/10;for(unsigned row=0;row<3;row++){const char *keys=text_keys(a->text_mode,row);int left=(w-(int)strlen(keys)*kw)/2;for(unsigned i=0;i<strlen(keys);i++){char key[2]={keys[i],0};int x=left+(int)i*kw,y=72+(int)row*rh;button(bottom,w,h,x+1,y,kw-2,rh-2,"",false);text(bottom,w,h,x+kw/2-3,y+(rh-8)/2,key,UI_TEXT);}}
-        int cy=72+rh*3;if(a->name_action==5){button(bottom,w,h,4,cy,w/3-8,rh-2,"CLEAR",false);button(bottom,w,h,w/3+4,cy,w/3-8,rh-2,"<",false);button(bottom,w,h,2*w/3+4,cy,w/3-8,rh-2,">",false);}else{button(bottom,w,h,2,cy,w/7-4,rh-2,a->text_mode==1?"abc":"ABC",a->text_mode==1);button(bottom,w,h,w/7+2,cy,w/7-4,rh-2,a->text_mode==2?"ABC":"123",a->text_mode==2);button(bottom,w,h,2*w/7+2,cy,3*w/7-4,rh-2,"SPACE",false);button(bottom,w,h,5*w/7+2,cy,w/7-4,rh-2,"<",false);button(bottom,w,h,6*w/7+2,cy,w/7-4,rh-2,">",false);}
-        button(bottom,w,h,4,h-28,w/3-8,24,"DELETE",false);button(bottom,w,h,w/3+4,h-28,w/3-8,24,"CANCEL",false);button(bottom,w,h,2*w/3+4,h-28,w/3-8,24,"DONE",true);
+        bool hex=a->name_action==5;static const char *exts[]={"",".pdd",".aseprite",".png","",".gpl",".hex",".png"};
+        const char *ext=a->name_action==0&&a->file_mode<8?exts[a->file_mode]:"";int chip=ext[0]?(int)strlen(ext)*6+8:0;
+        text(bottom,w,h,8,32,hex?"HEX COLOR - SIX DIGITS":a->name_action==2?"RENAME LAYER":a->name_action==3?"RENAME FILE":a->name_action==4?"DUPLICATE FILE":a->name_action?"NEW FOLDER NAME":"FILE NAME",UI_TEXT);
+        if(chip)text(bottom,w,h,8+10*6,32,"EXTENSION ADDED",UI_MUTED);
+        unsigned start=text_start(a);char shown[64];if(hex)snprintf(shown,sizeof(shown),"#%.37s",a->filename+start);else snprintf(shown,sizeof(shown),"%.*s",(w-16-chip)/6,a->filename+start);
+        rect(bottom,w,h,4,43,w-8,22,UI_ACCENT);rect(bottom,w,h,5,44,w-10,20,UI_PANEL);text_raw(bottom,w,h,8,50,shown,UI_ACCENT);rect(bottom,w,h,8+(int)(a->text_cursor-start+(hex?1:0))*6,48,1,13,UI_TEXT);
+        if(chip){rect(bottom,w,h,w-8-chip,46,chip,16,UI_EDGE);rect(bottom,w,h,w-7-chip,47,chip-2,14,UI_DEEP);text_raw(bottom,w,h,w-4-chip,51,ext,UI_MUTED);}
+        int rh=text_row_height(a);
+        if(hex){
+            int kw=(w-8)/10;for(unsigned row=0;row<3;row++){const char *keys=text_keys(a->text_mode,row);int left=(w-(int)strlen(keys)*kw)/2;for(unsigned i=0;i<strlen(keys);i++){char key[2]={keys[i],0};int x=left+(int)i*kw,y=72+(int)row*rh;button(bottom,w,h,x+1,y,kw-2,rh-2,"",false);text(bottom,w,h,x+kw/2-3,y+(rh-8)/2,key,UI_TEXT);}}
+            int cy=72+rh*3;button(bottom,w,h,4,cy,w/3-8,rh-2,"CLEAR",false);button(bottom,w,h,w/3+4,cy,w/3-8,rh-2,"<",false);button(bottom,w,h,2*w/3+4,cy,w/3-8,rh-2,">",false);
+            button(bottom,w,h,4,h-28,w/3-8,24,"DELETE",false);button(bottom,w,h,w/3+4,h-28,w/3-8,24,"CANCEL",false);button(bottom,w,h,2*w/3+4,h-28,w/3-8,24,"DONE",true);
+        }else{
+            static const char *const shift_off[]={"....#....","...#.#...","..#...#..",".#.....#.","###...###","..#...#..","..#...#..","..#####.."};
+            static const char *const shift_on[]={"....#....","...###...","..#####..",".#######.","#########","..#####..","..#####..","..#####.."};
+            static const char *const backspace[]={"...########","..#.#...#.#",".#...#.#..#","#.....#...#",".#...#.#..#","..#.#...#.#","...########"};
+            KeyRect k[40];unsigned n=keyboard_keys(a,k);
+            for(unsigned i=0;i<n;i++){KeyRect *r=&k[i];bool active=(r->kind==KEY_SHIFT&&a->text_shift)||(r->kind==KEY_MODE&&a->text_mode==2);
+                rect(bottom,w,h,r->x+1,r->y,r->w-2,r->h-2,UI_EDGE);rect(bottom,w,h,r->x+2,r->y+1,r->w-4,r->h-4,active?UI_SELECTED:r->kind==KEY_CHAR?UI_PANEL:UI_DEEP);
+                int cx=r->x+r->w/2,cy=r->y+(r->h-2)/2;
+                if(r->kind==KEY_CHAR){char key[2]={key_char(a,r->ch),0};text_raw(bottom,w,h,cx-2,cy-3,key,UI_TEXT);}
+                else if(r->kind==KEY_SHIFT){pixel_rows(bottom,w,h,cx-4,cy-4,a->text_shift?shift_on:shift_off,8,UI_TEXT);if(a->text_shift==2)rect(bottom,w,h,cx-4,cy+5,9,1,UI_TEXT);}
+                else if(r->kind==KEY_BKSP)pixel_rows(bottom,w,h,cx-5,cy-3,backspace,7,UI_TEXT);
+                else{const char *l=r->kind==KEY_MODE?(a->text_mode==2?"abc":"123"):r->kind==KEY_SPACE?"SPACE":r->kind==KEY_LEFT?"<":">";
+                    text_raw(bottom,w,h,cx-(int)strlen(l)*3+1,cy-3,l,r->kind==KEY_SPACE?UI_MUTED:UI_TEXT);}
+            }
+            button(bottom,w,h,4,h-28,w/2-6,24,"CANCEL",false);button(bottom,w,h,w/2+2,h-28,w/2-6,24,"DONE",true);
+        }
     }else if(a->page==6){
         button(bottom,w,h,4,45,w-8,40,pd_frame_count(&a->doc)>1?"ASEPRITE - FRAMES + LAYERS":"ASEPRITE - EDITABLE LAYERS",false);
         button(bottom,w,h,4,95,w-8,40,"PNG - VISIBLE IMAGE + ALPHA",false);
@@ -1609,7 +1804,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
             button(bottom,w,h,4,58,40,14,"<",false);button(bottom,w,h,48,58,40,14,">",false);
             for(unsigned c=0;c<cols;c++){unsigned f=a->timeline_first+c;if(f>=count)break;snprintf(label,sizeof(label),"%u",f+1);button(bottom,w,h,96+(int)c*28,58,26,14,label,f==current);}
             unsigned layers=0;for(unsigned l=0;l<8;l++)if(a->doc.enabled&(1u<<l))layers++;if(a->timeline_layer_first>=layers)a->timeline_layer_first=0;
-            for(unsigned visible=0;visible<rows;visible++){int found=timeline_slot(a,a->timeline_layer_first+visible);if(found<0)break;unsigned slot=(unsigned)found;int yy=72+(int)visible*row_h;snprintf(label,sizeof(label),"%.12s",a->doc.names[slot]);button(bottom,w,h,4,yy,80,row_h-1,label,slot==a->doc.active);
+            for(unsigned visible=0;visible<rows;visible++){int found=timeline_slot(a,a->timeline_layer_first+visible);if(found<0)break;unsigned slot=(unsigned)found;int yy=72+(int)visible*row_h;snprintf(label,sizeof(label),"%.12s",a->doc.names[slot]);button(bottom,w,h,4,yy,80,row_h-1,"",slot==a->doc.active);text_raw(bottom,w,h,10,yy+(row_h-8)/2,label,UI_TEXT);
                 for(unsigned c=0;c<cols;c++){unsigned f=a->timeline_first+c;if(f>=count)break;int xx=96+(int)c*28;rect(bottom,w,h,xx,yy,26,row_h-1,(f==current&&slot==a->doc.active)?UI_SELECTED:UI_PANEL);if(pd_frame_has_cel(&a->doc,f,slot))rect(bottom,w,h,xx+11,yy+row_h/2-2,4,4,UI_TEXT);else rect(bottom,w,h,xx+11,yy+row_h/2,4,1,UI_MUTED);}}
             if(layers>rows){int track=footer-72,thumb=track*(int)rows/(int)layers,pos=(int)a->timeline_layer_first*(track-thumb)/(int)(layers-rows);rect(bottom,w,h,89,72,4,track,UI_PANEL);rect(bottom,w,h,89,72+pos,4,thumb,UI_ACCENT);}
             button(bottom,w,h,4,footer,w/3-6,22,"NEW",false);button(bottom,w,h,w/3+2,footer,w/3-4,22,"DUPE",false);button(bottom,w,h,2*w/3+2,footer,w/3-6,22,"DELETE",false);button(bottom,w,h,4,h-24,w-8,22,"BACK TO CANVAS",true);
@@ -1786,7 +1981,8 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
         text(top,tw,th,8,th-8,"CANCEL LEAVES EVERY PIXEL UNCHANGED",UI_MUTED);a->redraw=false;return;
     }
     if(a->page==28&&a->community_mode&&a->preview_attempted&&a->selected>=0&&(unsigned)a->selected<a->community_page.count){PdCommunityArt *art=&a->community_page.items[a->selected];text(top,tw,th,8,6,a->community_mode==3?"MY UPLOAD / REVIEW STATUS":"ONLINE GALLERY / APPROVED ART",UI_ACCENT);text(top,tw,th,8,24,art->title,UI_TEXT);if(a->community_mode==3){snprintf(label,sizeof(label),"STATUS: %.15s",art->status);text(top,tw,th,8,44,label,UI_ACCENT);snprintf(label,sizeof(label),"%.54s",art->reason[0]?art->reason:"No review note");text(top,tw,th,8,62,label,UI_MUTED);}else{snprintf(label,sizeof(label),"BY %.35s",art->artist);text(top,tw,th,8,44,label,UI_MUTED);}snprintf(label,sizeof(label),"%u X %u PIXELS",art->width,art->height);text(top,tw,th,8,a->community_mode==3?84:60,label,UI_TEXT);if(a->community_mode!=3&&a->gallery_ready[a->selected]){int size=th-112;if(size>128)size=128;if(size<32)size=32;int left=(tw-size)/2;for(int py=0;py<size;py++)for(int px=0;px<size;px++)top[(84+py)*tw+left+px]=pd_fb(displayed(a->gallery_thumbs[a->selected][(py*32/size)*32+(px*32/size)],px,py));}text(top,tw,th,8,th-24,a->community_mode==3?"STATUS AND REVIEW REASON FROM SERVER":"PUBLIC PREVIEW; DOWNLOAD TO IMPORT",UI_MUTED);a->redraw=false;return;}
-    if((a->page==4||a->page==17||a->page==28)&&a->preview_attempted){
+    if((a->page==4||a->page==17)&&a->preview_attempted){render_file_preview(a,top,tw,th);a->redraw=false;return;}
+    if(a->page==28&&a->preview_attempted){
         text(top,tw,th,8,6,a->page==28?"CACHED ART - OFFLINE PREVIEW":"FILE PREVIEW - CURRENT ART RETAINED",UI_ACCENT);text(top,tw,th,8,24,a->preview_name,UI_TEXT);
         int size=th-80;if(size>128)size=128;int left=(tw-size)/2;if(a->preview_ready){for(int y=0;y<size;y++)for(int x=0;x<size;x++)top[(42+y)*tw+left+x]=pd_fb(displayed(a->file_preview[(y*64/size)*64+x*64/size],x,y));}else text(top,tw,th,8,60,a->preview_error,UI_MUTED);
         if(a->preview_palette_count){snprintf(label,sizeof(label),"PALETTE: %u COLORS",a->preview_palette_count);text(top,tw,th,8,th-34,label,UI_ACCENT);}
@@ -1801,7 +1997,7 @@ void app_render(PdApp *a,PdFb *bottom,PdFb *top,int tw,int th){
     snprintf(label,sizeof(label),"L%u  %dX",a->doc.active+1,a->zoom);int badge_x=tw-8-(int)strlen(label)*6;text(top,tw,th,badge_x,6,label,UI_MUTED);
     text(top,tw,th,8,6,PD_BUILD_LABEL,UI_ACCENT);
     int title_x=16+(int)strlen(PD_BUILD_LABEL)*6,title_chars=(badge_x-title_x-8)/6;if(title_chars<0)title_chars=0;
-    snprintf(label,sizeof(label),"%.*s",title_chars,solo?a->doc.names[a->doc.active]:project_name[0]?project_name:"PIXEL DOODLE");text(top,tw,th,title_x,6,label,0xffffff);
+    snprintf(label,sizeof(label),"%.*s",title_chars,solo?a->doc.names[a->doc.active]:project_name[0]?project_name:"PIXEL DOODLE");text_raw(top,tw,th,title_x,6,label,0xffffff);
     int size=th-76;if(size>128)size=128;unsigned dw=a->doc.width,dh=a->doc.height,max=dw>dh?dw:dh;
     int mw=(int)(dw*(unsigned)size/max),mh=(int)(dh*(unsigned)size/max);if(mw<1)mw=1;if(mh<1)mh=1;int left=(tw-mw)/2;
     rect(top,tw,th,left-2,22,mw+4,mh+4,UI_EDGE);rect(top,tw,th,left-1,23,mw+2,mh+2,UI_BG);

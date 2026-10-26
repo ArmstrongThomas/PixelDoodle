@@ -46,7 +46,8 @@ struct PdApp {
     unsigned recent_count,numeric_mode;
     char numeric[10];
     bool numeric_replace;
-    unsigned text_cursor,text_mode;
+    unsigned text_cursor,text_mode; /* text_mode: 0 letters, 2 symbols, 3 hex */
+    unsigned text_shift; /* 0 lowercase, 1 one capital, 2 caps lock */
     bool text_repeat;
     uint32_t text_repeat_at;
     unsigned hue,saturation,value,color_drag;
@@ -78,7 +79,7 @@ struct PdApp {
     int recent_project_selected;
     PdListing listing;
     PdCommunityPage community_page;
-    PdDropdown community_dropdown,layer_blend_dropdown;
+    PdDropdown community_dropdown,layer_blend_dropdown,file_type_dropdown;
     char upload_title[121],upload_description[2001],upload_tags[257];
     char upload_snapshot[PD_PATH],upload_request_id[37];
     unsigned upload_size,upload_stage;
@@ -94,6 +95,9 @@ struct PdApp {
     int file_scroll,file_start_scroll,file_start_y,file_hold;
     bool file_scrolling;
     unsigned preview_palette_count;
+    /* Shown beside the upper-screen file preview; zero when unknown. */
+    unsigned preview_width,preview_height,preview_layers,preview_frames;
+    long preview_bytes;
     unsigned new_background,new_layers,new_width,new_height,size_axis;
     bool new_current_palette;
     uint32_t recovery_at,idle_at,recovery_palette;
@@ -162,6 +166,10 @@ void app_pan(PdApp *a,int dx,int dy);
 void app_render(PdApp *a,PdFb *bottom,PdFb *top,int topw,int toph);
 /* Sets the device profile and resizes masks to it; DS mode (profile 1) needs only 128 x 128. */
 bool app_set_profile(PdApp *a,unsigned profile);
+#ifdef PD_TEST
+/* Centre of the Menu button for an action index, so tests follow the layout table. */
+bool app_test_menu_point(const PdApp *a,int action,int *x,int *y);
+#endif
 bool app_reserve_gallery(PdApp *a);
 void app_dispose(PdApp *a);
 void pd_pairing_init(PdApp *a);

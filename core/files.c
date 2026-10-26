@@ -187,15 +187,17 @@ static bool read_layers(const char *path,PdLayer *layers,char names[PD_LAYERS][P
     bool ok=fread(b,1,(size_t)length,f)==(size_t)length;fclose(f);
     if(ok){if(png)ok=artwork_png(b,(size_t)length,layers,names,enabled,pal,pal_count,width,height,profile,error);else if(!memcmp(b,"PDD9",4))ok=large_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);else if(!memcmp(b,"PDD",3))ok=native_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);else ok=ase_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);}else fail(error,"Cannot read file");free(b);return ok;
 }
-bool pd_preview_file_profile(const char *path,uint32_t preview[64*64],unsigned profile,char error[64]){
+bool pd_preview_file_info(const char *path,uint32_t preview[64*64],unsigned profile,PdPreviewInfo *info,char error[64]){
+    if(info)memset(info,0,sizeof(*info));
     FILE *probe=fopen(path,"rb");if(probe){unsigned char magic[4];bool animation=fread(magic,1,4,probe)==4&&!memcmp(magic,"PDDA",4);rewind(probe);
         if(animation){PdDocument *scratch=calloc(1,sizeof(*scratch));if(!scratch){fclose(probe);return fail(error,"Not enough memory for preview");}pd_init(scratch);scratch->profile=profile;bool ok=pd_frames_read(scratch,probe);fclose(probe);
             if(ok){unsigned max=scratch->width>scratch->height?scratch->width:scratch->height,pw=scratch->width*64/max,ph=scratch->height*64/max;if(!pw)pw=1;if(!ph)ph=1;memset(preview,0,64*64*4);for(unsigned y=0;y<ph;y++)for(unsigned x=0;x<pw;x++)preview[(y+(64-ph)/2)*64+x+(64-pw)/2]=pd_image(scratch)[(y*scratch->height/ph)*scratch->stride+x*scratch->width/pw];}
-            pd_dispose(scratch);free(scratch);return ok?true:fail(error,"Animation preview unavailable");}fclose(probe);}
+            if(ok&&info){info->width=scratch->width;info->height=scratch->height;info->frames=pd_frame_count(scratch);for(unsigned l=0;l<PD_LAYERS;l++)if(scratch->enabled&(1u<<l))info->layers++;}pd_dispose(scratch);free(scratch);return ok?true:fail(error,"Animation preview unavailable");}fclose(probe);}
 
     PdLayer *layers=calloc(PD_LAYERS,sizeof(PdLayer));if(!layers)return fail(error,"Not enough memory for preview");char names[PD_LAYERS][PD_NAME]={{0}};uint32_t pal[256]={0};unsigned count=0,width=128,height=128;uint8_t enabled=1,order[PD_LAYERS]={0,1,2,3,4,5,6,7};for(unsigned i=0;i<PD_LAYERS;i++){layers[i].visible=1;layers[i].opacity=255;}
-    bool ok=read_layers(path,layers,names,&enabled,order,pal,&count,&width,&height,profile,error);if(ok){unsigned max=width>height?width:height,pw=width*64/max,ph=height*64/max;if(!pw)pw=1;if(!ph)ph=1;memset(preview,0,64*64*4);for(unsigned y=0;y<ph;y++)for(unsigned x=0;x<pw;x++)preview[(y+(64-ph)/2)*64+x+(64-pw)/2]=pd_sample_layers(layers,enabled,order,(y*height/ph)*((width>128||height>128)?(width+7)/8*8:128)+x*width/pw);}free_layers(layers);return ok;
+    bool ok=read_layers(path,layers,names,&enabled,order,pal,&count,&width,&height,profile,error);if(ok&&info){info->width=width;info->height=height;info->frames=1;for(unsigned l=0;l<PD_LAYERS;l++)if(enabled&(1u<<l))info->layers++;}if(ok){unsigned max=width>height?width:height,pw=width*64/max,ph=height*64/max;if(!pw)pw=1;if(!ph)ph=1;memset(preview,0,64*64*4);for(unsigned y=0;y<ph;y++)for(unsigned x=0;x<pw;x++)preview[(y+(64-ph)/2)*64+x+(64-pw)/2]=pd_sample_layers(layers,enabled,order,(y*height/ph)*((width>128||height>128)?(width+7)/8*8:128)+x*width/pw);}free_layers(layers);return ok;
 }
+bool pd_preview_file_profile(const char *path,uint32_t preview[64*64],unsigned profile,char error[64]){return pd_preview_file_info(path,preview,profile,NULL,error);}
 bool pd_preview_file(const char *path,uint32_t preview[64*64],char error[64]){return pd_preview_file_profile(path,preview,1,error);}
 bool pd_open_file(PdDocument *d,const char *path,char error[64]){
     if(d->editing)return fail(error,"Finish stroke first");

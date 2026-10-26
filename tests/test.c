@@ -101,6 +101,15 @@ static void incremental_checks(void){
 static uint32_t fake_ticks;
 static uint32_t fake_clock(void){return fake_ticks+=2500;}
 static void tap(PdApp *a,int x,int y){app_input(a,true,x,y,0,0);app_input(a,false,0,0,0,0);}
+static void tap_menu(PdApp *a,int action){int x=0,y=0;assert(app_test_menu_point(a,action,&x,&y));tap(a,x,y);}
+/* Adjust opens from the Layers footer: rail Layers button, then the middle footer button. */
+static void tap_layers_adjust(PdApp *a){tap(a,(int)a->width*7/12,12);int fw=((int)a->width-16)/3;tap(a,8+fw+fw/2,(int)a->height-19);}
+/* File browser geometry, mirroring browser_layout() in ui/app.c: one-line rows from y 64 (14 px DSi,
+ * 16 px 3DS), four footer buttons, and a type dropdown below the filter field. */
+static int file_row_h(PdApp *a){return a->height>192?16:14;}
+static void tap_file_row(PdApp *a,unsigned row){tap(a,60,64+(int)row*file_row_h(a)+file_row_h(a)/2-a->file_scroll);}
+static void tap_file_footer(PdApp *a,int col){int fh=a->height>192?24:20,fy=(int)a->height-fh-4,fw=((int)a->width-20)/4;tap(a,4+col*(fw+4)+fw/2,fy+fh/2);}
+static void tap_file_filter(PdApp *a,unsigned filter){int rh=file_row_h(a)+1;tap(a,100,52);assert(a->file_type_dropdown.open);tap(a,100,64+(int)filter*rh+rh/2);}
 static unsigned community_calls,community_last_mode,community_last_offset,community_favorite_calls,community_mock_http;
 static bool community_mock_token,community_mock_saved;
 static void community_mock_list(PdApp *a,unsigned mode,unsigned offset){community_calls++;community_last_mode=mode;community_last_offset=offset;if(mode>=2&&(community_mock_http==403||(!community_mock_token&&community_mock_http==401))){snprintf(a->community_status,sizeof(a->community_status),community_mock_http==403?"GRANT NEEDS MORE SCOPES; RE-PAIR":"GRANT EXPIRED OR REVOKED; PAIR AGAIN");if(community_mock_http==401)community_mock_saved=false;a->community_loading=false;a->redraw=true;return;}a->community_loading=false;a->community_loaded=true;a->community_page.count=1;a->community_page.total=1;a->community_page.has_total=true;a->community_page.items[0]=(PdCommunityArt){0};strcpy(a->community_page.items[0].id,"fixture-art");strcpy(a->community_page.items[0].title,"Fixture");strcpy(a->community_page.items[0].artist,"Artist");strcpy(a->community_page.items[0].status,"rejected");strcpy(a->community_page.items[0].reason,"Review reason");a->redraw=true;}
@@ -142,12 +151,12 @@ static void adjustment_checks(const char *dir){
     assert(!pd_adjust_layers(d,2,NULL,120,0,0));assert(pd_pixels(&d->layer[0])[0]==0xffff0000&&pd_pixels(&d->layer[1])[0]==0xff0000ff&&!d->count);
 
     PdApp *a=calloc(1,sizeof(*a));uint32_t *bottom=calloc(320*240,sizeof(uint32_t)),*top=calloc(400*240,sizeof(uint32_t));assert(a&&bottom&&top);
-    app_init(a,256,192,dir,"TEST");dot(&a->doc,0,9,9,0xffff0000);a->doc.history_used=a->doc.count=a->doc.cursor=0;app_input(a,false,0,0,PD_MENU,0);tap(a,128,164);assert(a->page==31&&a->adjust_scope==1&&a->adjust_preview_ready&&!a->doc.count);
+    app_init(a,256,192,dir,"TEST");dot(&a->doc,0,9,9,0xffff0000);a->doc.history_used=a->doc.count=a->doc.cursor=0;tap_layers_adjust(a);assert(a->page==31&&a->adjust_scope==1&&a->adjust_preview_ready&&!a->doc.count);
     tap(a,42,40);assert(a->adjust_scope==0);tap(a,80,175);assert(a->page==31&&!a->doc.count);
     tap(a,128,40);tap(a,236,70);assert(a->adjust_scope==1&&a->adjust_hue==5&&a->adjust_preview_ready&&!a->adjust_preview_stale);a->adjust_hue=120;a->touching=true;a->adjust_preview_stale=true;app_input(a,false,0,0,0,0);assert(a->adjust_hue==120&&!a->adjust_preview_stale&&a->adjust_preview_ready);a->width=320;a->height=240;app_render(a,bottom,top,400,240);
     bool green_after=false;for(int i=0;i<400*240;i++)if(top[i]==0x00ff00){green_after=true;break;}assert(green_after);ppm(dir,"3ds-adjust-colors",bottom,320,240);ppm(dir,"3ds-adjust-preview-top",top,400,240);a->width=256;a->height=192;
-    tap(a,80,175);assert(!a->page&&a->doc.layer[0].pixels[9*128+9]==0xff00ff00&&a->doc.count==1&&a->doc.active==0);
-    app_init(a,256,192,dir,"TEST");dot(&a->doc,0,10,10,0xffff0000);a->doc.history_used=a->doc.count=a->doc.cursor=0;app_input(a,false,0,0,PD_MENU,0);tap(a,128,164);a->adjust_hue=120;a->touching=true;a->adjust_preview_stale=true;app_input(a,false,0,0,0,0);app_render(a,bottom,top,256,192);ppm(dir,"nds-adjust-colors",bottom,256,192);ppm(dir,"nds-adjust-preview-top",top,256,192);tap(a,190,175);assert(!a->page&&!a->doc.count&&a->doc.layer[0].pixels[10*128+10]==0xffff0000);
+    tap(a,80,175);assert(a->page==1&&a->doc.layer[0].pixels[9*128+9]==0xff00ff00&&a->doc.count==1&&a->doc.active==0);
+    app_init(a,256,192,dir,"TEST");dot(&a->doc,0,10,10,0xffff0000);a->doc.history_used=a->doc.count=a->doc.cursor=0;tap_layers_adjust(a);a->adjust_hue=120;a->touching=true;a->adjust_preview_stale=true;app_input(a,false,0,0,0,0);app_render(a,bottom,top,256,192);ppm(dir,"nds-adjust-colors",bottom,256,192);ppm(dir,"nds-adjust-preview-top",top,256,192);tap(a,190,175);assert(a->page==1&&!a->doc.count&&a->doc.layer[0].pixels[10*128+10]==0xffff0000);
     free(a);free(bottom);free(top);free(d);puts("Hue/saturation/brightness: selection/current/visible scope, grouped undo, locks, UI and cancellation: PASS");
 }
 static void color_checks(const char *dir){
@@ -231,11 +240,11 @@ static void palette_file_checks(const char *dir){
 }
 static void browser_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&b&&t);app_init(a,256,192,dir,"DS NTR");
-    app_input(a,false,0,0,PD_MENU,0);tap(a,40,55);assert(a->page==4&&a->file_mode==1);
-    tap(a,220,175);assert(a->page==5);tap(a,28,103);assert(!strcmp(a->filename,"A"));tap(a,220,175);assert(a->page==0&&a->project_native);
+    app_input(a,false,0,0,PD_MENU,0);tap_menu(a,1);assert(a->page==4&&a->file_mode==1);
+    tap(a,220,175);assert(a->page==5&&!a->text_shift);tap(a,28,103);assert(!strcmp(a->filename,"a"));tap(a,a->width-10,122);assert(!a->filename[0]);tap(a,10,122);assert(a->text_shift==1);tap(a,28,103);assert(!strcmp(a->filename,"A")&&!a->text_shift);tap(a,220,175);assert(a->page==0&&a->project_native);
     char path[512];assert(pd_join(path,dir,"A.pdd"));assert(pd_exists(path));assert(!a->doc.count);
     dot(&a->doc,0,10,10,0xff123456);app_input(a,false,0,0,PD_SAVE,0);assert(!pd_dirty(&a->doc));
-    app_input(a,false,0,0,PD_MENU,0);tap(a,40,55);tap(a,220,175);tap(a,28,103);tap(a,220,175);assert(a->confirm==5);
+    app_input(a,false,0,0,PD_MENU,0);tap_menu(a,1);tap(a,220,175);tap(a,28,103);tap(a,220,175);assert(a->confirm==5);
     tap(a,200,175);assert(!a->confirm&&a->page==5);assert(a->doc.layer[0].pixels[1290]==0xff123456);
     a->page=4;a->file_mode=0;assert(pd_list(dir,&a->listing,a->notice));a->selected=-1;
     for(unsigned i=0;i<a->listing.count;i++)if(!strcmp(a->listing.entries[i].name,"A.pdd"))a->selected=(int)i;
@@ -244,15 +253,16 @@ static void browser_checks(const char *dir){
     for(int mode=0;mode<2;mode++){a->width=mode?320:256;a->height=mode?240:192;
         for(int page=3;page<=7;page++){a->page=page;a->confirm=0;a->partial=false;app_render(a,b,t,mode?400:256,a->height);char name[64];snprintf(name,sizeof(name),"%s-files-page%d",mode?"3ds":"nds",page);ppm(dir,name,b,a->width,a->height);}
     }
-    a->width=256;a->height=192;a->page=5;a->name_action=2;strcpy(a->filename,"AB");a->text_cursor=2;tap(a,200,145);assert(a->text_cursor==1);tap(a,20,145);tap(a,16,75);assert(!strcmp(a->filename,"AqB"));
-    a->now_ms=1000;app_input(a,true,20,180,0,0);assert(!strcmp(a->filename,"AB"));a->now_ms=1399;app_input(a,true,20,180,0,0);assert(!strcmp(a->filename,"AB"));a->now_ms=1400;app_input(a,true,20,180,0,0);assert(!strcmp(a->filename,"B"));app_input(a,false,0,0,0,0);
+    a->width=256;a->height=192;a->page=5;a->name_action=2;strcpy(a->filename,"AB");a->text_cursor=2;tap(a,200,145);assert(a->text_cursor==1);tap(a,16,75);assert(!strcmp(a->filename,"AqB"));tap(a,20,145);assert(a->text_mode==2);tap(a,20,145);assert(a->text_mode==0);
+    a->now_ms=1000;app_input(a,true,225,120,0,0);assert(!strcmp(a->filename,"AB"));a->now_ms=1399;app_input(a,true,225,120,0,0);assert(!strcmp(a->filename,"AB"));a->now_ms=1400;app_input(a,true,225,120,0,0);assert(!strcmp(a->filename,"B"));app_input(a,false,0,0,0,0);
+    a->page=5;a->name_action=2;a->filename[0]=0;a->text_cursor=0;a->text_mode=0;a->text_shift=0;tap(a,10,122);tap(a,10,122);assert(a->text_shift==2);tap(a,16,75);tap(a,16,75);assert(!strcmp(a->filename,"QQ")&&a->text_shift==2);tap(a,10,122);assert(!a->text_shift);
     app_text_result(a,"Renamed Layer",true);assert(a->page==1&&!strcmp(a->doc.names[a->doc.active],"Renamed Layer"));a->page=5;a->name_action=0;strcpy(a->filename,"safe");app_text_result(a,"../bad",true);assert(a->page==5);app_text_result(a,"",false);assert(a->page==4);
     app_input(a,false,0,0,0,0);a->page=4;a->selected=-1;assert(pd_list(dir,&a->listing,a->notice));for(unsigned i=0;i<a->listing.count;i++)if(!strcmp(a->listing.entries[i].name,"A.pdd"))a->selected=(int)i;
-    tap(a,240,32);assert(a->page==16);tap(a,30,80);assert(a->page==5&&a->name_action==4);app_text_result(a,"A-copy",true);assert(a->page==4);char copy[512],renamed[512],error[64];assert(pd_join(copy,dir,"A-copy.pdd")&&pd_exists(copy));assert(pd_join(renamed,dir,"A-renamed.pdd"));assert(!pd_file_manage(copy,path,0,error));assert(pd_file_manage(copy,renamed,0,error)&&!pd_exists(copy)&&pd_exists(renamed));assert(!pd_file_manage(dir,copy,2,error));
+    tap_file_footer(a,1);assert(a->page==16);tap(a,30,80);assert(a->page==5&&a->name_action==4);app_text_result(a,"A-copy",true);assert(a->page==4);char copy[512],renamed[512],error[64];assert(pd_join(copy,dir,"A-copy.pdd")&&pd_exists(copy));assert(pd_join(renamed,dir,"A-renamed.pdd"));assert(!pd_file_manage(copy,path,0,error));assert(pd_file_manage(copy,renamed,0,error)&&!pd_exists(copy)&&pd_exists(renamed));assert(!pd_file_manage(dir,copy,2,error));
     app_input(a,false,0,0,0,0);snprintf(a->file_source,sizeof(a->file_source),"%s",renamed);a->page=16;tap(a,30,115);assert(a->confirm==7);tap(a,220,180);assert(!a->confirm&&pd_exists(renamed));tap(a,30,115);tap(a,20,180);assert(!pd_exists(renamed)&&a->page==4);
     assert(a->recent_project_count&&strstr(a->recent_projects[0],"A.pdd"));
     PdApp *reloaded=calloc(1,sizeof(*reloaded));assert(reloaded);app_init(reloaded,256,192,dir,"TEST");assert(reloaded->recent_project_count==a->recent_project_count&&!strcmp(reloaded->recent_projects[0],a->recent_projects[0]));free(reloaded);
-    a->page=4;a->file_mode=0;tap(a,180,32);assert(a->page==17);uint64_t rev=a->doc.revision;tap(a,30,36);assert(a->preview_ready&&a->doc.revision==rev);tap(a,20,180);assert(a->confirm==4);tap(a,220,180);assert(!a->confirm&&a->doc.revision==rev&&a->page==17);
+    a->page=4;a->file_mode=0;tap(a,(int)a->width-30,32);assert(a->page==17);uint64_t rev=a->doc.revision;tap(a,30,36);assert(a->preview_ready&&a->doc.revision==rev);tap(a,20,180);assert(a->confirm==4);tap(a,220,180);assert(!a->confirm&&a->doc.revision==rev&&a->page==17);
     for(int mode=0;mode<2;mode++){int w=mode?320:256,h=mode?240:192;a->width=w;a->height=h;app_render(a,b,t,mode?400:256,h);ppm(dir,mode?"3ds-recent-projects":"nds-recent-projects",b,w,h);ppm(dir,mode?"3ds-file-preview":"nds-file-preview",t,mode?400:256,h);}
     free(a);free(b);free(t);puts("Browser save-as/keyboard/save/overwrite-cancel and native UI fixtures: PASS");
 }
@@ -422,11 +432,11 @@ static void workflow_checks(const char *dir){
     PdApp *a=calloc(1,sizeof(*a)),*reload=calloc(1,sizeof(*reload));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(a&&reload&&b&&t);app_init(a,256,192,root,"TEST");
     uint32_t colors[256]={0xffff0000,0x8000ff00,0xff0000ff};assert(pd_join(path,root,"colors.hex")&&pd_palette_write(path,colors,3,1,false,error));
     for(unsigned i=0;i<12;i++){char name[64];snprintf(name,64,"art-%02u.pdd",i);assert(pd_join(path,root,name)&&pd_write_file(&a->doc,path,0,false,error));}
-    app_input(a,false,0,0,PD_MENU,0);tap(a,20,70);assert(a->page==4&&a->file_filter==0);
+    app_input(a,false,0,0,PD_MENU,0);tap_menu(a,2);assert(a->page==4&&a->file_filter==0);
     uint64_t rev=a->doc.revision;app_input(a,true,40,140,0,0);app_input(a,true,40,90,0,0);app_input(a,false,0,0,0,0);assert(a->file_scroll==50&&a->selected==-1&&!a->preview_attempted&&a->doc.revision==rev);
     tap(a,40,90);assert(a->selected>=0&&a->preview_ready);
-    tap(a,100,60);tap(a,100,60);tap(a,100,60);assert(a->file_filter==3&&a->selected==-1&&a->file_scroll==0);tap(a,40,90);assert(a->preview_palette_count==3&&a->preview_ready&&a->file_preview[0]==colors[0]&&a->file_preview[16]==colors[1]&&a->doc.revision==rev);
-    for(int mode=0;mode<2;mode++){a->width=mode?320:256;a->height=mode?240:192;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-palette-preview":"nds-palette-preview",t,mode?400:256,a->height);a->file_filter=0;a->file_scroll=13;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-scroll-files":"nds-scroll-files",b,a->width,a->height);a->file_filter=3;}
+    tap_file_filter(a,3);assert(a->file_filter==3&&a->selected==-1&&a->file_scroll==0&&!a->file_type_dropdown.open);tap_file_row(a,0);assert(a->preview_palette_count==3&&a->preview_ready&&a->file_preview[0]==colors[0]&&a->file_preview[16]==colors[1]&&a->doc.revision==rev);
+    for(int mode=0;mode<2;mode++){a->width=mode?320:256;a->height=mode?240:192;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-palette-preview":"nds-palette-preview",t,mode?400:256,a->height);a->file_filter=0;a->file_scroll=13;app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-scroll-files":"nds-scroll-files",b,a->width,a->height);tap(a,100,52);assert(a->file_type_dropdown.open);app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-file-types":"nds-file-types",b,a->width,a->height);tap(a,5,30);assert(!a->file_type_dropdown.open&&a->file_filter==0);a->file_filter=3;}
     a->width=256;a->height=192;a->page=18;a->new_layers=1;a->new_background=0;tap(a,40,60);tap(a,40,95);tap(a,40,175);assert(a->confirm==2);tap(a,220,175);assert(a->doc.revision==rev&&a->page==18);tap(a,40,175);tap(a,40,175);assert(a->page==0&&a->doc.enabled==3&&a->doc.layer[0].pixels[0]==0xffffffff&&pd_dirty(&a->doc));
     assert(pd_join(path,root,"named.pdd")&&pd_write_file(&a->doc,path,0,false,error));strcpy(a->project,path);a->project_native=true;dot(&a->doc,1,2,2,0xff123456);uint64_t saved=a->doc.saved_revision;
     a->now_ms=119999;app_input(a,false,0,0,0,0);assert(!a->recovery_available);a->now_ms=120000;a->page=1;app_input(a,false,0,0,0,0);assert(!a->recovery_available);a->page=0;app_input(a,true,0,100,0,0);app_input(a,false,0,0,0,0);a->now_ms=122001;app_input(a,false,0,0,0,0);assert(a->recovery_available&&pd_dirty(&a->doc)&&a->doc.saved_revision==saved);
@@ -552,7 +562,7 @@ static void pan_checks(void){
 
 static void png_browser_checks(const char *dir){
     char folder[PD_PATH],path[PD_PATH],error[64];assert(pd_join(folder,dir,"png-browser")&&pd_mkdir(folder));assert(pd_join(path,folder,"art.png"));PdDocument *d=calloc(1,sizeof(*d));PdApp *a=calloc(1,sizeof(*a));uint32_t *b=malloc(320*240*4),*t=malloc(400*240*4);assert(d&&a&&b&&t);pd_init(d);d->width=16;d->height=32;d->layer[0].pixels[31*128+15]=0x80abcdef;assert(pd_write_file(d,path,2,false,error));
-    for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,folder,"PNG TEST");app_input(a,false,0,0,PD_MENU,0);tap(a,20,70);tap(a,30,90);assert(a->page==4&&a->preview_ready&&!a->preview_palette_count);app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-png-preview":"nds-png-preview",t,mode?400:256,a->height);tap(a,a->width-20,a->height-18);assert(a->confirm==4);tap(a,20,a->height-16);assert(a->page==0&&a->doc.width==16&&a->doc.height==32&&!a->project_native&&pd_dirty(&a->doc)&&a->doc.layer[0].pixels[31*128+15]==0x80abcdef);}
+    for(unsigned mode=0;mode<2;mode++){app_init(a,mode?320:256,mode?240:192,folder,"PNG TEST");app_input(a,false,0,0,PD_MENU,0);tap_menu(a,2);tap_file_row(a,0);assert(a->page==4&&a->preview_ready&&!a->preview_palette_count&&a->preview_width==16&&a->preview_height==32&&a->preview_layers==1&&a->preview_frames==1&&a->preview_bytes>0);app_render(a,b,t,mode?400:256,a->height);ppm(dir,mode?"3ds-png-preview":"nds-png-preview",t,mode?400:256,a->height);tap(a,a->width-20,a->height-18);assert(a->confirm==4);tap(a,20,a->height-16);assert(a->page==0&&a->doc.width==16&&a->doc.height==32&&!a->project_native&&pd_dirty(&a->doc)&&a->doc.layer[0].pixels[31*128+15]==0x80abcdef);}
     free(d);free(a);free(b);free(t);puts("PNG browser default filtering, artwork preview, confirmed open and imported Save As state: PASS");
 }
 
@@ -643,17 +653,17 @@ int main(int argc,char **argv){
         unsigned j=0;for(unsigned k=0;k<PD_LAYERS;k++){unsigned i=x->order[k];if(!(x->enabled&(1u<<i)))continue;while(j<PD_LAYERS&&!(y->enabled&(1u<<y->order[j])))j++;assert(j<PD_LAYERS);unsigned other=y->order[j];assert(x->width==y->width&&x->height==y->height);assert(!memcmp(pd_pixels(&x->layer[i]),pd_pixels(&y->layer[other]),pd_bytes(x)));assert(x->layer[i].visible==y->layer[other].visible&&x->layer[i].opacity==y->layer[other].opacity&&x->layer[i].blend==y->layer[other].blend&&x->layer[i].flags==y->layer[other].flags);if(strcmp(argv[1],"compare-pixels"))assert(!strcmp(x->names[i],y->names[other]));j++;}while(j<PD_LAYERS){assert(!(y->enabled&(1u<<y->order[j])));j++;}puts("External Aseprite enabled-layer roundtrip: PASS");free(x);free(y);return 0;}
     assert(argc==2);community_json_checks();dns_packet_checks();gallery_checks(argv[1]);animation_checks(argv[1]);playback_checks(argv[1]);gif_checks(argv[1]);onion_checks(argv[1]);ase_animation_checks(argv[1]);frame_move_checks(argv[1]);rapid_stroke_checks();timeline_checks(argv[1]);shortcut_checks();dither_checks(argv[1]);png_browser_checks(argv[1]);scale_duplicate_checks(argv[1]);pan_checks();large_checks(argv[1]);brush_checks(argv[1]);fill_checks(argv[1]);fill_options_checks(argv[1]);selection_checks(argv[1]);selection_alpha_checks();shape_checks(argv[1]);perfect_checks(argv[1]);protection_checks(argv[1]);eight_layer_checks(argv[1]);dimension_checks(argv[1]);tile_history_checks();file_checks(argv[1]);workflow_checks(argv[1]);browser_checks(argv[1]);adjustment_checks(argv[1]);color_checks(argv[1]);layer_checks(argv[1]);palette_checks(argv[1]);palette_file_checks(argv[1]);dropdown_component_checks();community_ui_checks(argv[1]);
     PdApp *prefs=calloc(1,sizeof(*prefs));assert(prefs);app_init(prefs,256,192,argv[1],"TEST");
-    app_input(prefs,false,0,0,PD_MENU,0);tap(prefs,40,145);assert(prefs->page==8);
+    app_input(prefs,false,0,0,PD_MENU,0);tap_menu(prefs,6);assert(prefs->page==8);
     tap(prefs,40,42);tap(prefs,40,175);assert(prefs->handed==1&&!prefs->page);
     app_init(prefs,256,192,argv[1],"TEST");assert(prefs->handed==1);
-    app_input(prefs,false,0,0,PD_MENU,0);tap(prefs,40,145);tap(prefs,40,42);tap(prefs,40,175);assert(prefs->handed==0);
+    app_input(prefs,false,0,0,PD_MENU,0);tap_menu(prefs,6);tap(prefs,40,42);tap(prefs,40,175);assert(prefs->handed==0);
     char badsettings[512];snprintf(badsettings,sizeof(badsettings),"%s/settings1.bin",argv[1]);FILE *sf=fopen(badsettings,"wb");assert(sf);fputs("broken",sf);fclose(sf);
     app_init(prefs,256,192,argv[1],"TEST");assert(prefs->handed==1);
     assert(prefs->bindings==228&&app_bindings(prefs,127)==127);
-    app_input(prefs,false,0,0,PD_MENU,0);tap(prefs,40,145);tap(prefs,20,135);tap(prefs,20,180);assert(prefs->page==10);
+    app_input(prefs,false,0,0,PD_MENU,0);tap_menu(prefs,6);tap(prefs,20,135);tap(prefs,20,180);assert(prefs->page==10);
     tap(prefs,40,40);assert(prefs->draft_bindings==225&&prefs->bindings==228);
     tap(prefs,220,180);tap(prefs,220,175);assert(prefs->bindings==228); /* cancel draft */
-    app_input(prefs,false,0,0,PD_MENU,0);tap(prefs,40,145);tap(prefs,20,135);tap(prefs,20,180);tap(prefs,40,40);tap(prefs,220,180);tap(prefs,40,175);
+    app_input(prefs,false,0,0,PD_MENU,0);tap_menu(prefs,6);tap(prefs,20,135);tap(prefs,20,180);tap(prefs,40,40);tap(prefs,220,180);tap(prefs,40,175);
     app_init(prefs,256,192,argv[1],"TEST");assert(prefs->bindings==225&&app_bindings(prefs,PD_TOOLS)==PD_PAN&&app_bindings(prefs,PD_PAN)==PD_TOOLS&&app_bindings(prefs,PD_SAVE|PD_MENU|PD_ERASE)==(PD_SAVE|PD_MENU|PD_ERASE));
     /* Legacy settings remain readable; a CRC-valid invalid mapping is rejected. */
     unsigned char record[16]={0};memcpy(record,"PDS1",4);record[4]=10;record[8]=1;unsigned crc=(unsigned)crc32(0,record,12);for(int i=0;i<4;i++)record[12+i]=(unsigned char)(crc>>(8*i));
