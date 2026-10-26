@@ -1,3 +1,74 @@
+## Timeline moves and Menu cleanup 0.24.0 (2026-10-26)
+
+Sent save-only to DSi Link at `192.168.1.165`: `Homebrew/Dev/Received/PixelDoodle-Private.nds` (V0.24.0P, CRC-32 B2125FE5) and `PixelDoodle.nds` (V0.24.0, CRC-32 EC4E0412). Launch from Received.
+
+- [ ] Menu has no Frames button. Row 1 is New Project alone; Layers from the
+      rail opens the layer list, and the TIMELINE tab opens the grid.
+- [ ] Pen lifted, hold L and tap frame numbers 2, 3, 4: each gets a yellow bar
+      and yellow number; the memory line reads `3 SEL`. Tap 3 again with L to
+      unmark it; tap 2 without L to clear all marks and select frame 2.
+- [ ] Mark frames 2-4, hold one marked number for about 0.3 s, drag to column 7
+      and release. Frames 2-4 move as one block starting at column 7; other
+      frames shift. Their art, durations and links travel with them.
+- [ ] Single-frame move: no marks, hold a frame number and drag to another
+      column. The frame lands at that column; the current frame follows its art.
+- [ ] After a block move, paint on a moved frame, undo it, and confirm undo
+      still targets the moved art. Marks remain on the moved frames.
+- [ ] Marks clear after NEW, DUPE, DELETE, NEW LINKED FRAME, opening a project
+      and creating a new one.
+- [ ] Hold a cel (not a number) for about 0.4 s until "Drag cel to another
+      layer or frame" appears, drag to another layer in the same frame and
+      release. The destination gets the image, the source cell becomes empty,
+      links on both cels are cleared and undo history is cleared.
+- [ ] Repeat dragging a cel to a different frame. The current frame follows the
+      destination and the destination cell is outlined while dragging.
+- [ ] Drop a cel back on its own cell: the move cancels. A normal sideways drag
+      started before 0.4 s still scrolls the timeline; confirm this does not
+      accidentally move cels.
+- [ ] Single-frame project: hold-drag a cel between two layers; the same
+      transfer and undo clearing apply.
+- [ ] Note: tag ranges stay at their columns after frame moves; they do not
+      follow the moved art. Verify this is acceptable or request tag-aware
+      moves later.
+- [ ] Same checks on 3DS when available. No 0.24.0 3DSX transfer was made.
+
+## Tags and linked cels 0.23.0 (2026-10-26)
+
+Sent to DSi Link (save-only): `Homebrew/Dev/Received/PixelDoodle-Private.nds`
+(V0.23.0P, CRC-32 566F5C2E) and `PixelDoodle.nds` (V0.23.0, CRC-32 35674BA6).
+Launch from Received in Pico Launcher.
+
+- [ ] Timeline tag band: create a tag from a frame number > FRAME... > TAG row;
+      set FROM/TO, direction, colour and name. The band paints those columns with
+      the tag colour, a white cap on the current frame, and is readable on both
+      screen sizes.
+- [ ] Tap the band over a tagged column: the tag sheet opens for that tag. Tap an
+      untagged column: nothing opens. Tap the band again after Done: still works.
+- [ ] Playback with the playhead inside the tag loops only that range, honours
+      reverse/ping-pong and returns to the editing frame on stop. A one-frame tag
+      falls back to the whole animation.
+- [ ] Cel sheet: tap the selected cel again, then Link with previous, edit either
+      frame and confirm both change. Unlink leaves the current image independent.
+      New linked frame adds a frame joined to the current group. Undo across a
+      linked edit behaves as one step.
+- [ ] Rename a tag through the keyboard; names longer than 31 bytes are limited,
+      and Cancel keeps the previous name. REMOVE deletes the tag and closes.
+- [ ] Export > Aseprite from a tagged/linked project, open it on a desktop with
+      Aseprite if available: frames, durations, tags (names/ranges/directions/
+      colours) and linked cels are present and editable.
+- [ ] Import an animated `.aseprite` with several frames, tags and linked cels.
+      The browser preview shows its frame count without a long pause; Open builds
+      all frames and the timeline shows the tag band and joined cels. Editing a
+      linked cel updates its group.
+- [ ] Import rejection: a file with layer groups, tilemaps, indexed colour or a
+      cel outside the canvas reports an error and leaves the current drawing
+      intact.
+- [ ] Memory: open a large animation on DSi; note any failure. A malformed or
+      over-limit file keeps the open project, but an allocation failure while
+      frames are added reports an error with a partly imported project.
+- [ ] Same checks on 3DS when available. No 3DS transfer was performed for this
+      candidate.
+
 ## File screens 0.21.0 (2026-10-26)
 
 Sent to DSi Link (save-only): `Homebrew/Dev/Received/PixelDoodle-Private.nds`
@@ -32,12 +103,11 @@ are restored even on write failure. File size is capped at 64 MiB before
 writing. Existing verified .tmp/.bak replacement now checks streamed ASE
 length and CRC by readback before replacing an existing destination.
 
-Animated ASE IMPORT remains unsupported and explicitly rejected; preserve PDD
-as the editable device master. This increment enables desktop interchange in
-the export direction, not linked cels/groups/tags/indexed import. Test exported
-files in actual desktop Aseprite as well as the independent parser. Desktop
-batch tests can run while Windows is locked; no Azahar visual acceptance is
-claimed. No device transfer or live webhook post while user is away.
+Animated ASE IMPORT remained unsupported in 0.20.0; 0.23.0 supersedes that and
+now imports frames, tags and linked cels. Preserve PDD as the editable device
+master. Test exported files in actual desktop Aseprite as well as the
+independent parser. Desktop batch tests can run while Windows is locked; no
+Azahar visual acceptance is claimed.
 
 ### Frame ordering and playback polish in 0.20.0
 

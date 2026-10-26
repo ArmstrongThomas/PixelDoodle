@@ -1,0 +1,265 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'release.json'
+      - 'core/version.h'
+      - 'docs/releases/**'
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Read release.json
+    runs-on: ubuntu-24.04
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      title: ${{ steps.check.outputs.title }}
+      notes: ${{ steps.check.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version and decide whether to publish
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version // empty' release.json)
+          TITLE=$(jq -r '.title // empty' release.json)
+          NOTES=$(jq -r '.notes // empty' release.json)
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release.json version '$VERSION' is not MAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          if [ -z "$NOTES" ] || [ ! -f "$NOTES" ]; then
+            echo "::error::release.json notes '$NOTES' does not exist."
+            exit 1
+          fi
+          if printf '%s' "$TITLE" | grep -q '[[:cntrl:]]'; then
+            echo "::error::release.json title must be one line."
+            exit 1
+          fi
+          HEADER=$(sed -n 's/^#define PD_VERSION "\(.*\)"/\1/p' core/version.h | tr -d '\r')
+          if [ "$HEADER" != "$VERSION" ]; then
+            echo "::error::core/version.h says '$HEADER' but release.json says '$VERSION'."
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          if [ "${GITHUB_REF_TYPE:-}" = "branch" ] && [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Releases are built from main or a version tag, not $GITHUB_REF_NAME."
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match release.json version $VERSION."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "notes=$NOTES" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$TAG is already released; bump release.json and core/version.h to publish again."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Host tests
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install pillow
+      - name: Run host suite
+        run: powershell -ExecutionPolicy Bypass -File scripts/test-host.ps1
+
+  build-3ds:
+    name: Build 3DSX and CIA
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install banner dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil
+
+      - name: Download pinned packaging tools
+        run: |
+          set -euo pipefail
+          mkdir -p build/ci-tools build/3ds
+          curl -fsSL -o /tmp/makerom.zip \
+            https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip
+          echo "dd596854718c195c6e3229286be485b122921715555af8ae5cf8e9a465d9f970  /tmp/makerom.zip" | sha256sum -c -
+          unzip -qo /tmp/makerom.zip -d build/ci-tools
+          chmod +x build/ci-tools/makerom
+
+          curl -fsSL -o /tmp/bannertool.zip \
+            https://github.com/diasurgical/bannertool/releases/download/1.2.0/bannertool.zip
+          echo "69768596f836acb3e3aeaa66e47c6ba560dde813c6dfcd33c8afc25fe29b7524  /tmp/bannertool.zip" | sha256sum -c -
+          rm -rf /tmp/bannertool && unzip -qo /tmp/bannertool.zip -d /tmp/bannertool
+          install -m 0755 /tmp/bannertool/linux-x86_64/bannertool build/ci-tools/bannertool
+
+      - name: Generate 3DS banner
+        run: python3 scripts/banner.py build/3ds
+
+      - name: Build 3DSX in devkitARM
+        run: |
+          docker run --rm --network none -v "$PWD:/work" -w /work \
+            devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5 \
+            bash scripts/build-3ds-unix.sh
+
+      - name: Package CIA
+        run: |
+          docker run --rm -v "$PWD:/work" -v "$PWD/build/ci-tools:/tools" -w /work \
+            ubuntu:24.04 bash -lc 'export PATH=/tools:$PATH; bash scripts/build-cia-unix.sh'
+
+      - name: Verify CIA
+        run: python3 scripts/verify-cia.py build/3ds/PixelDoodle.cia
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixel-doodle-3ds
+          if-no-files-found: error
+          path: |
+            build/3ds/PixelDoodle.3dsx
+            build/3ds/PixelDoodle.cia
+            build/3ds/PixelDoodle.smdh
+
+  build-nds:
+    name: Build NDS
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build NDS in pinned BlocksDS
+        run: |
+          docker run --rm --network none \
+            --mount "type=bind,source=$PWD,target=/work" --workdir /work \
+            skylyrac/blocksds@sha256:779f6193d1030c62e60d1f0f39c3e32cf4045c0bd224a45c0ceadf9d9ab01a51 \
+            make -B -f Makefile.nds -j2 PD_PRIVATE_BUILD=0
+
+      - name: Install verification dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil
+
+      - name: Verify NDS
+        run: python3 scripts/verify-nds.py PixelDoodle.nds
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixel-doodle-nds
+          if-no-files-found: error
+          path: PixelDoodle.nds
+
+  release:
+    name: Publish GitHub release
+    needs: [version, test, build-3ds, build-nds]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pixel-doodle-3ds
+          path: incoming/3ds
+      - uses: actions/download-artifact@v4
+        with:
+          name: pixel-doodle-nds
+          path: incoming/nds
+
+      - name: Install icon verification dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil
+
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release build/3ds
+          cp incoming/3ds/PixelDoodle.3dsx release/
+          cp incoming/3ds/PixelDoodle.cia release/
+          cp incoming/3ds/PixelDoodle.smdh build/3ds/
+          cp incoming/3ds/PixelDoodle.3dsx build/3ds/
+          cp incoming/nds/PixelDoodle.nds release/
+          cp incoming/nds/PixelDoodle.nds .
+          python3 scripts/verify-icons.py
+          (cd release && sha256sum PixelDoodle.3dsx PixelDoodle.cia PixelDoodle.nds > SHA256SUMS.txt)
+
+      - name: Build release body
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          NOTES: ${{ needs.version.outputs.notes }}
+        run: |
+          set -euo pipefail
+          BODY=release-body.md
+          cat "$NOTES" > "$BODY"
+          printf '\n\n' >> "$BODY"
+          cat release/SHA256SUMS.txt >> "$BODY"
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.tag }}
+          TITLE: ${{ needs.version.outputs.title }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG appeared while building; not replacing it."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            TAG_SHA=$(git rev-parse "$TAG^{commit}")
+            if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+              echo "::error::Tag $TAG points at $TAG_SHA, not $GITHUB_SHA."
+              exit 1
+            fi
+            TARGET=()
+          else
+            TARGET=(--target "$GITHUB_SHA")
+          fi
+          if [ -n "$TITLE" ]; then NAME="$TAG $TITLE"; else NAME="$TAG"; fi
+          gh release create "$TAG" "${TARGET[@]}" \
+            --title "$NAME" \
+            --notes-file release-body.md \
+            --latest \
+            release/PixelDoodle.3dsx \
+            release/PixelDoodle.cia \
+            release/PixelDoodle.nds \
+            release/SHA256SUMS.txt

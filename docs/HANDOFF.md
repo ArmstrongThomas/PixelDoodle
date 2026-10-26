@@ -1,11 +1,283 @@
 # Pixel Doodle development handoff
 
-Current continuation summary: `docs/ANIMATION-NEXT-SESSION.md` (animation);
-file-screen redesign: the 0.21.0 section below.
-Pushed baseline: `2ce8a56`; local commits `0f51d8c`, `e8967a3`, `5207761` and
-`738b07d` (0.21.0); not pushed.
-Current device candidate: 0.21.0; hardware-accepted DSi baseline: 0.18.0P.
+Current continuation summary: the 0.24.0 section below (timeline block/cel
+moves, Menu without Frames); GitHub release workflow in the section below that
+(`release.json` + `docs/RELEASING.md`). Pushed baseline: `2ce8a56`; local
+commits `0f51d8c`, `e8967a3`, `5207761` and `738b07d` (0.21.0); not pushed.
+0.22.0 through 0.24.0 and the release workflow are committed locally in the
+0.24.0 commit; not pushed.
+Current device candidate: 0.24.0 (built, staged and sent to the DSi; hardware acceptance pending). Hardware-accepted DSi baseline: 0.18.0P.
 UI mockups (design references, with what is implemented): `docs/mockups/README.md`.
+
+## Resume here (2026-10-26, 0.24.0 built, awaiting hardware acceptance)
+
+The 0.24.0 packages in `build/test-0.24.0/` and
+`build/private/test-0.24.0/` are built, hash-verified (hashes below) and safe to
+launch. Both NDS files were sent save-only to DSi Link at `192.168.1.165` (private CRC-32 B2125FE5, standard EC4E0412) and are in `Homebrew/Dev/Received/`.
+
+Work completed in this increment:
+
+1. **Menu > Frames removed.** Row 1 is now New Project alone (full width);
+   Timeline remains reachable from the Layers rail. The Menu has no animation
+   shortcut any more, by user request.
+2. **Whole-frame marks.** With the pen lifted, hold L and tap frame numbers to
+   toggle marks. Marked columns show a yellow bar beside the number and are
+   counted as `n SEL` on the memory line. A plain tap on an unmarked number
+   clears the marks and selects normally; tapping a marked number keeps them.
+3. **Block frame moves.** Hold any marked frame number for 0.3 s, drag to the
+   target column and release. The marked frames move as one block, starting at
+   that column; unmarked frames shift around them. With no marks, the same
+   gesture moves the pressed frame. Paint undo follows the moved art and frame
+   durations/tags stay with their frames; tag *ranges* remain positional, as
+   with the existing single-frame move.
+4. **Single-cel moves.** Hold a cel for 0.4 s, drag it to another layer and/or
+   frame (target cell outlined), and release. The source cel becomes empty, the
+   destination receives the image, links on both cels are cleared and paint
+   undo is cleared. A same-cell drop cancels. Cel moves are not undoable.
+5. **Core.** `pd_frames_move` moves a marked block allocation-free and remaps
+   the current frame plus paint-history indices; `pd_frame_move` now wraps it
+   with one mark. `pd_cel_move` handles same-frame, cross-frame and
+   single-frame (no animation) moves with transactional ref-array replacement.
+6. **Tests.** New `move_checks` and `move_ui_checks` cover block ordering,
+   non-contiguous marks, allocation-free moves, undo/current remapping, cel
+   moves across layers/frames/links, L+tap marks, hold-drag drops, mark
+   clearing and the Menu without Frames, with DSi/3DS fixtures for marks and
+   cel drag. Full host suite, native builds, NDS headers/DLDI and CIA title
+   version 384 pass.
+7. **Version.** `0.24.0`; CIA title version 384 (24 << 4).
+
+Marks are cleared when frames are added, duplicated, deleted, linked or when a
+project is opened/new; a cel move also clears them. Holding a cel is 0.4 s so a
+slow scroll does not start a move by accident; validate this timing with a
+stylus on hardware.
+
+Environment note: at session start every write under `G:\dev\3ds\PixelDoodle`
+was denied. The ACL repair tool added the signed-in user's full-control entry
+to the PixelDoodle folder (backup/rollback in `G:\dev\3ds-acl-repair\`), but
+the shell still could not write because the folder lacked the Low mandatory
+integrity label that `G:\dev\3ds` carries. Builds and tests were run with full
+access; this session now has danger-full-access. If a future session is confined
+again, apply the same label to PixelDoodle before assuming a build failure is
+code-related.
+
+### Verified 0.24.0 candidates (2026-10-26)
+
+Private then standard builds pass: full host suite (including the new block/cel
+move tests and DSi/3DS fixtures), 16-bit screen check, HTTPS, NDS/DSi
+header/DLDI and CIA title version 384. Staged with SHA-256 readback in
+`build/artifacts-0.24.0.json`. Both NDS files were sent save-only to DSi Link at `192.168.1.165` (private CRC-32 B2125FE5, standard EC4E0412). No 3DS transfer or emulator acceptance was performed; hardware acceptance of the new gestures is pending.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.24.0\PixelDoodle.nds`: 403968 bytes; SHA-256 `C86190D6AC13942D9772319ADC6F263FDACC0B3EBB17F3AC35229F52D239D5CA`
+- `G:\dev\3ds\PixelDoodle\build\test-0.24.0\PixelDoodle.3dsx`: 913896 bytes; SHA-256 `EEA2C5C8227A52C79E1C2E385F0904648CCDE6A3BC07135E68C039F584036231`
+- `G:\dev\3ds\PixelDoodle\build\test-0.24.0\PixelDoodle.cia`: 730048 bytes; SHA-256 `AC42D0A58EC5F978876D1948FC8B49E6C4B8357C0F9FA35DF8661D0B72DFEB2B`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.24.0\PixelDoodle-Private.nds`: 792064 bytes; SHA-256 `5872C8E2F509A24E942049F8664221D15790AD742A1A19C18991A995FC0A6381`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.24.0\PixelDoodle-Private.3dsx`: 921408 bytes; SHA-256 `06DD4DE77DCC6CE2A1CBC3CF84691FD41E6E575EBFBFF00E4A406EFB5036D448`
+
+## GitHub release workflow (2026-10-26)
+
+`release.json` is the current-version file: it names the version, release title
+and notes path (`docs/releases/<version>.md`). `.github/workflows/release.yml`
+runs when a push to `main` touches `release.json`, `core/version.h` or
+`docs/releases/**`, on a `v*` tag, or on manual dispatch.
+
+- It validates `release.json`, requires `core/version.h` to match it, and
+  requires the referenced notes file to exist.
+- If `v<version>` already has a GitHub release, the run reports that and skips
+  all builds. To publish again, bump both files.
+- Otherwise it runs the Windows host suite, builds the standard 3DSX and CIA in
+  the pinned `devkitpro/devkitarm` digest, packages the CIA with pinned makerom
+  0.18.4 and bannertool 1.2.0, and builds the standard NDS in the pinned
+  BlocksDS v1.24.0 digest. It verifies the CIA title/version, NDS header/DLDI
+  and embedded icons.
+- It creates `v<version>` at the pushed commit if the tag is missing, then
+  publishes a release titled `v<version> <title>` with the notes as the body
+  plus `SHA256SUMS.txt`, attaching `PixelDoodle.3dsx`, `PixelDoodle.cia` and
+  `PixelDoodle.nds`. Existing releases, mismatched tags and re-published
+  versions fail rather than being replaced.
+- Only standard builds are published; private builds embed credentials and are
+  never uploaded. No secrets are needed beyond `GITHUB_TOKEN` with
+  `contents: write` for the release job.
+- Linux build equivalents live in `scripts/build-3ds-unix.sh` and
+  `scripts/build-cia-unix.sh`; both were exercised against the pinned images
+  and produced a verified CIA title version 384 and byte-identical NDS output.
+
+The workflow, `release.json`, `docs/releases/0.24.0.md`, `docs/RELEASING.md` and
+the two Unix scripts are in the local 0.24.0 commit but have not been pushed.
+The first push containing that commit will publish 0.24.0 if that version has no
+release yet.
+
+## 0.22.0 Layers + Timeline merge (2026-10-26)
+
+Implements the Timeline/Frame-sheet/Onion-sheet/canvas-strip screens of
+`docs/mockups/pixel-doodle-animation.html` (`tlLayout`, `frameLayout`,
+`onionLayout`, `stripLayout`, `topAnimation`). The user asked for Frames to be
+merged into Layers (this supersedes "keep Frames and Layers separate").
+
+Done so far (host suite green after each step):
+
+1. **Tabs.** The Layers rail screen (page 1) has LAYERS | TIMELINE tabs
+   (`a->layers_tab`). Pages 32-35 are gone. Menu > Frames opens Layers on the
+   Timeline tab. The layer list moved down for the tabs: top 42, rows 20 px
+   (still 6 rows on DSi, 8 on 3DS); the layer count sits right of the tabs.
+2. **Timeline styling** (`timeline_layout()` drives draw, taps and tests):
+   14 px columns (13 visible) on DSi, 16 px (14) on 3DS; current frame is a
+   full-height teal column; a cel with art is a 7 px block (white in the current
+   column), an empty cel a 2x2 dot; the active cel has a yellow outline; framed
+   layer names with an accent edge on the active one; vertical scrollbar at the
+   right when layers exceed the rows (5 DSi / 6 3DS); memory line
+   "x KB OF y KB FOR FRAMES" with a 4 px bar; footer + FRAME | DUPE | DELETE |
+   FRAME.... Play/pause and onion icon buttons sit right of the tabs (the
+   mockup only has them on the canvas strip). Drag sideways to scroll frames,
+   up/down to scroll layers; hold a frame number 300 ms then drag to reorder
+   (uses `pd_frame_move`, keeps paint undo). Taps act on release.
+   Frame numbers of 100+ show their last two digits.
+3. **Frame sheet** (centred, X to close, tap outside closes): DURATION - value
+   +, presets 50/80/100/150, THIS FRAME / ALL FRAMES scope (new core
+   `pd_frame_set_all_durations`), MOVE < / MOVE >. Opened by FRAME... or by
+   tapping the selected frame number. Delete stays in the footer with a
+   centred confirmation (DELETE FRAME n? / CLEARS UNDO HISTORY).
+4. **Onion sheet** (opened from the timeline onion button): ON/OFF, BEHIND
+   1-3, AHEAD 1-3, opacity 10-90 % slider (default 35 %, was a fixed ~31 %),
+   TINT RED/BLUE or OFF. Session-only like the old toggle. The cache keeps a
+   behind side and an ahead side, merged far to near with fades 100/70/40 %,
+   plus a scratch plane only when a count exceeds 1. Tinted: 1 byte per pixel
+   per plane (alpha via `pd_frame_alpha`); untinted: 4 bytes (colour via new
+   read-only core `pd_frame_rgba`, Normal blend with opacity, blend modes not
+   applied). Allocation refusal still disables onion with a notice.
+5. **Upper screen on the Timeline tab** (`render_animation_top`): header with
+   name and an `F n/m` tag; current frame at 112 px (DSi) / 160 px (3DS);
+   FRAME / DURATION / ONION / PLAYBACK details (ONION replaces the mockup's
+   TAG); five-frame filmstrip (wrapping) from new `pd_frame_sample`, cached in
+   12 round-robin slots (`a->film`, ~32 KiB, allocated on first use) keyed by
+   frame, generations, revision and layer metadata; footer shows playback
+   state, sheet hints, or the last notice. While the onion sheet is open the
+   preview shows the ghosts.
+6. **Canvas frame strip** (`strip_layout()`, shown only with 2+ frames): 18 px
+   (DSi) / 22 px (3DS) at the bottom of the canvas: prev | n/m | next | play |
+   onion, then one tick per frame (proportional, so 256 frames still fit;
+   current tick accent, onion range lit). Prev/next wrap. n/m opens the
+   Timeline tab. Onion: tap toggles, hold 400 ms opens the onion sheet over the
+   canvas (live ghosts behind it). Ticks tap or scrub. The canvas viewport now
+   ends at `canvas_bottom()` (screen height minus the strip) in clamp, zoom,
+   `world()`, all renderers and the overview rectangle; incremental strokes and
+   shape previews are clipped above the strip. Single-frame projects are
+   unchanged. `frame_changed()` re-clamps when the strip appears/disappears.
+7. **Shortcuts** (pen lifted, canvas): Sample+L toggles onion, Sample+R plays
+   (any later button or touch stops, as before). Pan+L/R and ZL/ZR unchanged.
+
+Tests use `app_test_point()` (PD_TEST) for every timeline/sheet/strip control
+(`tap_point()` in `tests/animation-checks.h`); new `strip_checks()`. Version
+is 0.22.0 (CIA title version 352).
+
+### Still different from the mockup
+
+- 0.22.0 itself had no tag band, frame-sheet TAG row, loop ranges or
+  linked-cel joins. 0.23.0 adds all of them; the band is 10 px and the tag
+  editor is a separate centred sheet rather than the mockup's inline rows.
+- Timeline has Play and Onion buttons beside the tabs (the mockup's timeline
+  has none; without them playback/onion would need the canvas or shortcuts).
+- The canvas upper screen keeps the existing overview/status view; the
+  animation view (mockup `topAnimation`) appears on the Timeline tab. The
+  mockup used it for the canvas too, which would drop the minimap.
+- Upper-screen details show ONION instead of TAG.
+- Frame numbers 100+ show only their last two digits in 14/16 px columns.
+- Filmstrip thumbnails and untinted onion ghosts use Normal blending with
+  layer opacity (blend modes are not applied there); the canvas itself is exact.
+- Frame reorder by dragging a number does not auto-scroll at the edges; use
+  MOVE < / > in the frame sheet for long moves.
+
+### Verified 0.22.0 candidates (2026-10-26)
+
+Private then standard builds pass: host suite (including new strip/timeline/
+onion checks), 16-bit screen check, HTTPS, CA, NDS/DSi header/DLDI, CIA title
+version 352. Staged with SHA-256 readback (`build/artifacts-0.22.0.json`).
+Not sent to any device; hardware acceptance pending (ANIMATION-HARDWARE.md).
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.22.0\PixelDoodle.nds`: 383488 bytes; SHA-256 `129EC7F80B62BDB2917C9DD43DA884D6F584F0F9F7BAC76915E2801F5D70CC16`
+- `G:\dev\3ds\PixelDoodle\build\test-0.22.0\PixelDoodle.3dsx`: 888472 bytes; SHA-256 `0DF71A73A747F793DBE35BC499C1D2CF322C966C3D3E8E7687E16998355FCC6B`
+- `G:\dev\3ds\PixelDoodle\build\test-0.22.0\PixelDoodle.cia`: 713152 bytes; SHA-256 `F3494CF903E199C52EB63EEED6549B40D5C256144887001869C02B74E5124713`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.22.0\PixelDoodle-Private.nds`: 771584 bytes; SHA-256 `C9E3F806A66FC03366ACD274BC8B932E95602BDC7E0A12FD1E08C76163D6EAFB`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.22.0\PixelDoodle-Private.3dsx`: 895700 bytes; SHA-256 `0EB40538377A4EC5DF51BB15900A3C842F5F0C0CC92EFEBEA5AD0FA3C9B236B8`
+
+## 0.23.0 tags, linked cels and animated Aseprite I/O (2026-10-26)
+
+User (2026-10-26): "Tags and linked cels are important. Normal Aseprite files
+support it. Bring those in." Core tags (name, range, direction, colour) and
+linked cels (cels on one layer sharing one image; editing one updates all) are
+persisted in PDDA, shown in the timeline, edited via sheets, honoured by
+playback, and now round-trip through Aseprite including animated import.
+
+Done in the 0.24.0 commit (version 0.23.0, CIA title version 368):
+
+- **Core** (`core/animation.[ch]`): `PdTag` (name up to 31 bytes, inclusive
+  `from`/`to`, direction 0-3 forward/reverse/ping-pong/pong-ping, repeat
+  count, colour), `PD_TAGS` 32, `pd_tag_add/set/delete/at` (new tags are
+  appended; insertion and deletion shift ranges), and linked cels as a
+  per-frame, per-layer group id (`pd_cel_link`, `pd_cel_link_previous`,
+  `pd_cel_unlink`, `pd_frame_add_linked`, `pd_frame_clear_links`). Packing a
+  frame copies each linked layer to the rest of its group and refuses
+  atomically if a copy cannot be allocated. Playback loops the innermost tag
+  containing the starting frame (a one-frame tag falls back to every frame).
+  PDDA is version 11 (link groups, then tags). New import support:
+  `pd_cel_set_link`, `pd_frame_layer_copy` and `pd_frame_select_packed`.
+- **UI** (`ui/app.[ch]`): a 10 px timeline tag band (tag colour per column,
+  white cap on the current frame; tap opens that tag), a TAG row in the frame
+  sheet (colour chip, name, range; tap creates a one-frame tag when none
+  exists), a tag sheet (name, FROM/TO steppers that cannot cross, direction,
+  colour, REMOVE, DONE), a cel sheet (LINK WITH PREVIOUS, UNLINK, NEW LINKED
+  FRAME) opened by tapping the selected cel again, keyboard rename through
+  `name_action` 6 (31-byte cap), and test points `PD_TL_TAGBAND`,
+  `PD_SHEET_TAG`, `PD_TAG_*` and `PD_CEL_*`.
+- **Aseprite export** (`core/ase_export.c`): the streaming writer emits the
+  tags chunk 0x2018 and, for each tag, a 0x2020 user-data chunk with the modern
+  RGBA colour (the deprecated RGB is also written). Linked cels use cel type 1
+  and point at the first frame of their group, including non-contiguous
+  groups. Frame sizes and chunk counts include both metadata kinds, and a
+  one-frame project with tags uses the streaming exporter too.
+- **Animated Aseprite import** (`core/files.c`, replacing the single-frame
+  `ase_read`): two passes. The first validates the whole file and decodes
+  every compressed cel into a bounded scratch buffer before any document
+  change; the second builds 1-256 frames with per-frame durations, cels,
+  linked cels, tags, palette, and layer names/properties. Raw and zlib cels
+  must lie inside the canvas with opacity 255 and Z 0. Linked cels copy the
+  target cel, then `pd_cel_set_link` rebuilds the groups after the last frame
+  is packed. Tag colours come from following user-data chunks when present.
+  cel-extra, slice and generic user-data chunks are skipped. Groups, tilemaps,
+  indexed/grayscale sprites, per-cel opacity/Z and out-of-canvas cels are
+  rejected; imported tag names are cut to 31 bytes at a UTF-8 boundary and
+  durations are clamped to 10-60000 ms (0 uses the header speed, default 100).
+  File-browser preview decodes only the first frame and reports the header
+  frame count.
+- **Tests**: `tag_ui_checks()` is green; its REMOVE failure was the missing
+  release after `app_text_result()` and its unlink expectation ignored that a
+  one-member group is cleared. `ase_link_checks()` exports/imports a
+  three-frame project whose layer groups are non-contiguous, checks tags
+  (names, ranges, directions, repeats, colours), links, layer properties,
+  palette, durations and shared edits after import, a hand-built file whose
+  tag colour lives in user data with ignored cel-extra/slice chunks, preview
+  metadata, and a one-frame tagged export. `scripts/test-animation-ase.py`
+  independently validates the 0x2018/0x2020 chunks, type-1 cels, frame sizes
+  and palette/layer properties.
+
+### Verified 0.23.0 candidates (2026-10-26)
+
+Private then standard builds pass: full host suite (including the 16-bit
+screen syntax check and HTTPS tests), NDS/DSi header/DLDI, CIA title version
+368, and SHA-256 readback in `build/artifacts-0.23.0.json`. The two NDS files
+were sent save-only to DSi Link at `192.168.1.165`; both returned OK SAVED.
+No 3DS transfer or emulator acceptance was performed, and physical acceptance
+of the new sheets, band and animated import remains pending.
+
+- `G:\dev\3ds\PixelDoodle\build\test-0.23.0\PixelDoodle.nds`: 398848 bytes; SHA-256 `339EDEE9AC19943C870E8F7CD837D9FA28DBC16E8696D4222F77D4CB820AC92E` (DSi Link CRC-32 35674BA6)
+- `G:\dev\3ds\PixelDoodle\build\test-0.23.0\PixelDoodle.3dsx`: 908076 bytes; SHA-256 `A8B25A8C5E14E0A54BB637FC94B4311BE9D1596831DE1F9A3C2662582243E0FC`
+- `G:\dev\3ds\PixelDoodle\build\test-0.23.0\PixelDoodle.cia`: 726464 bytes; SHA-256 `AAA7E6ABBDC11664667D0A8C3B65CD359EDDFFDB276A0CB6B8B669ABD1526EFB`
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.23.0\PixelDoodle-Private.nds`: 786944 bytes; SHA-256 `FBE3D8FFFF924A8F3362CFC53A895B7D75B0D47F12EC4B2EE8EE2E9442657565` (DSi Link CRC-32 566F5C2E)
+- `G:\dev\3ds\PixelDoodle\build\private\test-0.23.0\PixelDoodle-Private.3dsx`: 915344 bytes; SHA-256 `B1A6219FE760C6AF7F3C38EFE01BB41D570B2FBDCA6945BC9AC574C788E2C1B9`
+
+Known limitation: allocation failure while the build pass is adding frames can
+leave a partly imported project (the UI reports the error). Malformed,
+unsupported and over-limit files are rejected while the previous drawing is
+still intact because validation completes first.
 
 ## 0.21.0 file screens redesign (2026-10-26)
 
@@ -458,7 +730,8 @@ sample gap 16731 us / N 23. These are one photo's counters, not a benchmark.
   testing. See `docs/ANIMATION-HARDWARE.md` for the current acceptance matrix.
 - Quick separate-stroke issue is deferred. 0.16.1 queued capture was rejected
   for severe latency and removed. Keep direct input and version labels.
-- Frames and Layers remain separate. Local candidate adds cached onion skin,
+- Frames are merged into Layers as a Timeline tab (0.22.0, user request of
+  2026-10-26). Earlier candidates added cached onion skin,
   streamed animated ASE export and allocation-free frame ordering that retains
   paint undo. Animated ASE import, linked cels, tags, structure undo, animated
   layer merge and sprite-sheet export remain future work.
@@ -521,7 +794,7 @@ Continue the Aseprite-style model: global layers, horizontal frames and cels.
 Remaining priorities are bounded transactional animated ASE import, frame-range
 selection/copy, local GIF/sprite-sheet export, tags/loop ranges, frame-structure
 undo and all-frame layer merge. Keep DUPE edits independent despite shared tile
-storage. Do not merge Frames and Layers without the user's instruction.
+storage. Frames and Layers are merged as of 0.22.0 (user request).
 
 The approved file-screen redesign remains pending. Preserve the existing
 six-icon rail, Layers layout, dedicated Delete Layer, blend dropdown and Tools
@@ -672,7 +945,7 @@ whitespace-only changes, all private credentials and runtime data.
 Latest user acceptance: DSi 0.18.0P animated GIF sent successfully to Discord.
 0.17.0 playback also accepted. New onion/ASE/frame-order work needs hardware
 checks. Do not reintroduce queued capture; rapid separate-stroke work is
-explicitly deferred. Keep Frames and Layers separate. Do not claim animated
+explicitly deferred. Frames live in the Layers Timeline tab (0.22.0). Do not claim animated
 ASE import is supported. Native PDD is the editable master.
 
 Run scripts/build.ps1 private then standard using the pinned Docker image;

@@ -121,7 +121,7 @@ bool pd_duplicate_layer(PdDocument *d){
 bool pd_add_layer(PdDocument *d){
     if(d->editing||d->enabled==((1u<<d->capacity)-1))return false;
     for(unsigned i=0;i<d->capacity;i++)if(!(d->enabled&(1u<<i))&&pd_frame_slot_unused(d,i)){
-        d->active=i;if(!pd_begin(d))return false;d->enabled|=(uint8_t)(1u<<i);
+        d->active=i;if(!pd_begin(d))return false;d->enabled|=(uint8_t)(1u<<i);pd_frame_clear_links(d,i);
         memset(pd_pixels(&d->layer[i]),0,pd_bytes(d));d->layer[i].blend=d->layer[i].flags=0;d->layer[i].visible=1;d->layer[i].opacity=255;
         memset(d->names[i],0,64);snprintf(d->names[i],64,"Layer %u",i+1);move_slot(d,i,PD_LAYERS-1);return pd_commit(d);
     }return false;

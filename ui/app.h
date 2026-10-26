@@ -35,11 +35,35 @@ struct PdApp {
     unsigned input_contacts,ink_starts;
     uint32_t overview_at;
     unsigned timeline_first,timeline_layer_first;
+    /* Layers screen: tab 0 is the layer list, 1 the timeline. Sheets overlay the timeline or canvas. */
+    unsigned layers_tab;
+    bool frame_sheet,frame_delete,frame_apply_all,onion_sheet,onion_drag;
+    bool tag_sheet,cel_sheet;
+    int tag_edit; /* tag shown in the tag sheet */
+    /* Timeline gesture: press kind 0 none, 1 frame number, 2 cel, 3 layer name, 4 layer scrollbar. */
+    unsigned timeline_press,timeline_press_frame,timeline_press_row,timeline_target;
+    unsigned timeline_start_first,timeline_start_layer_first;
+    int timeline_start_x,timeline_start_y;
+    uint32_t timeline_press_ms;
+    bool timeline_scrolling,timeline_reorder;
+    /* Whole-frame marks (L + tap a frame number) for block moves. */
+    uint8_t frame_mark[PD_FRAMES];
+    unsigned frame_mark_count;
+    /* Hold a cel, then drag it to another layer/frame. */
+    bool cel_drag,cel_drag_valid;
+    unsigned cel_src_frame,cel_src_layer,cel_src_row,cel_dst_frame,cel_dst_layer,cel_dst_row;
+    /* Canvas frame strip: press 0 none, 1-5 prev/count/next/play/onion, 6 ticks (scrub). */
+    unsigned strip_press;
+    uint32_t strip_press_ms;
+    bool strip_held;
     PdPlayback playback;
-    bool onion_enabled;
+    bool onion_enabled,onion_tint;
+    unsigned onion_behind,onion_ahead,onion_opacity; /* 1-3 frames each side; opacity 10-90 percent */
     unsigned char *onion;
-    size_t onion_plane;
+    size_t onion_plane,onion_bytes;
     uint64_t onion_key;
+    void *film; /* upper-screen filmstrip thumbnail cache, allocated on first Timeline view */
+    unsigned film_next;
     uint64_t recovery_frames;
     char diag_status[48];
     uint32_t color,background,recent[12];
@@ -169,6 +193,13 @@ bool app_set_profile(PdApp *a,unsigned profile);
 #ifdef PD_TEST
 /* Centre of the Menu button for an action index, so tests follow the layout table. */
 bool app_test_menu_point(const PdApp *a,int action,int *x,int *y);
+/* Centre of a Layers-timeline or sheet control, following the same layout tables as drawing and taps. */
+enum { PD_TL_TAB,PD_TL_PLAY,PD_TL_ONION,PD_TL_FOOTER,PD_TL_NUMBER,PD_TL_CEL,PD_TL_NAME,PD_TL_SCROLL,
+       PD_SHEET_CLOSE,PD_SHEET_MINUS,PD_SHEET_PLUS,PD_SHEET_PRESET,PD_SHEET_SCOPE,PD_SHEET_MOVE,
+       PD_ONION_TOGGLE,PD_ONION_BEHIND,PD_ONION_AHEAD,PD_ONION_SLIDER,PD_ONION_TINT,PD_STRIP_ITEM,PD_STRIP_TICK,
+       PD_TL_TAGBAND,PD_SHEET_TAG,PD_TAG_NAME,PD_TAG_FROM,PD_TAG_TO,PD_TAG_DIRECTION,PD_TAG_COLOR,PD_TAG_DELETE,PD_TAG_DONE,
+       PD_CEL_LINK,PD_CEL_UNLINK,PD_CEL_NEW_LINKED };
+bool app_test_point(const PdApp *a,int part,int index,int *x,int *y);
 #endif
 bool app_reserve_gallery(PdApp *a);
 void app_dispose(PdApp *a);

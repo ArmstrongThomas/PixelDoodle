@@ -1,69 +1,70 @@
-# Animation continuation — 2026-10-22
-
-The user is asleep. No new hardware transfer or live Discord post was made.
+# Animation continuation - 2026-10-26 (0.24.0)
 
 ## Saved work
 
-- **`2ce8a56` — pushed to origin/main before proceeding:** frame/cel foundation,
-  playback and private GIF sharing. User accepted playback and GIF delivery on
-  DSi, including the received `143535.gif`.
-- **`0f51d8c` — local:** cached read-only previous/next onion skin, version 0.19.0.
-- **`e8967a3` — local:** streamed animated Aseprite export, allocation-free frame
-  ordering with paint-undo remapping, and playback polish, version 0.20.0.
-
-Unrelated whitespace-only changes remain unstaged. Do not reset them. Private
-webhook credentials and credential-bearing build artifacts remain ignored.
+- **`2ce8a56` - pushed to origin/main before animation work:** frame/cel
+  foundation, playback and private GIF sharing.
+- **`0f51d8c` - local:** cached read-only onion skin, 0.19.0.
+- **`e8967a3` - local:** streamed animated Aseprite export, frame ordering with
+  paint-undo remapping, playback polish, 0.20.0.
+- **`5207761`, `738b07d` - local:** file-screen redesign and follow-ups, 0.21.0.
+- 0.22.0 (Layers + Timeline merge), 0.23.0 (tags, linked cels, animated
+  Aseprite import/export) and 0.24.0 (timeline moves, Menu cleanup) are
+  **uncommitted** in the working tree. Preserve unrelated line-ending changes;
+  do not reset them. Private webhook credentials and credential-bearing builds
+  remain ignored.
 
 ## Candidate to test next
 
-Current source and staged packages are **0.20.0** / **V0.20.0P** for private:
+Current source and staged packages are **0.24.0** / **V0.24.0P**:
 
-- Standard: `build/test-0.20.0/` — NDS, 3DSX, CIA.
-- Private: `build/private/test-0.20.0/` — NDS, 3DSX.
-- Exact sizes/SHA-256: `build/artifacts-0.20.0.json` and the top of HANDOFF.md.
-- Older 0.19.0 and accepted 0.18.0 candidates remain in their versioned folders.
+- Standard: `build/test-0.24.0/` - NDS 403968 B, 3DSX 913896 B, CIA 730048 B
+  (title version 384).
+- Private: `build/private/test-0.24.0/` - NDS 792064 B, 3DSX 921408 B.
+- Exact SHA-256: `build/artifacts-0.24.0.json` and `docs/HANDOFF.md`.
+- Both NDS files were sent save-only to DSi Link at `192.168.1.165` on
+  2026-10-26 (CRC-32 B2125FE5 private, EC4E0412 standard) into
+  `Homebrew/Dev/Received/`. No 3DS transfer, CIA install or Azahar acceptance.
 
-Get renewed DSi Link or 3dslink readiness before sending the exact staged file.
-Do not assume the sleeping user's console is a waiting receiver. Do not remove
-the SD card. No CIA was installed and no Azahar visual acceptance was claimed.
+## What changed in 0.24.0
 
-## What changed
-
-Frames has an Onion toggle beside Play. Red marks the preceding frame and blue
-the next; endpoints do not wrap. Ghosts affect only the bottom editing canvas,
-stay out of sampling/files/playback, and use a cached pair of alpha planes.
-
-Tap the selected frame number for frame actions. Move Left/Right keeps the
-artwork selected and remaps paint undo/redo to follow it. Move itself is not
-undoable. Delete still confirms and clears history. Frames and Layers remain
-separate as requested.
-
-Export > Aseprite now writes all frames/layers and their durations, with exact
-RGBA and global metadata. It streams to disk, verifies readback before replacing
-output, and restores the original editing frame. **Animated ASE import is still
-unsupported. Keep native PDD masters.** Alpha Lock remains native-only.
+- Menu > Frames was removed at the user's request. Row 1 is New Project alone;
+  Timeline is reached from the Layers rail.
+- Whole-frame marks: pen lifted, hold L and tap frame numbers. Marked columns
+  get yellow numbers/bars and `n SEL` on the memory line. A plain tap on an
+  unmarked number clears marks; marked numbers stay marked when tapped.
+- Block moves: hold a marked frame number for 0.3 s, drag to the target column
+  and release. Marked frames start there and unmarked frames shift. One frame
+  moves the same way. Frame data, durations and links move with the art; paint
+  undo is remapped. Tag ranges remain positional.
+- Cel moves: hold a cel for 0.4 s, drag to another layer/frame, release. The
+  destination is outlined; same-cell cancels. Links on both cels and paint undo
+  are cleared; the move is not undoable. Works in single-frame projects.
+- Core `pd_frames_move` is an allocation-free permutation with current/history
+  remapping; `pd_frame_move` now wraps it. `pd_cel_move` covers same-frame,
+  cross-frame and no-animation moves with transactional ref replacement.
+- Marks clear on add/dupe/delete/new-linked/open/new-project and after cel
+  moves; block moves remap them.
 
 ## Verification
 
-- Standard/private host and native builds; DS/DSi headers and DLDI, CIA version
-  320, icons and pinned CA checks pass.
-- New onion-cache/reload, frame-order/history, ASE streaming/state/failure tests
-  pass alongside 16,436 render comparisons and 131,072 composite comparisons.
-- Independent GIF and ASE parsers check actual pixels, frames and metadata.
-- Installed desktop Aseprite runs in batch while Windows is locked: opens and
-  saves the animated export; rendered RGBA matches within rounding differences,
-  including transparent clearing and per-frame durations.
-- Broader desktop interop passes existing native/ASE and compressed-cel cases,
-  malformed-file preservation, palettes, variable sizes and large PNG pixels.
-- DS/3DS native onion and frame-action fixtures were visually inspected.
+- Full host suite passes, including the new `move_checks` (block ordering,
+  non-contiguous marks, allocation-free moves, undo/current remapping, cel
+  moves, links, single-frame) and `move_ui_checks` (L+tap marks, block drop,
+  hold-drag cel, mark clearing, no Menu Frames entry), plus 16-bit screen,
+  HTTPS, render/composite oracles and independent GIF/ASE parsers.
+- DSi/3DS fixtures for frame marks and cel drag were inspected.
+- Private then standard native builds pass NDS/DSi headers, ARM bounds, DLDI,
+  icons, TLS assets and CIA title version 384.
+- No desktop Aseprite or device acceptance is claimed for the new gestures.
 
 ## Next work
 
-Use [ANIMATION-HARDWARE.md](ANIMATION-HARDWARE.md) for the physical test queue.
-None of the new 0.19/0.20 device behavior is accepted yet. Default onion is off.
-The quick separate-stroke issue stays deferred; do not reintroduce queued input.
-
-After hardware feedback, priorities are transactional animated ASE import,
-frame ranges/copy, local GIF and sprite sheets, tags/loop ranges, structural
-undo and safe all-frame layer merging. Preserve the current editing model and
-update the handoff and hardware checklist after each implementation.
+Use [HANDS-ON-CHECKLIST.md](HANDS-ON-CHECKLIST.md) 0.24.0 and
+[ANIMATION-HARDWARE.md](ANIMATION-HARDWARE.md) for the physical queue. After
+acceptance, remaining animation work is structural undo (frame/tag/link
+operations), sprite-sheet export, Aseprite layer-group import and safe
+all-frame layer merging. The broader roadmap still has the Community milestone
+(native submissions/chunk upload, live pairing and deployment) and process
+recording/replay (M3) untouched. Update the handoff and checklists after each
+increment; never describe unaccepted device behavior as working.

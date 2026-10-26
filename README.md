@@ -1,18 +1,47 @@
-# Pixel Doodle 0.21.0 candidate
+# Pixel Doodle 0.24.0 candidate
 
-0.21.0 redesigns the file screens: a reordered Menu (New Project and Frames
-first, Adjust moved to the Layers footer), a file browser with type icons, a
-type dropdown and seven rows on DSi (nine on 3DS), an upper-screen preview with
-size, layers, frames and file size, and a keyboard that types lowercase with
-Shift and caps lock. File and layer names now show in the case you typed.
-Artifacts and hashes: `docs/HANDOFF.md`.
+0.24.0 makes the Timeline practical for rearranging animation. **Menu > Frames
+is gone**; open Layers from the rail and use the Timeline tab. Hold **L** and
+tap frame numbers to mark whole frame columns (all layers), then hold a marked
+number and drag to move the block to another column. A single frame moves the
+same way without marks. To move one cel instead, hold it for about 0.4 seconds
+and drag it to another layer and/or frame. See
+[the handoff](docs/HANDOFF.md) for exact artifacts and the
+[0.24.0 hardware checklist](docs/HANDS-ON-CHECKLIST.md) for the stylus tests.
+Both NDS files are staged; physical acceptance is pending.
+
+0.23.0 added Aseprite-style tags and linked cels. Tags appear as a colour band
+above the timeline and can be created or edited from the frame sheet's TAG row;
+linked cels share one image across frames, so editing one updates the whole
+group. Native projects store both in PDDA version 11, playback loops the
+innermost tag, and Aseprite export/import preserves tags (including their
+colours) and linked cels. Animated `.aseprite` files with up to 256 frames open
+as editable projects; see [the Aseprite guide](docs/ASEPRITE-COMPATIBILITY.md)
+for supported features and limits.
+
+## Releases
+
+`release.json` names the current version, release title and notes file. Pushing
+`main` builds the standard 3DSX, CIA and NDS and publishes a GitHub release
+once for that version; pushes with an already-released version skip the build.
+See [docs/RELEASING.md](docs/RELEASING.md) for the version bump and tagging
+steps and the pinned toolchain versions.
+
+## 0.21.0 file screens redesign (2026-10-26)
+
+0.21.0 redesigns the file screens: a reordered Menu (New Project first, Adjust
+moved to the Layers footer), a file browser with type icons, a type dropdown and
+seven rows on DSi (nine on 3DS), an upper-screen preview with size, layers,
+frames and file size, and a keyboard that types lowercase with Shift and caps
+lock. File and layer names now show in the case you typed. Artifacts and hashes:
+`docs/HANDOFF.md`.
 
 ## 0.20.0 local animation candidate
 
 Latest hardware-accepted baseline: **0.18.0P on DSi**, including animated GIF
-sending to Discord. New local work adds onion skin, frame ordering and streamed
-animated Aseprite export. Frames and Layers remain separate. Animated ASE
-import is still unsupported; keep PDD masters. See [hardware tests](docs/ANIMATION-HARDWARE.md)
+sending to Discord. This step added onion skin, frame ordering and streamed
+animated Aseprite export. At that time animated ASE import was still
+unsupported; 0.23.0 now imports it. See [hardware tests](docs/ANIMATION-HARDWARE.md)
 and [handoff](docs/HANDOFF.md) for current status, controls and exact artifacts.
 The older version sections below are historical.
 

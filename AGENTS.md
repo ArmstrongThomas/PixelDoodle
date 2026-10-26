@@ -1,10 +1,98 @@
 
-Current continuation summary: `docs/ANIMATION-NEXT-SESSION.md` (animation);
-file-screen redesign: the 0.21.0 section below.
+Current continuation summary: the 0.24.0 section below (timeline block/cel
+moves, Menu without Frames); animation notes in
+`docs/ANIMATION-NEXT-SESSION.md`; file-screen redesign in the 0.21.0 section.
 Pushed baseline: `2ce8a56`; local commits `0f51d8c`, `e8967a3`, `5207761` and
-`738b07d` (0.21.0); not pushed.
-Current device candidate: 0.21.0; hardware-accepted DSi baseline: 0.18.0P.
+`738b07d` (0.21.0); not pushed. 0.22.0 through 0.24.0 are committed locally in
+the 0.24.0 commit.
+Current device candidate: 0.24.0 (built, staged and sent to the DSi; hardware acceptance pending). Hardware-accepted DSi baseline: 0.18.0P.
 UI mockups (design references, with what is implemented): `docs/mockups/README.md`.
+
+## 0.24.0 timeline moves and Menu cleanup (2026-10-26)
+
+User asked to remove Menu > Frames and add practical frame/cel moves: a single
+cel to another layer and/or frame, one whole frame column, and multiple marked
+frame columns moved as a block.
+
+- Menu > Frames is gone. Row 1 is New Project alone; open Layers from the rail
+  and switch to Timeline.
+- Whole-frame marks: pen lifted, hold L and tap frame numbers to toggle. Marked
+  columns get a yellow number/bar and the memory line appends `n SEL`. A plain
+  tap on an unmarked number clears marks; a tap on a marked number keeps them.
+- Block move: hold a marked frame number 0.3 s, drag to the target column and
+  release. The marked frames start at that column; one unmarked frame moves the
+  same way. Paint undo follows the art; durations and links stay with frames;
+  tag ranges remain positional (same as `pd_frame_move` before).
+- Cel move: hold a cel 0.4 s (deliberate, to avoid slow-scroll accidents), drag
+  to another layer/frame and release. The destination is outlined; a same-cell
+  drop cancels. Links on both cels and paint undo are cleared; the move is not
+  undoable. Works in a single-frame project too.
+- Core: `pd_frames_move` (allocation-free permutation, current/history remap)
+  and a rewritten `pd_frame_move` wrapper; `pd_cel_move` (same-frame,
+  cross-frame, ref-array transaction, single-frame path).
+- Marks clear on add/dupe/delete/new-linked/open/new-project and after cel
+  moves. `pd_frames_move` remaps marks after a successful block move.
+- Tests: `move_checks` (block ordering, non-contiguous marks, allocation-free,
+  undo/current remap, cel moves, links, single-frame) and `move_ui_checks`
+  (L+tap marks, block drop, cel hold-drag, mark clearing, no Menu frame entry)
+  pass with full host/native/CIA checks. Version 0.24.0, CIA title 384.
+- Packages: `build/test-0.24.0/` and `build/private/test-0.24.0/`; SHA-256 in
+  `build/artifacts-0.24.0.json` and `docs/HANDOFF.md`. Both NDS files sent
+  save-only to DSi Link 192.168.1.165 (CRC-32 B2125FE5 private, EC4E0412
+  standard); no 3DS transfer or hardware acceptance yet.
+- GitHub release: `release.json` (version, title, notes path) plus
+  `docs/releases/<version>.md`. A push to `main` touching release.json,
+  `core/version.h` or `docs/releases/**`, a `v*` tag or manual dispatch runs
+  `.github/workflows/release.yml`; it validates `core/version.h`, skips if
+  that version already has a release, runs the Windows host suite, builds
+  standard 3DSX/CIA/NDS in pinned images, and publishes the three artifacts
+  with notes and `SHA256SUMS.txt`.
+  Private builds are never published. Linux build scripts:
+  `scripts/build-3ds-unix.sh`, `scripts/build-cia-unix.sh`. Workflow, notes,
+  release.json and scripts are in the 0.24.0 commit; no push/tag/release was
+  performed.
+  See `docs/RELEASING.md`.
+- Known UX to validate on hardware: the 0.3 s frame-hold and 0.4 s cel-hold
+  thresholds, accidental cel drags while scrolling, stylus accuracy on 14/16 px
+  columns, and block moves near the visible edges (no auto-scroll during drag).
+
+## 0.23.0 tags, linked cels and animated Aseprite I/O (2026-10-26)
+
+User: "Tags and linked cels are important. Normal Aseprite files support it.
+Bring those in." Implemented on top of the 0.22.0 Layers + Timeline merge.
+
+- Core: `PdTag` (31-byte name, inclusive range, direction 0-3, repeat, colour,
+  32 max), `pd_tag_add/set/delete/at`, linked cels as per-frame/per-layer group
+  ids, playback looping the innermost tag, and PDDA version 11. Import helpers:
+  `pd_cel_set_link`, `pd_frame_layer_copy`, `pd_frame_select_packed`.
+- UI: 10 px timeline tag band, frame-sheet TAG row, tag sheet (name/range/
+  direction/colour/REMOVE/DONE), cel sheet (LINK WITH PREVIOUS/UNLINK/NEW
+  LINKED FRAME), keyboard tag rename, and `PD_TL_TAGBAND`/`PD_TAG_*`/`PD_CEL_*`
+  test points.
+- Aseprite export: tags chunk 0x2018 plus a 0x2020 colour chunk per tag, and
+  linked cels as type 1 pointing at each group's first frame. Single-frame
+  projects with tags use the streaming exporter.
+- Aseprite import: 1-256 frames, durations, tags with user-data colours, linked
+  cels (including non-contiguous groups), raw/zlib cels, palette and flat
+  layers. A validation/decode pass finishes before `pd_create`; malformed or
+  unsupported files keep the current drawing. Groups, tilemaps, indexed/
+  grayscale, per-cel opacity/Z and out-of-canvas cels are rejected. Preview
+  decodes frame 0 only and reports the header frame count. See
+  `docs/ASEPRITE-COMPATIBILITY.md`.
+- Tests: tag/link core, tag/cel sheets, band taps, animated ASE roundtrip,
+  crafted user-data/slice/cel-extra file, single-frame tags, and an independent
+  parser for 0x2018/0x2020/type-1 cels. Full host suite, 16-bit check, HTTPS,
+  NDS/DSi headers/DLDI and CIA version 368 pass.
+- Packages: `build/test-0.23.0/` (NDS 398848 B, 3DSX 908076 B, CIA 726464 B)
+  and `build/private/test-0.23.0/` (NDS 786944 B, 3DSX 915344 B). SHA-256 in
+  `build/artifacts-0.23.0.json` and `docs/HANDOFF.md`. Both NDS files sent
+  save-only to DSi Link `192.168.1.165`. No 3DS transfer. Physical acceptance
+  pending; allocation failure during the frame-building pass can leave a
+  partly imported project, while malformed files are rejected safely.
+- Environment: workspace writes initially failed because PixelDoodle lacked
+  the current user's full-control entry and the Low integrity label carried by
+  `G:\dev\3ds`. The ACL repair tool fixed the entry; builds ran with full
+  access after the label issue. Backup/rollback: `G:\dev\3ds-acl-repair\`.
 
 ## 0.21.0 file screens redesign (2026-10-26)
 

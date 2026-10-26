@@ -49,6 +49,85 @@ assert at == len(data) and names == ["Shade", "Ink"]
 assert source.read_bytes() == source.with_suffix(".aseprite.bak").read_bytes()
 print("Independent ASE parser: every RGBA cel, layer order/properties, durations, palette, bounds and backup: PASS")
 
+# Tags (0x2018) and linked cels (cel type 1), including non-contiguous groups.
+tagged = root / "tagged-links.aseprite"
+data = tagged.read_bytes()
+assert struct.unpack_from("<I5H", data) == (len(data), 0xA5E0, 3, 16, 16, 32)
+assert struct.unpack_from("<I", data, 14)[0] == 1  # opacity-valid flag
+at = 128
+tags = []
+layers = []
+for frame in range(3):
+    fsize, magic, old_chunks, delay = struct.unpack_from("<I3H", data, at)
+    chunks = old_chunks or struct.unpack_from("<I", data, at + 12)[0]
+    assert magic == 0xF1FA and fsize >= 16 and at + fsize <= len(data)
+    expected_delay = (120, 240, 240)[frame]
+    assert delay == expected_delay, (frame, delay)
+    end = at + fsize
+    at += 16
+    cels = []
+    palette = None
+    user_colors = []
+    for _ in range(chunks):
+        size, kind = struct.unpack_from("<IH", data, at)
+        assert size >= 6 and at + size <= end
+        payload = data[at + 6:at + size]
+        if kind == 0x2004:
+            layer_flags, layer_type, child, _w, _h, blend = struct.unpack_from("<6H", payload)
+            assert layer_type == 0 and child == 0
+            name_len = struct.unpack_from("<H", payload, 16)[0]
+            layers.append((layer_flags, blend, payload[12], payload[18:18 + name_len].decode()))
+        elif kind == 0x2005:
+            layer, x, y, opacity, cel_type, z = struct.unpack_from("<HhhBHH", payload)
+            assert x == 0 and y == 0 and opacity == 255 and z == 0
+            if cel_type == 0:
+                w, h = struct.unpack_from("<HH", payload, 16)
+                assert w == 16 and h == 16 and len(payload) == 20 + w * h * 4
+                cel = ("raw", layer)
+            elif cel_type == 1:
+                assert len(payload) == 18
+                cel = ("linked", layer, struct.unpack_from("<H", payload, 16)[0])
+            else:
+                raise AssertionError(f"Unexpected cel type {cel_type}")
+            cels.append(cel)
+        elif kind == 0x2018:
+            count = struct.unpack_from("<H", payload)[0]
+            assert count == 2 and payload[2:10] == bytes(8)
+            pos = 10
+            for _tag in range(count):
+                frm, to, direction, repeat = struct.unpack_from("<HHBH", payload, pos)
+                rgb = tuple(payload[pos + 13:pos + 16])
+                assert payload[pos + 16] == 0
+                name_len = struct.unpack_from("<H", payload, pos + 17)[0]
+                name = payload[pos + 19:pos + 19 + name_len].decode()
+                tags.append((name, frm, to, direction, repeat, rgb))
+                pos += 19 + name_len
+            assert pos == len(payload)
+        elif kind == 0x2020:
+            flags = struct.unpack_from("<I", payload)[0]
+            assert flags == 2 and len(payload) == 8 and payload[7] == 255
+            user_colors.append(tuple(payload[4:7]))
+        elif kind == 0x2019:
+            count, first, last = struct.unpack_from("<3I", payload)
+            assert count == 2 and first == 0 and last == 1 and len(payload) == 20 + count * 6
+            palette = [tuple(payload[20 + i * 6 + 2:20 + i * 6 + 6]) for i in range(count)]
+        else:
+            raise AssertionError(f"Unexpected chunk {kind:x}")
+        at += size
+    assert at == end
+    assert len(cels) == 2, (frame, cels)
+    if frame < 2:
+        assert all(cel[0] == "raw" for cel in cels)
+    else:
+        assert cels == [("linked", 0, 0), ("linked", 1, 1)], cels
+    if frame == 0:
+        assert palette == [(0x11, 0x22, 0x33, 0xFF), (0x11, 0x22, 0x33, 0x80)]
+        assert user_colors == [(0x12, 0x34, 0x56), (0xAB, 0xCD, 0xEF)], user_colors
+assert at == len(data)
+assert layers == [(3, 0, 255, "Base"), (3, 1, 160, "Top")], layers
+assert tags == [("walk", 0, 1, 0, 0, (0x12, 0x34, 0x56)), ("hold", 1, 2, 2, 3, (0xAB, 0xCD, 0xEF))], tags
+print("Independent ASE parser: tags chunk, non-contiguous linked cels, layer/palette properties and frame sizes: PASS")
+
 if len(sys.argv) > 2:
     executable = sys.argv[2]
     sheet, metadata = root / "ase-animation-desktop.png", root / "ase-animation-desktop.json"

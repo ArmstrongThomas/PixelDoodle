@@ -156,27 +156,42 @@ current input path. No 3DS transfer is authorized while its receiver is absent.
 
 
 Animation includes frame/cel storage, playback, onion skin, frame ordering,
-GIF sending and animated Aseprite export. Tags, linked-cel editing, animated
-Aseprite import and sprite-sheet export remain pending. New features need
-hardware acceptance; passing host tests does not establish device performance.
+tags, linked cels, GIF sending, and animated Aseprite import/export. Sprite
+sheet export and structural undo remain pending. New features need hardware
+acceptance; passing host tests does not establish device performance.
 
 ## Controls and model
 
-Menu > Frames, beside New Project, opens a layer-by-frame grid. Layers are
-rows in the same order as the Layers screen; frames are columns. A filled mark
-means the cel contains pixel data. Tap a cel to select its layer and frame.
-The arrows scroll frame columns. On DS/DSi, tap the upper/lower half of the thin
-layer scroll track to reach all eight layers. The regular Layers screen keeps
-its existing six/eight visible rows and controls.
+Open Layers from the rail and choose the TIMELINE tab. Menu no longer has a
+Frames shortcut. Layers are rows in the same order as the Layers screen; frames
+are columns. A filled mark means the cel contains pixel data. Tap a cel to
+select its layer and frame. The arrows scroll frame columns. On DS/DSi, tap the
+upper/lower half of the thin layer scroll track to reach all eight layers. The
+regular Layers screen keeps its existing six/eight visible rows and controls.
 
 - NEW inserts an empty frame after the current frame; DUPE copies its pixels.
-- Tap the duration to choose a preset or adjust by 10 ms (10Ã¢â‚¬â€œ60,000 ms).
+- Tap the duration to choose a preset or adjust by 10 ms (10-60,000 ms).
 - Pan + L/R steps frames with the pen lifted. ZL/ZR also step on New 3DS.
   These are single presses; holding to repeat is not implemented yet.
 - Tap the selected frame number for duration and allocation-free Move Left/Right.
   Paint undo follows reordered artwork; moving itself is not undoable.
+- **Frame marks:** with the pen lifted, hold L and tap frame numbers to toggle
+  whole-frame marks (all layers). Marked columns show a yellow bar and number,
+  and the memory line appends `n SEL`. A plain tap on an unmarked number clears
+  marks; a tap on a marked number keeps them and selects normally.
+- **Block move:** hold a marked frame number for 0.3 s, drag to the target
+  column and release. The marked frames start at that column; unmarked frames
+  shift around them. With no marks, the pressed frame moves alone. Paint undo
+  follows the art; durations, links and frame data move with their Frame.
+  Tag ranges stay positional, as with the older single-frame move.
+- **Cel move:** hold a cel for 0.4 s, drag to another layer and/or frame, and
+  release. A same-cell drop cancels. The destination is outlined while
+  dragging. Links on both cels and paint undo are cleared; the move itself is
+  not undoable. A single-frame project supports moving its cels between layers.
 - Delete asks for confirmation and clears undo history. At least one frame
   remains. Frame insertion and duration changes are not yet undoable.
+- Marks clear on frame add/duplicate/delete/new-linked, project open/new, and
+  after a cel move. A block move remaps marks to the moved frames.
 - The upper-screen status names the current frame when there is more than one.
 - POOL reports packed storage against its budget. Working layers, clipboard,
   undo and screen buffers are separate. The active cel may have edits that have
@@ -192,8 +207,10 @@ layer merging is refused until it can merge every frame safely.
 Reference: [Aseprite Timeline](https://www.aseprite.org/docs/timeline/),
 [Sprites](https://www.aseprite.org/docs/sprite/), and
 [Linked Cels](https://www.aseprite.org/docs/linked-cels/). The tile pool shares
-storage, but DUPE has independent editing semantics; it is not a linked cel.
-Animated export follows the [official Aseprite file specification](https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md).
+storage, but DUPE keeps independent editing semantics; linked cels are a
+separate group mechanism (Link with previous / New linked frame), so editing
+one member updates every frame in its group. Animated export follows the
+[official Aseprite file specification](https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md).
 Implementation and assets are original or reused from this repository.
 
 ## Storage and failure behavior
@@ -238,10 +255,14 @@ does not mark the named project saved. Older PDD1Ã¢â‚¬â€œ9 imports rem
 ordinary single-frame projects without animation state keep PDD8/PDD9 output.
 Older app versions cannot read PDDA: use new filenames while testing.
 
-Multi-frame Aseprite export streams all frames/layers and verifies its output.
-Animated Aseprite import remains unsupported; keep PDD masters. PNG exports
-only the current frame. Private Send Sprite can choose current-frame PNG or
-an all-visible-frame animated GIF. Single-frame Aseprite I/O remains unchanged.
+Animated Aseprite import and export stream all frames/layers and verify their
+output. The exporter writes per-frame durations, the tags chunk 0x2018 with
+per-tag colour user data, and linked cels as type 1 pointing at the first frame
+of each group. The importer validates and decodes the whole file before
+replacing the project, then builds frames, tags and linked-cel groups; see
+`docs/ASEPRITE-COMPATIBILITY.md` for limits. PNG exports only the current
+frame. Private Send Sprite can choose current-frame PNG or an all-visible-frame
+animated GIF. Single-frame Aseprite I/O uses the same implementation.
 
 ## Handwriting and diagnostics
 

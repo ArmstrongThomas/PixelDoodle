@@ -11,7 +11,7 @@ mockup.
 |---|---|---|
 | [pixel-doodle-workflow.html](pixel-doodle-workflow.html) | Original concepts: canvas, Layers, Adjust, Color/Picker, tool options, Command Board, DSi/3DS switch | Mostly implemented in 0.14.x in revised form. The Command Board menu was never built. |
 | [pixel-doodle-files-menu.html](pixel-doodle-files-menu.html) | Menu order, file browser, type dropdown, upper-screen file preview, lowercase keyboard, Adjust in Layers | **Implemented in 0.21.0**, approved by the user. |
-| [pixel-doodle-animation.html](pixel-doodle-animation.html) | Animation plan: DS memory budget, optimization pass, frame storage design, shortcuts; canvas frame strip, timeline, onion skin and frame sheets | Plan and parts implemented in 0.15.0–0.20.0 with a different UI; see below. |
+| [pixel-doodle-animation.html](pixel-doodle-animation.html) | Animation plan: DS memory budget, optimization pass, frame storage design, shortcuts; canvas frame strip, timeline, onion skin and frame sheets | Plan built in 0.15.0–0.20.0; **screens implemented in 0.22.0** (Layers + Timeline merge). See below. |
 
 ## How the native-resolution mockups work
 
@@ -44,9 +44,25 @@ Implemented as drawn, with these deliberate differences:
   GIF sharing (0.18.0); onion skin on/off, previous frame red and next blue
   (0.19.0); frame actions sheet with duration, move and delete, and animated
   Aseprite export (0.20.0). Pan+L/R and New 3DS ZL/ZR step frames.
-- Not built: the canvas frame strip, the timeline's cel styling and tag band,
-  the onion settings sheet (counts, opacity, tint), tags/loop ranges,
-  Sample+L/R shortcuts. The user asked to keep Frames and Layers separate.
+- 0.22.0 (user asked to merge Frames into Layers): Layers | Timeline tabs,
+  the timeline styling (`tlLayout`), the Frame sheet (`frameLayout`), the
+  Onion sheet with counts, opacity and tint (`onionLayout`), the canvas frame
+  strip (`stripLayout`), the upper-screen animation view (`topAnimation`, on
+  the Timeline tab) and Sample+L/R shortcuts.
+- 0.23.0 adds tags/loop ranges (the timeline tag band and the frame sheet's TAG
+  row, edited in a centred tag sheet) and linked cels (linked-cel groups, cel
+  sheet, joined timeline columns). Aseprite export and import now carry tags,
+  tag colours and linked cels, and animated Aseprite files import as editable
+  projects. It is built and sent to the DSi; physical acceptance is pending.
+  See `docs/HANDOFF.md` 0.23.0.
+- 0.24.0 adds the remaining direct-manipulation gestures: L+tap frame numbers to
+  mark whole columns, hold a marked number to drop the block elsewhere, and
+  hold a cel to move it across layers/frames. Menu > Frames was removed, so the
+  Timeline is entered only from Layers. Built and staged; acceptance pending.
+- Deliberate differences: Play
+  and Onion buttons sit beside the timeline tabs; the canvas upper screen keeps
+  its overview minimap; the details column shows ONION instead of TAG. The full
+  list is in `docs/HANDOFF.md` (0.22.0).
 - The memory estimates are superseded by measurement: Diagnostics on the DSi
   reported about 14,139 KB free with an equal largest block. See
   [animation core](../ANIMATION-CORE.md) and

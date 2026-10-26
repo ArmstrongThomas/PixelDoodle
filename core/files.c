@@ -87,48 +87,136 @@ static bool native_read(const unsigned char *b,size_t n,PdLayer *layers,char nam
         for(unsigned i=0;i<PD_PIXELS;i++)layers[l].pixels[i]=u32(p+slots*2+(old?0:slots*PD_NAME)+(l*PD_PIXELS+i)*4);
     }return true;
 }
-static bool ase_read(const unsigned char *b,size_t n,PdLayer *layers,char names[PD_LAYERS][PD_NAME],uint8_t *enabled,uint8_t order[PD_LAYERS],uint32_t pal[256],unsigned *pal_count,unsigned *width,unsigned *height,unsigned profile,char *error){
-    if(n<144||u32(b)!=n||u16(b+4)!=0xa5e0)return fail(error,"Invalid Aseprite file");
-    if(u16(b+6)!=1)return fail(error,"Animation not supported yet");
-    if(!pd_capacity(u16(b+8),u16(b+10),profile)||u16(b+12)!=32)return fail(error,"RGBA sprite exceeds device size limit");
-    *width=u16(b+8);*height=u16(b+10);
-    if(b[34]&&b[35]&&b[34]!=b[35])return fail(error,"Non-square pixels unsupported");
-    if(u32(b+128)!=n-128||u16(b+132)!=0xf1fa)return fail(error,"Invalid Aseprite frame");
-    unsigned chunks=u32(b+140);if(!chunks)chunks=u16(b+134);if(chunks>4096)return fail(error,"Too many Aseprite chunks");
-    size_t at=144;unsigned count=0;bool seen[PD_LAYERS]={0},modern=false;
-    for(unsigned k=0;k<chunks;k++){
-        if(n-at<6)return fail(error,"Truncated chunk");unsigned size=u32(b+at),type=u16(b+at+4);if(size<6||size>n-at)return fail(error,"Invalid chunk bounds");
-        const unsigned char *p=b+at+6;unsigned len=size-6;
-        if(type==0x2004){
-            if(count==pd_capacity(*width,*height,profile))return fail(error,"Project exceeds device layer limit");if(!prepare_layer(&layers[count],*width,*height))return fail(error,"Not enough memory for layers");
-            if(len<18||u16(p+16)>len-18)return fail(error,"Invalid layer chunk");
-            if(u16(p+2)||u16(p+4)||u16(p+10)>3||(u16(p)&~3u))return fail(error,"Unsupported layer type or mode");
-            unsigned name_len=u16(p+16);if(name_len>=PD_NAME||memchr(p+18,0,name_len))return fail(error,"Layer name exceeds 63 bytes");
-            layers[count].flags=(u16(p)&2)?0:PD_LAYER_LOCK;layers[count].blend=(uint8_t)u16(p+10);order[count]=(uint8_t)count;layers[count].visible=(uint8_t)(u16(p)&1);layers[count].opacity=(u32(b+14)&1)?p[12]:255;
-            memcpy(names[count],p+18,name_len);names[count][name_len]=0;count++;
-        }else if(type==0x2005){
-            if(len<20)return fail(error,"Invalid cel chunk");unsigned layer=u16(p),kind=u16(p+7),w=u16(p+16),h=u16(p+18);
-            int x=(int16_t)u16(p+2),y=(int16_t)u16(p+4);
-            if(layer>=count||seen[layer]||u16(p+9)||p[6]!=255||(kind!=0&&kind!=2))return fail(error,"Unsupported cel properties");
-            if(!w||!h||w>512||h>512||x<0||y<0||x+(int)w>(int)*width||y+(int)h>(int)*height)return fail(error,"Cel outside canvas");
-            unsigned bytes=w*h*4;unsigned char *raw=malloc(bytes);if(!raw)return fail(error,"Not enough memory");bool ok=true;
-            if(kind==0){ok=len-20==bytes;if(ok)memcpy(raw,p+20,bytes);}else{
-                z_stream z={0};z.next_in=(Bytef *)(p+20);z.avail_in=len-20;z.next_out=raw;z.avail_out=bytes;
-                if(inflateInit(&z)!=Z_OK)ok=false;else{int ret=inflate(&z,Z_FINISH);ok=ret==Z_STREAM_END&&z.total_out==bytes&&z.total_in==len-20;inflateEnd(&z);}
-            }
-            if(!ok){free(raw);return fail(error,"Invalid compressed cel");}
-            for(unsigned yy=0;yy<h;yy++)for(unsigned xx=0;xx<w;xx++){unsigned char *q=raw+(yy*w+xx)*4;pd_pixels(&layers[layer])[(y+(int)yy)*((*width>128||*height>128)?(*width+7)/8*8:128)+x+(int)xx]=((uint32_t)q[3]<<24)|((uint32_t)q[0]<<16)|((uint32_t)q[1]<<8)|q[2];}
-            free(raw);seen[layer]=true;
-        }else if(type==0x2019){
-            if(len<20||u32(p)>256||!u32(p)||u32(p+4)>u32(p+8)||u32(p+8)>=u32(p))return fail(error,"Invalid palette chunk");
-            *pal_count=u32(p);unsigned pos=20;for(unsigned i=u32(p+4);i<=u32(p+8);i++){if(len-pos<6||u16(p+pos)>1)return fail(error,"Invalid palette entry");unsigned flags=u16(p+pos);pal[i]=((uint32_t)p[pos+5]<<24)|((uint32_t)p[pos+2]<<16)|((uint32_t)p[pos+3]<<8)|p[pos+4];pos+=6;if(flags){if(len-pos<2||u16(p+pos)>len-pos-2)return fail(error,"Invalid palette name");pos+=2+u16(p+pos);}}if(pos!=len)return fail(error,"Invalid palette length");modern=true;
-        }else if((type==0x0004||type==0x0011)&&!modern){
-            if(len<2)return fail(error,"Invalid old palette");unsigned pos=2,index=0;for(unsigned packet=0;packet<u16(p);packet++){if(len-pos<2)return fail(error,"Invalid palette packet");index+=p[pos++];unsigned num=p[pos++];if(!num)num=256;if(index+num>256||num*3>len-pos)return fail(error,"Palette exceeds 256 colors");for(unsigned j=0;j<num;j++){unsigned r=p[pos++],g=p[pos++],b=p[pos++];if(type==0x0011){if(r>63||g>63||b>63)return fail(error,"Invalid six-bit color");r=r*255/63;g=g*255/63;b=b*255/63;}pal[index++]=0xff000000u|(r<<16)|(g<<8)|b;}if(index>*pal_count)*pal_count=index;}if(pos!=len)return fail(error,"Invalid palette length");
-        }else if(type==0x2007){if(len<16||u16(p)>1||(u16(p+2)&1))return fail(error,"Custom color profile unsupported");}
-        else if(type!=0x2019&&type!=0x0004&&type!=0x0011){return fail(error,"Unsupported Aseprite metadata");}
-        at+=size;
+/* Aseprite import. The parser runs once with no document to validate the whole file, then
+ * again with a document to build frames, linked cels and tags. Compressed cels are decoded in
+ * both passes so a corrupt file can never replace the current drawing. */
+typedef struct {
+    unsigned width,height,frames,layers,capacity,speed;
+    uint8_t enabled;
+    bool modern_palette;
+    unsigned pal_count;uint32_t pal[256];
+    char names[PD_LAYERS][PD_NAME];
+    uint8_t visible[PD_LAYERS],opacity[PD_LAYERS],blend[PD_LAYERS],flags[PD_LAYERS],order[PD_LAYERS];
+    unsigned tag_count;PdTag tags[PD_TAGS];
+} AseInfo;
+/* Frame tags hold 31 bytes plus NUL; longer Aseprite names are cut at a UTF-8 boundary. */
+static void ase_tag_name(char out[PD_TAG_NAME_MAX],const unsigned char *src,size_t len){
+    size_t n=len>PD_TAG_NAME_MAX-1?PD_TAG_NAME_MAX-1:len;
+    if(len>n)while(n&&(src[n]&0xc0)==0x80)n--;
+    memcpy(out,src,n);out[n]=0;
+}
+static bool ase_palette(const unsigned char *p,unsigned len,AseInfo *info,char error[64]){
+    if(len<20||u32(p)>256||!u32(p)||u32(p+4)>u32(p+8)||u32(p+8)>=u32(p))return fail(error,"Invalid palette chunk");
+    info->pal_count=u32(p);unsigned pos=20;for(unsigned i=u32(p+4);i<=u32(p+8);i++){if(len-pos<6||u16(p+pos)>1)return fail(error,"Invalid palette entry");unsigned flags=u16(p+pos);info->pal[i]=((uint32_t)p[pos+5]<<24)|((uint32_t)p[pos+2]<<16)|((uint32_t)p[pos+3]<<8)|p[pos+4];pos+=6;if(flags){if(len-pos<2||u16(p+pos)>len-pos-2)return fail(error,"Invalid palette name");pos+=2+u16(p+pos);}}
+    if(pos!=len)return fail(error,"Invalid palette length");info->modern_palette=true;return true;
+}
+static bool ase_old_palette(const unsigned char *p,unsigned len,unsigned type,AseInfo *info,char error[64]){
+    if(len<2)return fail(error,"Invalid old palette");unsigned pos=2,index=0;
+    for(unsigned packet=0;packet<u16(p);packet++){if(len-pos<2)return fail(error,"Invalid palette packet");index+=p[pos++];unsigned num=p[pos++];if(!num)num=256;if(index+num>256||num*3>len-pos)return fail(error,"Palette exceeds 256 colors");
+        for(unsigned j=0;j<num;j++){unsigned r=p[pos++],g=p[pos++],b=p[pos++];if(type==0x0011){if(r>63||g>63||b>63)return fail(error,"Invalid six-bit color");r=r*255/63;g=g*255/63;b=b*255/63;}info->pal[index++]=0xff000000u|(r<<16)|(g<<8)|b;}
+        if(index>info->pal_count)info->pal_count=index;}
+    if(pos!=len)return fail(error,"Invalid palette length");return true;
+}
+static bool ase_layer(const unsigned char *p,unsigned len,AseInfo *info,PdDocument *d,bool opacity_valid,bool uuid,char error[64]){
+    if(info->layers>=info->capacity)return fail(error,"Project exceeds device layer limit");
+    if(len<18||u16(p+2)||u16(p+4)||u16(p+10)>3||(u16(p)&~0x1fu))return fail(error,"Unsupported layer type or mode");
+    unsigned name=u16(p+16);size_t need=18u+name+(uuid?16u:0u);if(name>=PD_NAME||need>len||memchr(p+18,0,name))return fail(error,"Layer name exceeds 63 bytes");
+    unsigned l=info->layers++;info->flags[l]=(u16(p)&2)?0:PD_LAYER_LOCK;info->blend[l]=(uint8_t)u16(p+10);info->order[l]=(uint8_t)l;info->visible[l]=(uint8_t)(u16(p)&1);info->opacity[l]=opacity_valid?p[12]:255;
+    memcpy(info->names[l],p+18,name);info->names[l][name]=0;
+    if(d){memcpy(d->names[l],info->names[l],PD_NAME);d->layer[l].visible=info->visible[l];d->layer[l].opacity=info->opacity[l];d->layer[l].blend=info->blend[l];d->layer[l].flags=info->flags[l];d->order[l]=(uint8_t)l;}
+    return true;
+}
+/* One cel: raw (0), linked (1) or zlib-compressed (2). Linked cels remember their target so
+ * links are applied only after every frame's pixels are packed. */
+static bool ase_cel(const unsigned char *q,unsigned len,unsigned frame,AseInfo *info,PdDocument *d,uint16_t *links,bool *seen,char error[64]){
+    if(len<16)return fail(error,"Invalid cel chunk");unsigned layer=u16(q),kind=u16(q+7);int x=(int16_t)u16(q+2),y=(int16_t)u16(q+4);
+    if(layer>=info->layers||seen[layer])return fail(error,"Invalid cel layer");
+    if(q[6]!=255||u16(q+9))return fail(error,"Unsupported cel properties");
+    if(kind==1){
+        if(len<18)return fail(error,"Invalid linked cel");unsigned target=u16(q+16);
+        if(target>=frame)return fail(error,"Linked cel must point to an earlier frame");
+        if(d){if(!pd_frame_layer_copy(d,target,layer,pd_pixels(&d->layer[layer])))return fail(error,"Cannot read linked cel");links[frame*PD_LAYERS+layer]=(uint16_t)(target+1);}
+        seen[layer]=true;return true;
     }
-    if(at!=n||!count)return fail(error,"Invalid Aseprite layout");*enabled=(uint8_t)((1u<<count)-1);return true;
+    if(kind!=0&&kind!=2)return fail(error,"Unsupported Aseprite cel type");
+    if(len<20)return fail(error,"Invalid cel chunk");unsigned w=u16(q+16),h=u16(q+18),bytes=w*h*4;
+    if(!w||!h||w>512||h>512||x<0||y<0||x+(int)w>(int)info->width||y+(int)h>(int)info->height)return fail(error,"Cel outside canvas");
+    unsigned char *raw=NULL;const unsigned char *data=q+20;
+    if(kind==2){raw=malloc(bytes?bytes:1);if(!raw)return fail(error,"Not enough memory");z_stream z={0};z.next_in=(Bytef *)(q+20);z.avail_in=len-20;z.next_out=raw;z.avail_out=bytes;bool ok=inflateInit(&z)==Z_OK;
+        if(ok){int ret=inflate(&z,Z_FINISH);ok=ret==Z_STREAM_END&&z.total_out==bytes&&z.total_in==len-20;inflateEnd(&z);}if(!ok){free(raw);return fail(error,"Invalid compressed cel");}data=raw;
+    }else if(len-20!=bytes)return fail(error,"Invalid raw cel length");
+    if(d){for(unsigned yy=0;yy<h;yy++)for(unsigned xx=0;xx<w;xx++){const unsigned char *p=data+(yy*w+xx)*4;pd_pixels(&d->layer[layer])[(y+(int)yy)*d->stride+x+xx]=((uint32_t)p[3]<<24)|((uint32_t)p[0]<<16)|((uint32_t)p[1]<<8)|p[2];}}
+    free(raw);seen[layer]=true;return true;
+}
+static bool ase_tags(const unsigned char *p,unsigned len,AseInfo *info,char error[64]){
+    if(len<10)return fail(error,"Invalid tags chunk");unsigned count=u16(p);if(count>PD_TAGS)return fail(error,"Too many Aseprite tags");unsigned pos=10;
+    for(unsigned i=0;i<count;i++){
+        if(len-pos<19)return fail(error,"Invalid tag entry");PdTag *t=&info->tags[i];unsigned name=u16(p+pos+17);
+        if(name>len-pos-19)return fail(error,"Invalid tag name");
+        t->from=u16(p+pos);t->to=u16(p+pos+2);t->direction=p[pos+4];t->repeat=u16(p+pos+5);t->color=((uint32_t)p[pos+13]<<16)|((uint32_t)p[pos+14]<<8)|p[pos+15];
+        if(t->from>t->to||t->to>=info->frames||t->direction>3)return fail(error,"Tag outside the animation");
+        if(memchr(p+pos+19,0,name))return fail(error,"Invalid tag name");ase_tag_name(t->name,p+pos+19,name);pos+=19+name;
+    }
+    if(pos!=len)return fail(error,"Invalid tag length");info->tag_count=count;return true;
+}
+/* Tag colours live in the user-data chunks that follow a tags chunk; text may precede colour. */
+static bool ase_tag_color(const unsigned char *p,unsigned len,uint32_t *color,char error[64]){
+    if(len<4)return fail(error,"Invalid user data");unsigned flags=u32(p),pos=4;
+    if(flags&1){if(len-pos<2)return fail(error,"Invalid user data text");unsigned n=u16(p+pos);if(n>len-pos-2)return fail(error,"Invalid user data text");pos+=2+n;}
+    if(flags&2){if(len-pos<4)return fail(error,"Invalid user data color");*color=((uint32_t)p[pos]<<16)|((uint32_t)p[pos+1]<<8)|p[pos+2];}
+    return true;
+}
+static bool ase_parse(const unsigned char *b,size_t n,PdDocument *d,unsigned profile,char error[64],bool preview){
+    if(n<144||u32(b)!=n||u16(b+4)!=0xa5e0)return fail(error,"Invalid Aseprite file");
+    unsigned frames=u16(b+6),width=u16(b+8),height=u16(b+10),depth=u16(b+12),speed=u16(b+18),flags=u32(b+14);
+    if(!frames||frames>PD_FRAMES)return fail(error,"Animation exceeds 256 frames");
+    unsigned capacity=pd_capacity(width,height,profile);if(!capacity||depth!=32)return fail(error,"RGBA sprite exceeds device size limit");
+    if(flags&~7u)return fail(error,"Unsupported Aseprite flags");
+    if(b[34]&&b[35]&&b[34]!=b[35])return fail(error,"Non-square pixels unsupported");
+    AseInfo *info=calloc(1,sizeof(*info));if(!info)return fail(error,"Not enough memory");
+    uint16_t *links=NULL;
+    info->width=width;info->height=height;info->frames=frames;info->capacity=capacity;info->speed=speed;
+    if(d){links=calloc((size_t)frames*PD_LAYERS,sizeof(*links));if(!links){free(info);return fail(error,"Not enough memory");}
+        if(!pd_create(d,width,height,profile)){free(links);free(info);return fail(error,"Not enough memory - current art retained");}}
+    bool ok=true,tags_seen=false;size_t at=128;
+    for(unsigned frame=0;frame<frames&&ok;frame++){
+        if(preview&&frame)break;
+        if(n-at<16){ok=fail(error,"Truncated Aseprite frame");break;}
+        size_t fsize=u32(b+at);if(u16(b+at+4)!=0xf1fa||fsize<16||fsize>n-at){ok=fail(error,"Invalid Aseprite frame");break;}
+        unsigned old=u16(b+at+6),duration=u16(b+at+8),chunks=u32(b+at+12);if(!chunks)chunks=old;if(chunks>4096){ok=fail(error,"Too many Aseprite chunks");break;}
+        if(d&&frame&&!pd_frame_add(d,false)){ok=fail(error,"Not enough frame memory");break;}
+        bool seen[PD_LAYERS]={0};unsigned tag_user=0,tag_index=0;size_t end=at+fsize,p=at+16;
+        for(unsigned k=0;k<chunks&&ok;k++){
+            if(end-p<6){ok=fail(error,"Truncated chunk");break;}unsigned size=u32(b+p),type=u16(b+p+4);if(size<6||size>end-p){ok=fail(error,"Invalid chunk bounds");break;}
+            const unsigned char *q=b+p+6;unsigned len=size-6;
+            if(type==0x2004){if(frame)ok=fail(error,"Layer chunks must be in the first frame");else ok=ase_layer(q,len,info,d,flags&1,! !(flags&4),error);}
+            else if(type==0x2005)ok=ase_cel(q,len,frame,info,d,links,seen,error);
+            else if(type==0x2019)ok=ase_palette(q,len,info,error);
+            else if(type==0x0004||type==0x0011){if(!info->modern_palette)ok=ase_old_palette(q,len,type,info,error);}
+            else if(type==0x2007){if(len<16||u16(q)>1||(u16(q+2)&1))ok=fail(error,"Custom color profile unsupported");}
+            else if(type==0x2018){if(tags_seen)ok=fail(error,"Duplicate tags chunk");else{ok=ase_tags(q,len,info,error);if(ok){tags_seen=true;tag_user=info->tag_count;}}}
+            else if(type==0x2020){if(tag_user){uint32_t color=info->tags[tag_index].color;if(!ase_tag_color(q,len,&color,error))ok=false;else info->tags[tag_index].color=color;tag_index++;tag_user--;}}
+            else if(type!=0x2006&&type!=0x2022)ok=fail(error,"Unsupported Aseprite metadata");
+            p+=size;
+        }
+        if(ok&&p!=end)ok=fail(error,"Invalid Aseprite frame length");
+        if(ok){unsigned ms=duration?duration:speed;if(!ms)ms=100;if(ms<10)ms=10;if(ms>60000)ms=60000;
+            if(!preview&&d&&(frames>1||d->animation||ms!=100)&&!pd_frame_set_duration(d,ms))ok=fail(error,"Not enough frame memory");}
+        at=end;
+    }
+    if(ok&&!preview&&at!=n)ok=fail(error,"Invalid Aseprite layout");
+    if(ok&&(!info->layers||info->layers>info->capacity))ok=fail(error,"Project exceeds device layer limit");
+    if(ok&&d){
+        d->enabled=(uint8_t)((1u<<info->layers)-1);d->active=0;for(unsigned l=0;l<PD_LAYERS;l++)d->order[l]=(uint8_t)l;
+        d->palette_count=d->saved_palette_count=info->pal_count;memcpy(d->palette,info->pal,sizeof(info->pal));memcpy(d->saved_palette,info->pal,sizeof(info->pal));
+        for(unsigned i=0;!preview&&i<info->tag_count&&ok;i++)if(pd_tag_add(d,&info->tags[i])<0)ok=fail(error,"Not enough memory for tags");
+        if(ok&&!preview&&d->animation){if(!pd_frame_snapshot(d))ok=fail(error,"Not enough frame memory");
+            for(unsigned f=0;ok&&f<frames;f++)for(unsigned l=0;l<PD_LAYERS;l++){unsigned target=links[f*PD_LAYERS+l];if(target&&!pd_cel_set_link(d,f,l,target-1))ok=fail(error,"Cannot link cel");}
+            if(ok)pd_frames_saved(d);
+            if(ok&&frames>1&&!pd_frame_select_packed(d,0))ok=fail(error,"Cannot select the first frame");}
+        if(ok)pd_composite(d);
+    }
+    free(links);free(info);return ok;
 }
 /* Bounded non-interlaced PNG reader; sample values remain unmodified. */
 static uint32_t read_be(const unsigned char *p);
@@ -185,14 +273,26 @@ static bool read_layers(const char *path,PdLayer *layers,char names[PD_LAYERS][P
     unsigned char head[32];if(fread(head,1,32,f)!=32){fclose(f);return fail(error,"Cannot read header");}bool png=!memcmp(head,"\x89PNG\r\n\x1a\n",8);unsigned fw=png?read_be(head+16):!memcmp(head,"PDD",3)?u32(head+8):u16(head+8),fh=png?read_be(head+20):!memcmp(head,"PDD",3)?u32(head+12):u16(head+10);if(!pd_capacity(fw,fh,profile)){fclose(f);return fail(error,"Project exceeds device canvas limit");}rewind(f);
     unsigned char *b=malloc((size_t)length);if(!b){fclose(f);return fail(error,"Not enough memory");}
     bool ok=fread(b,1,(size_t)length,f)==(size_t)length;fclose(f);
-    if(ok){if(png)ok=artwork_png(b,(size_t)length,layers,names,enabled,pal,pal_count,width,height,profile,error);else if(!memcmp(b,"PDD9",4))ok=large_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);else if(!memcmp(b,"PDD",3))ok=native_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);else ok=ase_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);}else fail(error,"Cannot read file");free(b);return ok;
+    if(ok){if(png)ok=artwork_png(b,(size_t)length,layers,names,enabled,pal,pal_count,width,height,profile,error);else if(!memcmp(b,"PDD9",4))ok=large_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);else if(!memcmp(b,"PDD",3))ok=native_read(b,(size_t)length,layers,names,enabled,order,pal,pal_count,width,height,profile,error);else ok=fail(error,"Unsupported file format");}else fail(error,"Cannot read file");free(b);return ok;
+}
+static bool read_all(const char *path,unsigned char **out,size_t *length,char error[64]){
+    *out=NULL;FILE *f=fopen(path,"rb");if(!f)return fail(error,"Cannot open file");
+    if(fseek(f,0,SEEK_END)){fclose(f);return fail(error,"Cannot seek file");}long size=ftell(f);
+    if(size<0||(unsigned long)size>MAX_FILE){fclose(f);return fail(error,"Invalid file size (max 9 MiB)");}
+    rewind(f);unsigned char *b=malloc(size?(size_t)size:1);if(!b){fclose(f);return fail(error,"Not enough memory");}
+    bool ok=fread(b,1,(size_t)size,f)==(size_t)size&&fgetc(f)==EOF&&!ferror(f);fclose(f);
+    if(!ok){free(b);return fail(error,"Cannot read file");}*out=b;*length=(size_t)size;return true;
 }
 bool pd_preview_file_info(const char *path,uint32_t preview[64*64],unsigned profile,PdPreviewInfo *info,char error[64]){
     if(info)memset(info,0,sizeof(*info));
-    FILE *probe=fopen(path,"rb");if(probe){unsigned char magic[4];bool animation=fread(magic,1,4,probe)==4&&!memcmp(magic,"PDDA",4);rewind(probe);
+    FILE *probe=fopen(path,"rb");if(probe){unsigned char magic[8];size_t got=fread(magic,1,8,probe);bool animation=got>=4&&!memcmp(magic,"PDDA",4),ase=got>=6&&u16(magic+4)==0xa5e0;unsigned total_frames=got>=8?u16(magic+6):0;rewind(probe);
         if(animation){PdDocument *scratch=calloc(1,sizeof(*scratch));if(!scratch){fclose(probe);return fail(error,"Not enough memory for preview");}pd_init(scratch);scratch->profile=profile;bool ok=pd_frames_read(scratch,probe);fclose(probe);
             if(ok){unsigned max=scratch->width>scratch->height?scratch->width:scratch->height,pw=scratch->width*64/max,ph=scratch->height*64/max;if(!pw)pw=1;if(!ph)ph=1;memset(preview,0,64*64*4);for(unsigned y=0;y<ph;y++)for(unsigned x=0;x<pw;x++)preview[(y+(64-ph)/2)*64+x+(64-pw)/2]=pd_image(scratch)[(y*scratch->height/ph)*scratch->stride+x*scratch->width/pw];}
-            if(ok&&info){info->width=scratch->width;info->height=scratch->height;info->frames=pd_frame_count(scratch);for(unsigned l=0;l<PD_LAYERS;l++)if(scratch->enabled&(1u<<l))info->layers++;}pd_dispose(scratch);free(scratch);return ok?true:fail(error,"Animation preview unavailable");}fclose(probe);}
+            if(ok&&info){info->width=scratch->width;info->height=scratch->height;info->frames=pd_frame_count(scratch);for(unsigned l=0;l<PD_LAYERS;l++)if(scratch->enabled&(1u<<l))info->layers++;}pd_dispose(scratch);free(scratch);return ok?true:fail(error,"Animation preview unavailable");}
+        if(ase){fclose(probe);unsigned char *b;size_t n;if(!read_all(path,&b,&n,error))return false;PdDocument *scratch=calloc(1,sizeof(*scratch));if(!scratch){free(b);return fail(error,"Not enough memory for preview");}pd_init(scratch);scratch->profile=profile;bool ok=ase_parse(b,n,scratch,profile,error,true);free(b);
+            if(ok){unsigned max=scratch->width>scratch->height?scratch->width:scratch->height,pw=scratch->width*64/max,ph=scratch->height*64/max;if(!pw)pw=1;if(!ph)ph=1;memset(preview,0,64*64*4);for(unsigned y=0;y<ph;y++)for(unsigned x=0;x<pw;x++)preview[(y+(64-ph)/2)*64+x+(64-pw)/2]=pd_image(scratch)[(y*scratch->height/ph)*scratch->stride+x*scratch->width/pw];}
+            if(ok&&info){info->width=scratch->width;info->height=scratch->height;info->frames=total_frames?total_frames:1;for(unsigned l=0;l<PD_LAYERS;l++)if(scratch->enabled&(1u<<l))info->layers++;}pd_dispose(scratch);free(scratch);return ok?true:fail(error,"Animation preview unavailable");}
+        fclose(probe);}
 
     PdLayer *layers=calloc(PD_LAYERS,sizeof(PdLayer));if(!layers)return fail(error,"Not enough memory for preview");char names[PD_LAYERS][PD_NAME]={{0}};uint32_t pal[256]={0};unsigned count=0,width=128,height=128;uint8_t enabled=1,order[PD_LAYERS]={0,1,2,3,4,5,6,7};for(unsigned i=0;i<PD_LAYERS;i++){layers[i].visible=1;layers[i].opacity=255;}
     bool ok=read_layers(path,layers,names,&enabled,order,pal,&count,&width,&height,profile,error);if(ok&&info){info->width=width;info->height=height;info->frames=1;for(unsigned l=0;l<PD_LAYERS;l++)if(enabled&(1u<<l))info->layers++;}if(ok){unsigned max=width>height?width:height,pw=width*64/max,ph=height*64/max;if(!pw)pw=1;if(!ph)ph=1;memset(preview,0,64*64*4);for(unsigned y=0;y<ph;y++)for(unsigned x=0;x<pw;x++)preview[(y+(64-ph)/2)*64+x+(64-pw)/2]=pd_sample_layers(layers,enabled,order,(y*height/ph)*((width>128||height>128)?(width+7)/8*8:128)+x*width/pw);}free_layers(layers);return ok;
@@ -201,7 +301,9 @@ bool pd_preview_file_profile(const char *path,uint32_t preview[64*64],unsigned p
 bool pd_preview_file(const char *path,uint32_t preview[64*64],char error[64]){return pd_preview_file_profile(path,preview,1,error);}
 bool pd_open_file(PdDocument *d,const char *path,char error[64]){
     if(d->editing)return fail(error,"Finish stroke first");
-    FILE *probe=fopen(path,"rb");if(probe){unsigned char magic[4];bool animation=fread(magic,1,4,probe)==4&&!memcmp(magic,"PDDA",4);rewind(probe);if(animation){bool ok=pd_frames_read(d,probe);fclose(probe);return ok?true:fail(error,"Invalid animation or not enough memory");}fclose(probe);}
+    unsigned char head[8];FILE *probe=fopen(path,"rb");if(!probe)return fail(error,"Cannot open file");size_t got=fread(head,1,8,probe);fclose(probe);
+    if(got>=4&&!memcmp(head,"PDDA",4)){FILE *f=fopen(path,"rb");if(!f)return fail(error,"Cannot open file");bool ok=pd_frames_read(d,f);fclose(f);return ok?true:fail(error,"Invalid animation or not enough memory");}
+    if(got>=6&&u16(head+4)==0xa5e0){unsigned char *b;size_t n;if(!read_all(path,&b,&n,error))return false;bool ok=ase_parse(b,n,d,d->profile,error,false);free(b);return ok;}
     PdLayer *layers=calloc(PD_LAYERS,sizeof(PdLayer));if(!layers)return fail(error,"Not enough memory");
     char names[PD_LAYERS][PD_NAME]={{0}};for(unsigned l=0;l<PD_LAYERS;l++){layers[l].visible=1;layers[l].opacity=255;snprintf(names[l],PD_NAME,"Layer %u",l+1);}
     uint32_t pal[256]={0};unsigned pal_count=0,width=128,height=128;uint8_t enabled=1,order[PD_LAYERS]={0,1,2,3,4,5,6,7};bool ok=read_layers(path,layers,names,&enabled,order,pal,&pal_count,&width,&height,d->profile,error);if(ok&&!pd_create(d,width,height,d->profile)){fail(error,"Not enough memory - current art retained");ok=false;}if(ok){d->width=width;d->height=height;d->palette_count=d->saved_palette_count=pal_count;memcpy(d->palette,pal,sizeof(pal));memcpy(d->saved_palette,pal,sizeof(pal));d->enabled=enabled;memcpy(d->order,order,PD_LAYERS);while(!(enabled&(1u<<d->active)))d->active++;for(unsigned l=0;l<8;l++){d->layer[l].visible=layers[l].visible;d->layer[l].opacity=layers[l].opacity;d->layer[l].blend=layers[l].blend;d->layer[l].flags=layers[l].flags;if(enabled&(1u<<l))memcpy(pd_pixels(&d->layer[l]),pd_pixels(&layers[l]),pd_bytes(d));}memcpy(d->names,names,sizeof(d->names));pd_composite(d);}free_layers(layers);return ok;
@@ -256,7 +358,7 @@ static bool write_bytes(const char *path,unsigned char *b,size_t n,bool overwrit
 
 bool pd_write_file(PdDocument *d,const char *path,unsigned kind,bool overwrite,char error[64]){
     if(d->editing||!pd_capacity(d->width,d->height,d->profile)||kind>3||d->palette_count>256)return fail(error,"Invalid save operation");
-    if(kind==1&&pd_frame_count(d)>1)return write_bytes_mode(path,NULL,0,overwrite,error,d,true);
+    if(kind==1&&(pd_frame_count(d)>1||pd_tag_count(d)))return write_bytes_mode(path,NULL,0,overwrite,error,d,true);
     if(kind==0&&d->animation){bool ok=write_bytes(path,NULL,0,overwrite,error,d);if(ok){d->saved_revision=d->revision;d->saved_palette_count=d->palette_count;memcpy(d->saved_palette,d->palette,sizeof(d->palette));pd_frames_saved(d);}return ok;}size_t n=0;unsigned char *b=kind==0?native_encode(d,&n):kind==1?ase_encode(d,&n):png_encode(d,&n,kind==2);if(!b)return fail(error,"Not enough memory");bool ok=write_bytes(path,b,n,overwrite,error,NULL);free(b);if(ok&&kind==0){d->saved_revision=d->revision;d->saved_palette_count=d->palette_count;memcpy(d->saved_palette,d->palette,sizeof(d->palette));}return ok;
 }
 
